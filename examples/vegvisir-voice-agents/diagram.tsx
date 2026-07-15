@@ -2,23 +2,21 @@
 // authoring model and is not expected to compile until the core API exists.
 
 import {
-  Link,
-  Channel,
   Column,
-  Constraint,
   Diagram,
-  Dock,
-  DockGroup,
   Image,
+  Line,
   Node,
+  Port,
+  PortGroup,
   Row,
   Scope,
+  Segment,
   Subtitle,
   Text,
   Title,
-  arrive,
-  leave,
-  use,
+  gap,
+  padding,
 } from "@excalmermaid/core";
 
 const colors = {
@@ -32,7 +30,7 @@ const colors = {
 
 function Driver() {
   return (
-    <Column id="driver-column" order="source" align="center" gap="large">
+    <Column id="driver-column" align="center" gap="large">
       <Node
         id="driver"
         shape="ellipse"
@@ -40,7 +38,7 @@ function Driver() {
         role="actor"
         style={{ fill: "pale-yellow", stroke: colors.orange }}
       >
-        <Dock id="voice" side="right" axis="horizontal" />
+        <Port id="voice" side="right" />
       </Node>
       <Text role="caption">speaks · listens</Text>
       <Image
@@ -60,16 +58,9 @@ function Phone() {
       id="phone"
       label="Vegvísir on iPhone"
       role="device"
-      layout={{ kind: "column", order: "source", gap: "large" }}
+      layout={{ kind: "column", gap: "large" }}
       style={{ fill: "near-white", stroke: colors.muted }}
     >
-      <Channel
-        id="vertical-control"
-        axis="vertical"
-        pressure={0.7}
-        spacing={{ min: "small", preferred: "medium" }}
-      />
-
       <Node
         id="voice-agent"
         role="realtime-agent"
@@ -81,22 +72,22 @@ function Phone() {
         <Text role="caption">
           Fast conversational loop — never blocked by long-running work
         </Text>
-        <Dock id="driver" side="left" axis="horizontal" />
-        <Dock id="tasks" side="bottom" axis="vertical" />
-        <Dock id="speech" side="bottom" axis="vertical" />
-        <Dock id="progress" side="bottom" axis="vertical" />
+        <Port id="driver" side="left" />
+        {/* fixed order keeps the three corridor tracks side by side */}
+        <PortGroup id="loop" order="fixed">
+          <Port id="tasks" side="bottom" />
+          <Port id="speech" side="bottom" />
+          <Port id="progress" side="bottom" />
+        </PortGroup>
       </Node>
 
       <Node
         id="speak-now"
         shape="diamond"
-        label="Speak\nnow?"
+        label={"Speak\nnow?"}
         role="decision"
         style={{ fill: "pale-yellow", stroke: colors.orange }}
-      >
-        <Dock id="from-harness" side="bottom" axis="vertical" />
-        <Dock id="to-voice" side="top" axis="vertical" />
-      </Node>
+      />
 
       <Node
         id="road-agent"
@@ -110,22 +101,17 @@ function Phone() {
         <Text role="heading">
           POI search · map state · navigation handoff
         </Text>
-        <Dock id="tasks" side="top" axis="vertical" />
-        <Dock id="speech" side="top" axis="vertical" />
-        <Dock id="progress" side="top" axis="vertical" />
-        <Dock id="remote" side="right" axis="horizontal">
-          <DockGroup
-            id="delegation"
-            join="prefer"
-            sharing="merge"
-            branch="late"
-          />
-        </Dock>
-        <Dock id="local-context" side="bottom" axis="vertical" />
-        <Dock id="road-knowledge" side="bottom" axis="vertical" />
+        <PortGroup id="loop" order="fixed">
+          <Port id="tasks" side="top" />
+          <Port id="speech" side="top" />
+          <Port id="progress" side="top" />
+        </PortGroup>
+        <Port id="remote" side="right" />
+        <Port id="local-context" side="bottom" />
+        <Port id="road-knowledge" side="bottom" />
       </Node>
 
-      <Row id="knowledge" order="source" gap="large" align="stretch">
+      <Row id="knowledge" gap="large" align="stretch">
         <Node
           id="local-context"
           role="knowledge-source"
@@ -134,7 +120,7 @@ function Phone() {
           <Text>Local Markdown context</Text>
           <Text>Soul · Preferences · Today</Text>
           <Text>· Memory</Text>
-          <Dock id="harness" side="top" axis="vertical" />
+          <Port id="harness" side="top" />
         </Node>
         <Node
           id="road-knowledge"
@@ -144,59 +130,48 @@ function Phone() {
           <Text>Live road knowledge</Text>
           <Text>MapKit · Overpass ·</Text>
           <Text>Wikipedia</Text>
-          <Dock id="harness" side="top" axis="vertical" />
+          <Port id="harness" side="top" />
         </Node>
       </Row>
 
-      <Link
+      {/* the conversational loop runs in the implicit corridor around the
+          decision diamond; no channel declarations needed */}
+      <Line
         id="accept-road-task"
         from="voice-agent.tasks"
         to="road-agent.tasks"
-        label="accept + refine\nRoad Task"
+        label={"accept + refine\nRoad Task"}
         style={{ stroke: colors.blue }}
-        layoutEffect="reserve"
-        route={[use("vertical-control", { axis: "vertical" })]}
       />
-      <Link
-        id="ask-to-speak"
-        from="road-agent.speech"
-        to="speak-now.from-harness"
-        style={{ stroke: colors.orange }}
-        layoutEffect="reserve"
-      />
-      <Link
+      <Line
         id="speak"
-        from="speak-now.to-voice"
+        from="road-agent.speech"
         to="voice-agent.speech"
         style={{ stroke: colors.orange }}
-        layoutEffect="reserve"
-      />
-      <Link
+      >
+        <Segment via="speak-now" />
+      </Line>
+      <Line
         id="progress"
         from="road-agent.progress"
         to="voice-agent.progress"
-        label="progress +\nstructured result"
+        label={"progress +\nstructured result"}
         style={{ stroke: colors.green }}
-        layoutEffect="reserve"
-        route={[use("vertical-control", { axis: "vertical" })]}
       />
-      <Link
+      <Line
         id="local-memory"
         from="road-agent.local-context"
         to="local-context.harness"
-        direction="bidirectional"
+        heads="both"
         style={{ stroke: colors.muted }}
       />
-      <Link
+      <Line
         id="live-knowledge"
         from="road-agent.road-knowledge"
         to="road-knowledge.harness"
-        direction="bidirectional"
+        heads="both"
         style={{ stroke: colors.muted }}
       />
-
-      <Constraint kind="center" item="speak-now" within="phone" strength="required" />
-      <Constraint kind="between" item="speak-now" first="voice-agent" second="road-agent" />
     </Scope>
   );
 }
@@ -207,19 +182,11 @@ function UserOwnedAgents() {
       id="user-owned"
       label="User-owned agents"
       role="remote-agents"
-      layout={{ kind: "column", order: "source", gap: "large" }}
+      layout={{ kind: "column", gap: "large" }}
       style={{ fill: "pale-purple", stroke: colors.purple }}
     >
       <Text role="caption">private travel memory,</Text>
       <Text role="caption">wiki, bookings &amp; research</Text>
-
-      <Channel
-        id="agent-bus"
-        axis="vertical"
-        pressure={0.9}
-        spacing={{ min: "small", preferred: "small" }}
-        allowedSharing={["merge", "bundle"]}
-      />
 
       <Node
         id="travel-agent"
@@ -228,46 +195,45 @@ function UserOwnedAgents() {
       >
         <Text role="heading">Named travel agent</Text>
         <Text role="heading">situated delegation</Text>
-        <Dock id="request" side="left" axis="horizontal" />
-        <Dock id="tools" side="bottom" axis="vertical">
-          <DockGroup id="fanout" join="require" sharing="merge" branch="late" />
-        </Dock>
+        <Port id="request" side="left" />
+        <Port id="tools" side="bottom" cardinality="many" />
       </Node>
 
       <Node id="openclaw" role="agent-tool" style={{ stroke: colors.purple }}>
         <Text>OpenClaw</Text>
         <Text>Gateway</Text>
         <Text>/v1/responses</Text>
-        <Dock id="request" side="left" axis="horizontal" />
+        <Port id="request" side="left" />
       </Node>
       <Node id="hermes-webui" role="agent-tool" style={{ stroke: colors.purple }}>
         <Text>Hermes WebUI</Text>
         <Text>background task API</Text>
-        <Dock id="request" side="left" axis="horizontal" />
+        <Port id="request" side="left" />
       </Node>
       <Node id="hermes-api" role="agent-tool" style={{ stroke: colors.purple }}>
         <Text>Hermes Agent API</Text>
         <Text>stateful runs /</Text>
         <Text>responses</Text>
-        <Dock id="request" side="left" axis="horizontal" />
+        <Port id="request" side="left" />
       </Node>
 
+      {/* fan-out shares one trunk in the container's left padding band
+          and branches as late as possible (the group default) */}
       {[
         ["openclaw", "openclaw.request"],
         ["hermes-webui", "hermes-webui.request"],
         ["hermes-api", "hermes-api.request"],
       ].map(([id, target]) => (
-        <Link
+        <Line
           key={id}
           id={`to-${id}`}
-          from="travel-agent.tools.fanout"
+          from="travel-agent.tools"
           to={target}
           style={{ stroke: colors.purple }}
-          layoutEffect="reserve"
-          route={[use("agent-bus", { axis: "vertical" })]}
-          join={{ group: "travel-tools", policy: "require", sharing: "merge" }}
-          branch={{ within: "agent-bus", preference: "late" }}
-        />
+          share={{ group: "travel-tools", mode: "merge" }}
+        >
+          <Segment through={padding("user-owned", "left")} />
+        </Line>
       ))}
     </Scope>
   );
@@ -280,39 +246,33 @@ export default (
       A voice-first road companion that stays responsive while deeper work happens in the background
     </Subtitle>
 
-    <Channel
-      id="delegation-backbone"
-      axis="horizontal"
-      pressure={0.85}
-      spacing={{ min: "small", preferred: "medium" }}
-    />
-
-    <Row id="system" order="source" align="center" gap="xlarge">
+    <Row id="system" align="center" gap="xlarge">
       <Driver />
       <Phone />
       <UserOwnedAgents />
     </Row>
 
-    <Link
+    <Line
       id="driver-conversation"
       from="driver.voice"
       to="phone/voice-agent.driver"
-      direction="bidirectional"
+      heads="both"
       style={{ stroke: colors.blue }}
-      layoutEffect="reserve"
     />
-    <Link
+
+    {/* climbs out of the phone, runs through the whitespace between the
+        containers, and carries its label along that run */}
+    <Line
       id="remote-delegation"
-      from="phone/road-agent.remote.delegation"
+      from="phone/road-agent.remote"
       to="user-owned/travel-agent.request"
-      label="drive context + exact request"
       style={{ stroke: colors.purple }}
-      layoutEffect="reserve"
-      route={[
-        leave({ axis: "horizontal" }),
-        use("delegation-backbone", { axis: "horizontal" }),
-        arrive({ axis: "horizontal" }),
-      ]}
-    />
+    >
+      <Segment
+        through={gap("phone", "user-owned")}
+        label="drive context + exact request"
+        labelOrientation="along"
+      />
+    </Line>
   </Diagram>
 );

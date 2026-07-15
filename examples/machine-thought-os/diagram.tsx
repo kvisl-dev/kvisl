@@ -2,25 +2,20 @@
 // authoring model and is not expected to compile until the core API exists.
 
 import {
-  Link,
-  Boundary,
-  Channel,
   Column,
   Constraint,
+  Corridor,
   Diagram,
-  Dock,
-  DockGroup,
   Grid,
+  Line,
   Node,
   Note,
-  Row,
+  Port,
   Scope,
   Subtitle,
   Text,
   Title,
-  arrive,
-  leave,
-  use,
+  gap,
 } from "@excalmermaid/core";
 
 const colors = {
@@ -38,11 +33,9 @@ function Child({ id, label }: { id: string; label: string }) {
     <Node id={id} role="running-child" style={{ fill: "pale-green", stroke: colors.green }}>
       <Text>{label}</Text>
       <Text>running</Text>
-      <Dock id="schedule" side="left" axis="horizontal" />
-      <Dock id="state" side="left" axis="horizontal" />
-      <Dock id="join" side="right" axis="horizontal">
-        <DockGroup id="completion" join="require" sharing="merge" branch="late" />
-      </Dock>
+      <Port id="schedule" side="left" />
+      <Port id="state" side="left" />
+      <Port id="join" side="right" />
     </Node>
   );
 }
@@ -54,80 +47,75 @@ export default (
       The thinking model requests parallelism. The inference engine decides when it runs.
     </Subtitle>
 
-    <Channel id="system-call-route" axis="vertical" pressure={0.8} />
-    <Channel id="completion-route" axis="vertical" pressure={0.8} />
-
     <Scope
       id="user-mode"
       label="THINKING MODEL · USER MODE"
       role="user-mode"
-      layout={{ kind: "row", order: "source", distribute: "space-between", align: "center" }}
+      layout={{ kind: "row", distribute: "space-between", align: "center" }}
       style={{ fill: "pale-blue", stroke: "light-blue" }}
     >
       <Node id="parent" role="parent-completion" style={{ fill: "light-blue", stroke: colors.blue }}>
         <Text>Parent completion</Text>
         <Text>shared history</Text>
-        <Dock id="fork" side="right" axis="horizontal" />
+        <Port id="fork" side="right" />
       </Node>
       <Node id="fork" role="system-call" style={{ fill: "pale-yellow", stroke: colors.orange }}>
         <Text>{"<Parallel>"}</Text>
         <Text>system call: fork</Text>
-        <Dock id="parent" side="left" axis="horizontal" />
-        <Dock id="kernel" side="bottom" axis="vertical" />
+        <Port id="parent" side="left" />
+        <Port id="kernel" side="bottom" />
       </Node>
       <Node id="resume" role="parent-resume" style={{ fill: "pale-green", stroke: colors.green }}>
         <Text>Parent resumes</Text>
         <Text>{"<Conclusion>"}</Text>
-        <Dock id="join" side="bottom" axis="vertical" />
+        <Port id="join" side="bottom" />
       </Node>
 
-      <Link from="parent.fork" to="fork.parent" style={{ stroke: colors.blue }} />
+      <Line from="parent.fork" to="fork.parent" style={{ stroke: colors.blue }} />
     </Scope>
 
-    <Boundary
+    {/* the system-call boundary is the decorated gap between the bands,
+        not an element of its own */}
+    <Corridor
       id="system-call-boundary"
-      orientation="horizontal"
-      label="SYSTEM-CALL BOUNDARY"
-      style={{ stroke: colors.orange, dash: "dashed" }}
+      in={gap("user-mode", "kernel")}
+      divider={{
+        label: "SYSTEM-CALL BOUNDARY",
+        labelPlacement: "end",
+        style: { stroke: colors.orange, dash: "dashed" },
+      }}
     />
 
     <Scope
       id="kernel"
       label="SGLANG · INFERENCE ENGINE / KERNEL"
       role="kernel"
-      layout={{ kind: "column", order: "source", gap: "large" }}
+      layout={{ kind: "column", gap: "large" }}
       style={{ fill: "near-white", stroke: colors.gray }}
     >
-      <Channel id="schedule-bus" axis="horizontal" pressure={0.95} />
-      <Channel id="state-bus" axis="horizontal" pressure={0.95} />
-      <Channel id="join-bus" axis="vertical" pressure={0.95} />
-
-      <Grid id="execution" columns={4} order="source" align="center" gap="large">
+      <Grid id="execution" columns={4} align="center" gap="large">
         <Node id="interpreter" role="interpreter" style={{ fill: "light-blue", stroke: colors.blue }}>
           <Text>Interpreter</Text>
           <Text>creates child</Text>
           <Text>requests</Text>
-          <Dock id="system-call" side="top" axis="vertical" />
-          <Dock id="scheduler" side="right" axis="horizontal" />
+          <Port id="system-call" side="top" />
+          <Port id="scheduler" side="right" />
         </Node>
 
         <Node id="scheduler" role="scheduler" style={{ fill: "pale-orange", stroke: colors.orange }}>
           <Text>TAPER scheduler</Text>
           <Text>admit per forward</Text>
           <Text>pass</Text>
-          <Dock id="interpreter" side="left" axis="horizontal" />
-          <Dock id="children" side="right" axis="horizontal">
-            <DockGroup id="fanout" join="require" sharing="merge" branch="late" />
-          </Dock>
+          <Port id="interpreter" side="left" />
+          <Port id="children" side="right" cardinality="many" />
         </Node>
 
-        <Column id="work" order="source" gap="medium">
-          <Text role="annotation">continuous batching · radix KV cache</Text>
+        <Column id="work" gap="medium">
           <Scope
             id="next-pass"
             label="NEXT GPU FORWARD PASS"
             role="gpu-pass"
-            layout={{ kind: "column", order: "source", gap: "medium" }}
+            layout={{ kind: "column", gap: "medium" }}
             style={{ stroke: colors.green, dash: "dashed" }}
           >
             <Child id="child-a" label="Child A" />
@@ -141,47 +129,46 @@ export default (
             <Text>Child C</Text>
             <Text>ready, deferred this</Text>
             <Text>pass</Text>
-            <Dock id="schedule" side="left" axis="horizontal" />
-            <Dock id="state" side="left" axis="horizontal" />
-            <Dock id="join" side="right" axis="horizontal" />
+            <Port id="schedule" side="left" />
+            <Port id="state" side="left" />
+            <Port id="join" side="right" />
           </Node>
         </Column>
 
         <Node id="wait" role="join" style={{ fill: "light-purple", stroke: colors.purple }}>
           <Text>wait()</Text>
           <Text>join KV views</Text>
-          <Dock id="children" side="left" axis="horizontal">
-            <DockGroup id="fanin" join="require" sharing="merge" branch="late" />
-          </Dock>
-          <Dock id="parent" side="top" axis="vertical" />
+          <Port id="children" side="left" cardinality="many" />
+          <Port id="parent" side="top" />
         </Node>
 
         <Node id="shared-state" role="shared-kv" style={{ fill: "light-blue", stroke: colors.blue }}>
           <Text>Shared prefix KV blocks</Text>
           <Text>+ small branch-local state</Text>
-          <Dock id="children" side="right" axis="horizontal">
-            <DockGroup id="state-feed" join="prefer" sharing="bundle" branch="late" />
-          </Dock>
+          <Port id="children" side="right" cardinality="many" />
         </Node>
       </Grid>
 
-      <Link from="interpreter.scheduler" to="scheduler.interpreter" style={{ stroke: colors.ink }} />
+      <Note id="batching" role="annotation" anchor="next-pass" placement="above">
+        continuous batching · radix KV cache
+      </Note>
 
+      <Line from="interpreter.scheduler" to="scheduler.interpreter" style={{ stroke: colors.ink }} />
+
+      {/* fan-out merges into one trunk and branches late; the dashed
+          branch to the deferred child leaves the solid shared piece */}
       {[
         ["a", "next-pass/child-a.schedule", false],
         ["b", "next-pass/child-b.schedule", false],
         ["c", "child-c.schedule", true],
       ].map(([id, target, dashed]) => (
-        <Link
+        <Line
           key={String(id)}
           id={`schedule-child-${id}`}
-          from="scheduler.children.fanout"
+          from="scheduler.children"
           to={String(target)}
           style={{ stroke: colors.green, dash: dashed ? "dashed" : undefined }}
-          layoutEffect="reserve"
-          route={[use("schedule-bus", { axis: "horizontal" })]}
-          join={{ group: "scheduler-fanout", policy: "require", sharing: "merge" }}
-          branch={{ within: "schedule-bus", preference: "late" }}
+          share={{ group: "scheduler-fanout", mode: "merge" }}
         />
       ))}
 
@@ -190,16 +177,13 @@ export default (
         ["b", "next-pass/child-b.state", colors.blue],
         ["c", "child-c.state", colors.orange],
       ].map(([id, target, stroke]) => (
-        <Link
+        <Line
           key={String(id)}
           id={`state-child-${id}`}
-          from="shared-state.children.state-feed"
+          from="shared-state.children"
           to={String(target)}
           style={{ stroke: String(stroke), dash: "dashed" }}
-          layoutEffect="reserve"
-          route={[use("state-bus", { axis: "horizontal" })]}
-          join={{ group: "state-feed", policy: "prefer", sharing: "bundle" }}
-          branch={{ within: "state-bus", preference: "late" }}
+          share={{ group: "state-feed", mode: "bundle" }}
         />
       ))}
 
@@ -208,51 +192,36 @@ export default (
         ["b", "next-pass/child-b.join", false],
         ["c", "child-c.join", true],
       ].map(([id, source, dashed]) => (
-        <Link
+        <Line
           key={String(id)}
           id={`join-child-${id}`}
           from={String(source)}
-          to="wait.children.fanin"
+          to="wait.children"
           style={{ stroke: colors.purple, dash: dashed ? "dashed" : undefined }}
-          layoutEffect="reserve"
-          route={[use("join-bus", { axis: "vertical" })]}
-          join={{ group: "child-completions", policy: "require", sharing: "merge" }}
-          branch={{ within: "join-bus", preference: "late" }}
+          share={{ group: "child-completions", mode: "merge" }}
         />
       ))}
 
-      <Note id="principle" role="principle">
+      <Note id="principle" role="principle" placement="inside-bottom">
         Model chooses the work graph. Engine chooses the schedule.
       </Note>
       <Constraint kind="below" item="shared-state" reference="interpreter" />
       <Constraint kind="below" item="child-c" reference="next-pass" strength="required" />
     </Scope>
 
-    <Link
+    {/* both crossings of the system-call boundary route implicitly
+        through the decorated gap */}
+    <Line
       id="fork-system-call"
       from="user-mode/fork.kernel"
       to="kernel/interpreter.system-call"
       style={{ stroke: colors.orange }}
-      layoutEffect="reserve"
-      route={[
-        leave({ axis: "vertical" }),
-        use("system-call-route", { axis: "vertical" }),
-        arrive({ axis: "vertical" }),
-      ]}
     />
-    <Link
+    <Line
       id="resume-parent"
       from="kernel/wait.parent"
       to="user-mode/resume.join"
       style={{ stroke: colors.purple }}
-      layoutEffect="reserve"
-      route={[
-        leave({ axis: "vertical" }),
-        use("completion-route", { axis: "vertical" }),
-        arrive({ axis: "vertical" }),
-      ]}
     />
-
-    <Constraint kind="between" item="system-call-boundary" first="user-mode" second="kernel" strength="required" />
   </Diagram>
 );

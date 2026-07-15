@@ -2,26 +2,23 @@
 // authoring model and is not expected to compile until the core API exists.
 
 import {
-  Link,
-  Channel,
   Column,
-  Constraint,
+  Corridor,
   Diagram,
-  Dock,
-  DockGroup,
   Grid,
   Legend,
   LegendItem,
+  Line,
   Node,
   Note,
+  Port,
   Row,
   Scope,
+  Segment,
   Subtitle,
   Text,
   Title,
-  arrive,
-  leave,
-  use,
+  gap,
 } from "@excalmermaid/core";
 
 const colors = {
@@ -46,7 +43,7 @@ type ClusterProps = {
   withLocalityNote?: boolean;
 };
 
-function Lines({ values }: { values: readonly string[] }) {
+function TextLines({ values }: { values: readonly string[] }) {
   return <>{values.map((value) => <Text key={value}>{value}</Text>)}</>;
 }
 
@@ -65,20 +62,20 @@ function Cluster({
       id={id}
       label={label}
       role="serving-cluster"
-      layout={{ kind: "column", order: "source", gap: "medium" }}
+      layout={{ kind: "column", gap: "medium" }}
       style={{ fill: "near-white", stroke: colors.gray }}
     >
-      <Grid id="serving-grid" columns={2} order="source" gap="medium">
+      <Grid id="serving-grid" columns={2} gap="medium">
         <Node id="serving-stack" role="serving-stack" style={{ stroke: colors.blue }}>
-          <Lines values={serving} />
-          <Dock id="replica" side="right" axis="horizontal" />
+          <TextLines values={serving} />
+          <Port id="replica" side="right" />
         </Node>
 
         <Node id="model-replica" role="model-replica" style={{ stroke: colors.orange }}>
-          <Lines values={replica} />
-          <Dock id="stack" side="left" axis="horizontal" />
-          <Dock id="placement" side="top" axis="vertical" />
-          <Dock id="edge" side="bottom" axis="vertical" />
+          <TextLines values={replica} />
+          <Port id="stack" side="left" />
+          <Port id="placement" side="top" />
+          <Port id="edge" side="bottom" />
         </Node>
 
         {withCache ? (
@@ -87,7 +84,7 @@ function Cluster({
             <Text>Hugging Face →</Text>
             <Text>RWX PVC</Text>
             <Text>job + claim</Text>
-            <Dock id="replica" side="right" axis="horizontal" />
+            <Port id="replica" side="right" />
           </Node>
         ) : withObservedStatus ? (
           <Node id="observed-status" role="status" style={{ stroke: colors.gray }}>
@@ -98,11 +95,9 @@ function Cluster({
         ) : null}
 
         <Node id="cluster-edge" role="cluster-edge" style={{ stroke: colors.purple }}>
-          <Lines values={edge} />
-          <Dock id="replica" side="top" axis="vertical" />
-          <Dock id="request" side="right" axis="horizontal">
-            <DockGroup id="routing" join="prefer" sharing="merge" branch="late" />
-          </Dock>
+          <TextLines values={edge} />
+          <Port id="replica" side="top" />
+          <Port id="request" side="right" />
         </Node>
       </Grid>
 
@@ -112,28 +107,28 @@ function Cluster({
         </Note>
       ) : null}
 
-      <Link
+      <Line
         id="stack-to-replica"
         from="serving-stack.replica"
         to="model-replica.stack"
         style={{ stroke: colors.orange }}
       />
       {withCache ? (
-        <Link
+        <Line
           id="cache-to-replica"
           from="model-cache.replica"
           to="model-replica.stack"
           style={{ stroke: colors.green }}
         />
       ) : null}
-      <Link
+      <Line
         id="replica-to-edge"
         from="model-replica.edge"
         to="cluster-edge.replica"
         style={{ stroke: colors.purple }}
       />
       {withLocalityNote ? (
-        <Link
+        <Line
           id="edge-to-locality"
           from="cluster-edge"
           to="locality"
@@ -150,16 +145,16 @@ function ControlPlane() {
       id="control-plane"
       label="Modelplane control plane (Crossplane v2)"
       role="control-plane"
-      layout={{ kind: "column", order: "source", gap: "medium" }}
+      layout={{ kind: "column", gap: "medium" }}
       style={{ fill: "near-white", stroke: colors.gray }}
     >
-      <Row id="control-flow" order="source" align="center" gap="large">
+      <Row id="control-flow" align="center" gap="large">
         <Node id="ml-apis" role="ml-api" style={{ stroke: colors.green }}>
           <Text>ML APIs</Text>
           <Text>ModelDeployment</Text>
           <Text>ModelService</Text>
-          <Dock id="intent" side="top" axis="vertical" />
-          <Dock id="platform" side="right" axis="horizontal" />
+          <Port id="intent" side="top" />
+          <Port id="platform" side="right" />
         </Node>
         <Node id="platform-apis" role="platform-api" style={{ stroke: colors.blue }}>
           <Text>Platform APIs</Text>
@@ -167,18 +162,18 @@ function ControlPlane() {
           <Text>InferenceClass</Text>
           <Text>InferenceCluster</Text>
           <Text>ModelCache</Text>
-          <Dock id="team" side="top" axis="vertical" />
-          <Dock id="ml" side="left" axis="horizontal" />
-          <Dock id="composition" side="right" axis="horizontal" />
+          <Port id="team" side="top" />
+          <Port id="ml" side="left" />
+          <Port id="composition" side="right" />
         </Node>
         <Node id="composition" role="composition" style={{ stroke: colors.yellow }}>
           <Text>Composition functions</Text>
           <Text>expand XRs</Text>
           <Text>render cluster resources</Text>
           <Text>observe remote status</Text>
-          <Dock id="platform" side="left" axis="horizontal" />
-          <Dock id="scheduler" side="right" axis="horizontal" />
-          <Dock id="outputs" side="bottom" axis="vertical" />
+          <Port id="platform" side="left" />
+          <Port id="scheduler" side="right" />
+          <Port id="outputs" side="bottom" />
         </Node>
         <Node id="scheduler" role="fleet-scheduler" style={{ stroke: colors.orange }}>
           <Text>Fleet scheduler</Text>
@@ -186,11 +181,9 @@ function ControlPlane() {
           <Text>coarse node-capacity gate</Text>
           <Text>spread by replica count</Text>
           <Text>pin ModelReplica</Text>
-          <Dock id="composition" side="left" axis="horizontal" />
-          <Dock id="gateway" side="right" axis="horizontal" />
-          <Dock id="placement" side="bottom" axis="vertical">
-            <DockGroup id="clusters" join="require" sharing="merge" branch="late" />
-          </Dock>
+          <Port id="composition" side="left" />
+          <Port id="gateway" side="right" />
+          <Port id="placement" side="bottom" cardinality="many" />
         </Node>
         <Node id="gateway" role="inference-gateway" style={{ stroke: colors.purple }}>
           <Text>InferenceGateway</Text>
@@ -198,11 +191,9 @@ function ControlPlane() {
           <Text>ModelService URLs</Text>
           <Text>OpenAI-compatible</Text>
           <Text>edge</Text>
-          <Dock id="scheduler" side="left" axis="horizontal" />
-          <Dock id="client" side="top" axis="vertical" />
-          <Dock id="requests" side="bottom" axis="vertical">
-            <DockGroup id="targets" join="require" sharing="merge" branch="late" />
-          </Dock>
+          <Port id="scheduler" side="left" />
+          <Port id="client" side="top" />
+          <Port id="requests" side="bottom" cardinality="many" />
         </Node>
       </Row>
 
@@ -210,14 +201,14 @@ function ControlPlane() {
         <Text>Reconcile outputs</Text>
         <Text>ModelDeployment → pinned ModelReplica + optional ModelEndpoint</Text>
         <Text>ModelService → equal-weight HTTPRoute fanout</Text>
-        <Dock id="composition" side="top" axis="vertical" />
+        <Port id="composition" side="top" />
       </Node>
 
-      <Link from="ml-apis.platform" to="platform-apis.ml" style={{ stroke: colors.orange }} />
-      <Link from="platform-apis.composition" to="composition.platform" style={{ stroke: colors.orange }} />
-      <Link from="composition.scheduler" to="scheduler.composition" style={{ stroke: colors.orange }} />
-      <Link from="scheduler.gateway" to="gateway.scheduler" style={{ stroke: colors.orange }} />
-      <Link from="composition.outputs" to="reconcile-outputs.composition" style={{ stroke: colors.orange }} />
+      <Line from="ml-apis.platform" to="platform-apis.ml" style={{ stroke: colors.orange }} />
+      <Line from="platform-apis.composition" to="composition.platform" style={{ stroke: colors.orange }} />
+      <Line from="composition.scheduler" to="scheduler.composition" style={{ stroke: colors.orange }} />
+      <Line from="scheduler.gateway" to="gateway.scheduler" style={{ stroke: colors.orange }} />
+      <Line from="composition.outputs" to="reconcile-outputs.composition" style={{ stroke: colors.orange }} />
     </Scope>
   );
 }
@@ -229,7 +220,7 @@ export default (
       Orange shows control-plane reconciliation; purple shows runtime inference routing.
     </Subtitle>
 
-    <Legend id="legend" layout="column">
+    <Legend id="legend" anchor="diagram" placement="inside-top-right" layout="column">
       <LegendItem style={{ stroke: colors.orange }}>orange = reconcile / placement</LegendItem>
       <LegendItem style={{ stroke: colors.purple }}>purple = request path</LegendItem>
       <LegendItem style={{ stroke: colors.gray, dash: "dashed" }}>
@@ -237,25 +228,27 @@ export default (
       </LegendItem>
     </Legend>
 
-    <Grid id="actors" columns={3} order="source" align="end">
-      <Node id="ml-team" role="external-actor" style={{ stroke: colors.green }}>
-        <Text>ML team</Text>
-        <Text>model + serving intent</Text>
-        <Dock id="control" side="bottom" axis="vertical" />
-      </Node>
-      <Node id="platform-team" role="external-actor" style={{ stroke: colors.blue }}>
-        <Text>Platform team</Text>
-        <Text>cluster classes, gateways,</Text>
-        <Text>cache</Text>
-        <Dock id="control" side="bottom" axis="vertical" />
-      </Node>
+    <Row id="actors" distribute="space-between" align="end">
+      <Row id="teams" gap="large">
+        <Node id="ml-team" role="external-actor" style={{ stroke: colors.green }}>
+          <Text>ML team</Text>
+          <Text>model + serving intent</Text>
+          <Port id="control" side="bottom" />
+        </Node>
+        <Node id="platform-team" role="external-actor" style={{ stroke: colors.blue }}>
+          <Text>Platform team</Text>
+          <Text>cluster classes, gateways,</Text>
+          <Text>cache</Text>
+          <Port id="control" side="bottom" />
+        </Node>
+      </Row>
       <Node id="client" role="client" style={{ stroke: colors.purple }}>
         <Text>Client</Text>
         <Text>OpenAI-compatible</Text>
         <Text>API</Text>
-        <Dock id="request" side="bottom" axis="vertical" />
+        <Port id="request" side="bottom" />
       </Node>
-    </Grid>
+    </Row>
 
     <ControlPlane />
 
@@ -263,12 +256,9 @@ export default (
       id="fleet"
       label="Inference fleet: per-cluster serving stacks and endpoint targets"
       role="inference-fleet"
-      layout={{ kind: "row", order: "source", align: "start", gap: "large" }}
+      layout={{ kind: "row", align: "start", gap: "large" }}
       style={{ fill: "near-white", stroke: colors.gray }}
     >
-      <Channel id="placement-bus" axis="horizontal" pressure={0.9} />
-      <Channel id="request-bus" axis="horizontal" pressure={0.9} />
-
       <Cluster
         id="cluster-a"
         label="Cluster A / region 1"
@@ -287,70 +277,66 @@ export default (
         withObservedStatus
       />
 
-      <Column id="external-targets" order="source" gap="xlarge">
+      <Column id="external-targets" gap="xlarge">
         <Node id="external-endpoint" role="external-endpoint" style={{ stroke: colors.pink }}>
           <Text>External ModelEndpoint</Text>
           <Text>manual endpoint target</Text>
           <Text>still routed via gateway</Text>
-          <Dock id="request" side="top" axis="vertical" />
+          <Port id="request" side="top" />
         </Node>
         <Note id="stubs" role="stub" style={{ stroke: colors.orange, dash: "dashed" }}>
           Stubs exist for Dynamo / Grove / planner / router / workers; they may replace or encapsulate ServingStack + edge routing.
         </Note>
       </Column>
-
-      {[
-        ["cluster-a", "cluster-a/model-replica.placement"],
-        ["cluster-b", "cluster-b/model-replica.placement"],
-      ].map(([id, target]) => (
-        <Link
-          key={id}
-          id={`place-${id}`}
-          from="../control-plane/scheduler.placement.clusters"
-          to={target}
-          label={id === "cluster-a" ? "placement / reconcile" : undefined}
-          style={{ stroke: colors.orange }}
-          layoutEffect="reserve"
-          route={[
-            leave({ axis: "vertical" }),
-            use("placement-bus", { axis: "horizontal" }),
-            arrive({ axis: "vertical" }),
-          ]}
-          join={{ group: "placement", policy: "require", sharing: "merge" }}
-          branch={{ within: "placement-bus", preference: "late" }}
-        />
-      ))}
-
-      {[
-        ["cluster-a", "cluster-a/cluster-edge.request.routing"],
-        ["cluster-b", "cluster-b/cluster-edge.request.routing"],
-        ["external", "external-endpoint.request"],
-      ].map(([id, target]) => (
-        <Link
-          key={id}
-          id={`request-${id}`}
-          from="../control-plane/gateway.requests.targets"
-          to={target}
-          label={id === "cluster-b" ? "request routing" : undefined}
-          style={{ stroke: colors.purple }}
-          layoutEffect="reserve"
-          route={[
-            leave({ axis: "vertical" }),
-            use("request-bus", { axis: "horizontal" }),
-            arrive({ axis: "vertical" }),
-          ]}
-          join={{ group: "requests", policy: "require", sharing: "merge" }}
-          branch={{ within: "request-bus", preference: "late" }}
-        />
-      ))}
     </Scope>
 
-    <Link from="ml-team.control" to="control-plane/ml-apis.intent" style={{ stroke: colors.orange }} />
-    <Link from="platform-team.control" to="control-plane/platform-apis.team" style={{ stroke: colors.orange }} />
-    <Link from="client.request" to="control-plane/gateway.client" style={{ stroke: colors.purple }} />
+    {/* the whitespace between the two bands carries both buses as ordered
+        corridors; declaration order stacks placement above request */}
+    <Corridor id="placement-bus" in={gap("control-plane", "fleet")} pressure={0.9} />
+    <Corridor id="request-bus" in={gap("control-plane", "fleet")} pressure={0.9} />
 
-    <Constraint kind="below" item="control-plane" reference="actors" strength="required" />
-    <Constraint kind="below" item="fleet" reference="control-plane" strength="required" />
+    {[
+      ["cluster-a", "fleet/cluster-a/model-replica.placement"],
+      ["cluster-b", "fleet/cluster-b/model-replica.placement"],
+    ].map(([id, target]) => (
+      <Line
+        key={id}
+        id={`place-${id}`}
+        from="control-plane/scheduler.placement"
+        to={target}
+        style={{ stroke: colors.orange }}
+        share={{ group: "placement", mode: "merge" }}
+      >
+        <Segment
+          through="placement-bus"
+          label={id === "cluster-a" ? "placement / reconcile" : undefined}
+        />
+      </Line>
+    ))}
+
+    {[
+      ["cluster-a", "fleet/cluster-a/cluster-edge.request"],
+      ["cluster-b", "fleet/cluster-b/cluster-edge.request"],
+      ["external", "fleet/external-endpoint.request"],
+    ].map(([id, target]) => (
+      <Line
+        key={id}
+        id={`request-${id}`}
+        from="control-plane/gateway.requests"
+        to={target}
+        style={{ stroke: colors.purple }}
+        share={{ group: "requests", mode: "merge" }}
+      >
+        <Segment
+          through="request-bus"
+          label={id === "cluster-b" ? "request routing" : undefined}
+        />
+      </Line>
+    ))}
+
+    <Line from="ml-team.control" to="control-plane/ml-apis.intent" style={{ stroke: colors.orange }} />
+    <Line from="platform-team.control" to="control-plane/platform-apis.team" style={{ stroke: colors.orange }} />
+    <Line from="client.request" to="control-plane/gateway.client" style={{ stroke: colors.purple }} />
 
     <Note id="footer" role="implementation-status" style={{ stroke: colors.gray }}>
       v0.1 implemented: GKE/EKS/BYO; Traefik control gateway; Envoy/GAIE workload gateways; Deployment/LWS; DRA; HF → RWX ModelCache. Early limits: equal-weight routing; no capacity scoring, anti-affinity policy, or transient failover. Design/stub: DynamoBackend, Grove / ModelExpress / DGD; one Modelplane API, no user-facing orchestrator switch.
