@@ -161,14 +161,14 @@ function Phone() {
       <Line
         id="local-memory"
         from="road-agent.local-context"
-        to="local-context.harness"
+        to="knowledge/local-context.harness"
         heads="both"
         style={{ stroke: colors.muted }}
       />
       <Line
         id="live-knowledge"
         from="road-agent.road-knowledge"
-        to="road-knowledge.harness"
+        to="knowledge/road-knowledge.harness"
         heads="both"
         style={{ stroke: colors.muted }}
       />
@@ -196,7 +196,12 @@ function UserOwnedAgents() {
         <Text role="heading">Named travel agent</Text>
         <Text role="heading">situated delegation</Text>
         <Port id="request" side="left" />
-        <Port id="tools" side="bottom" cardinality="many" />
+        <Port
+          id="tools"
+          side="bottom"
+          cardinality="many"
+          sharing={{ mode: "merge", branch: "late" }}
+        />
       </Node>
 
       <Node id="openclaw" role="agent-tool" style={{ stroke: colors.purple }}>
@@ -217,8 +222,8 @@ function UserOwnedAgents() {
         <Port id="request" side="left" />
       </Node>
 
-      {/* fan-out shares one trunk in the container's left padding band
-          and branches as late as possible (the group default) */}
+      {/* the named tools port joins the fan-out into one trunk in the
+          container's left padding band and branches late */}
       {[
         ["openclaw", "openclaw.request"],
         ["hermes-webui", "hermes-webui.request"],
@@ -230,9 +235,8 @@ function UserOwnedAgents() {
           from="travel-agent.tools"
           to={target}
           style={{ stroke: colors.purple }}
-          share={{ group: "travel-tools", mode: "merge" }}
         >
-          <Segment through={padding("user-owned", "left")} />
+          <Segment through={padding("../user-owned", "left")} />
         </Line>
       ))}
     </Scope>
@@ -254,8 +258,8 @@ export default (
 
     <Line
       id="driver-conversation"
-      from="driver.voice"
-      to="phone/voice-agent.driver"
+      from="system/driver-column/driver.voice"
+      to="system/phone/voice-agent.driver"
       heads="both"
       style={{ stroke: colors.blue }}
     />
@@ -264,12 +268,12 @@ export default (
         containers, and carries its label along that run */}
     <Line
       id="remote-delegation"
-      from="phone/road-agent.remote"
-      to="user-owned/travel-agent.request"
+      from="system/phone/road-agent.remote"
+      to="system/user-owned/travel-agent.request"
       style={{ stroke: colors.purple }}
     >
       <Segment
-        through={gap("phone", "user-owned")}
+        through={gap("system/phone", "system/user-owned")}
         label="drive context + exact request"
         labelOrientation="along"
       />

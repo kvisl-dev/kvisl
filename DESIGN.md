@@ -1,332 +1,436 @@
-# Excalmermaid Design
+# Excalmermaid Implementation Design
 
 Status: Draft
 
-## Goal
+This document describes the implementation architecture and plumbing required to build Excalmermaid. It deliberately does not define diagram semantics, authoring primitives, layout behavior, routing behavior, or Logical IR fields.
 
-Excalmermaid describes drawings through their logical structure and turns that structure into outputs including Excalidraw-style drawings. Authors should not have to maintain pixel coordinates, arrow segments placed freely in space, or manually coordinated geometry.
+- [REQUIREMENTS.md](REQUIREMENTS.md) states what the system must support.
+- [MODEL.md](MODEL.md) defines the conceptual model and Logical IR.
+- [`examples/`](examples/) contains the pre-implementation conformance fixtures.
 
-The system is not a collection of hard-coded diagram types. Flowcharts, sequence diagrams, mind maps, architecture diagrams, entity-relationship models, and other visual forms should be implemented as component libraries on top of a general visual model.
+If this document conflicts with either the requirements or the model on language semantics, the other document wins. This document owns process boundaries, package boundaries, execution, serialization plumbing, embedding, diagnostics, caching, and test architecture.
 
-The model must support, in particular:
+## 1. Architectural goals
 
-- nested and composable layouts;
-- relative identities and references;
-- constraints with optional ordering requirements;
-- typed input and output ports for black-box component composition;
-- links and independently labeled segments declared at every hierarchy level;
-- hierarchy-crossing routing that reserves space;
-- shared segment paths, dock groups, and controlled branches;
-- multiple independent solvers and renderers.
+The implementation must provide:
 
-## Fundamental decisions
+- one normative TSX evaluation and normalization path;
+- a versioned, language-neutral boundary after normalization;
+- independently replaceable solvers and renderers;
+- usable Node.js, standalone Go, and IR-consuming Rust integration paths;
+- deterministic and diagnosable builds;
+- controlled evaluation of untrusted or semi-trusted TSX;
+- caching and incremental interfaces suitable for very large models;
+- no dependency on React or a browser DOM;
+- no requirement that downstream consumers understand TSX or component expansion.
 
-### TSX is the authoring language
+The implementation must keep authoring, normalization, solving, and rendering as separate stages even when a single command runs them in one process.
 
-Excalmermaid does not define a programming language. It has no custom grammar, parser, or interpreter.
+## 2. End-to-end pipeline
 
-Diagrams are written as TSX and evaluated by the existing TypeScript and JavaScript toolchain. A custom JSX runtime produces logical diagram expressions; React is not involved.
-
-```tsx
-type ServiceProps = {
-  request: InputPort<Request>;
-};
-
-function Service({ request }: ServiceProps) {
-  return (
-    <Scope id="service" layout="column">
-      <Node id="api" role="service">
-        <Dock side="bottom">
-          <Input bind={request} />
-        </Dock>
-      </Node>
-    </Scope>
-  );
-}
-
-const clientRequest = output<Request>();
-const serviceRequest = input<Request>();
-
-export default (
-  <Diagram>
-    <Channel id="request-channel" axis="horizontal" pressure={0.8} />
-
-    <Client request={clientRequest} />
-    <Service request={serviceRequest} />
-
-    <Link
-      from={clientRequest}
-      to={serviceRequest}
-      label="request"
-      route={[use("request-channel", { axis: "horizontal" })]}
-    />
-  </Diagram>
-);
+```text
+diagram.tsx
+    -> source and dependency resolution
+    -> TSX transformation and bundling
+    -> JavaScript evaluation
+    -> custom JSX runtime and component expansion
+    -> normalization and validation
+    -> Logical IR + provenance + diagnostics
+    -> renderer context construction, view scoring, and meta-branch materialization
+    -> Projection IR + diagnostics
+    -> layout and routing solver
+    -> Solved IR + diagnostics
+    -> target painter
+    -> Excalidraw, SVG, Canvas, raster, or another output
 ```
 
-`InputPort<T>` and `OutputPort<T>` values are opaque TSX-level connection halves. Components bind them to internal docks or forward them to child components. Callers connect halves without referencing component-internal IDs. All required halves must be closed before normalization emits Logical IR.
+Each arrow is an explicit interface. An all-in-one executable may fuse stages for performance, but it must preserve the same observable contracts and diagnostics as separate execution.
 
-A `Link` contains any number of independently labeled `Segment` values. The `from`/`to` form above is shorthand for a Link containing one implicit Segment. Required parent-scope traversal is inferred from the bound endpoints; authors describe only exceptional route constraints and do not enumerate `parent.parent` paths.
+Expected durable artifacts are:
 
-High-level components are ordinary TypeScript functions. They are evaluated recursively until only core primitives remain.
+- canonical Logical IR;
+- optional normalization provenance;
+- optional renderer-materialized Projection IR;
+- optional Solved IR;
+- renderer output;
+- structured diagnostics from every stage;
+- dependency and asset manifests for reproducibility.
+
+## 3. Package and module boundaries
+
+The exact package names may change, but the codebase should preserve these responsibilities.
+
+### 3.1 JSX runtime
+
+The JSX runtime exports the functions required by the automatic JSX transform:
 
 ```ts
-type Component<Props> = (props: Props) => Expression;
-
-type Expression =
-  | CoreElement
-  | readonly Expression[]
-  | null
-  | false;
+jsx(type, props, key?)
+jsxs(type, props, key?)
+Fragment
 ```
 
-Components may create logical structure, but they may not inspect computed geometry. Normalization therefore remains independent of layout and routing.
+It creates immutable authoring expressions and invokes function components. It has no React dependency, no reconciliation, no hooks, no DOM, and no renderer behavior.
 
-### One normalizer, multiple downstream implementations
+### 3.2 Authoring API
 
-The TypeScript normalizer is the single normative implementation of component expansion and TSX semantics. Go and Rust implementations begin behind a versioned, language-neutral IR boundary.
+The authoring package exports the typed TSX surface and helper functions defined by the model. It may provide library components, but the core package must remain independent of domain libraries such as Kubernetes or Linux.
+
+### 3.3 Compiler frontend
+
+The compiler frontend owns source loading, dependency resolution, TSX transformation, bundling, source maps, JavaScript evaluation, runtime limits, and module-result extraction.
+
+### 3.4 Normalizer
+
+The normalizer owns component-expression lowering, reference resolution, default expansion, semantic validation, deterministic entity assignment, canonical Logical IR emission, and provenance generation. It performs no layout or routing solve.
+
+### 3.5 Schema package
+
+The schema package owns version identifiers, machine-readable schemas, feature declarations, compatibility rules, canonical serialization, and generated TypeScript, Go, and Rust types.
+
+### 3.6 Renderer planners
+
+A renderer planner consumes Logical IR plus target options and renderer capabilities. It constructs per-instance render contexts, scores hidden view branches, materializes the selected templates, evaluates conditional template adjustments, and emits Projection IR. It may cooperate iteratively with a solver when allocation or routing feedback invalidates a tentative branch. It never evaluates TSX.
+
+### 3.7 Solvers
+
+Solvers consume Projection IR and emit Solved IR. A trivial projection may be used for a model with no meta branches. Multiple implementations may coexist. A solver must advertise supported schema versions and optional features.
+
+### 3.8 Painters and public renderers
+
+A target painter consumes Solved IR and produces a target format. A public renderer packages a renderer planner, compatible solver integration, and a painter behind one API. It does not evaluate TSX, expand components, or reinterpret unsupported requirements silently.
+
+## 4. TSX transformation and bundling
+
+esbuild is the primary transformation and bundling implementation. It provides a maintained TSX parser, fast builds, a JavaScript API, and a native Go API.
+
+The transform must use automatic JSX mode with the Excalmermaid JSX runtime as its import source. It must preserve source maps through bundling so that runtime and normalization diagnostics map back to original TSX modules.
+
+Bundling is responsible for:
+
+- resolving the entry module and its local imports;
+- including component libraries allowed by the host;
+- rewriting JSX to the custom runtime;
+- producing a JavaScript format supported by the selected evaluator;
+- recording every source dependency and content hash;
+- rejecting imports disallowed by the active trust policy;
+- preserving enough source-map information for component stacks and property spans.
+
+esbuild transforms TypeScript syntax but does not type-check it. Development tooling should offer `tsc --noEmit` as a separate optional check. Runtime correctness and normalization validation must not depend on the user having run `tsc`.
+
+## 5. JavaScript evaluation
+
+### 5.1 Module contract
+
+The bundled module must produce exactly one normalizable root value, normally through its default export. The evaluator returns that value together with captured provenance, dependency information, and runtime diagnostics.
+
+### 5.2 Node.js host
+
+The initial reference frontend should run in Node.js because it offers the shortest path to correct JavaScript and source-map behavior. The public compiler API must not expose Node-specific objects in its results.
+
+### 5.3 Standalone Go host
+
+A standalone Go executable can evaluate TSX without an installed Node.js runtime:
 
 ```text
 diagram.tsx
-    -> TSX transformation
-    -> JavaScript evaluation
-    -> Excalmermaid normalization
-    -> Logical IR
-    -> layout and routing
-    -> Solved IR
-    -> renderer
-```
-
-Go and Rust renderers do not reimplement TSX or component expansion. They consume either the Logical IR or the geometrically resolved Solved IR.
-
-### Evaluating TSX directly from Go
-
-A standalone Go program can accept TSX without requiring an installed Node.js runtime:
-
-```text
-diagram.tsx
-    -> esbuild through its Go API
+    -> esbuild Go API
     -> bundled JavaScript
-    -> embedded JavaScript runtime, for example goja
+    -> embedded evaluator such as goja
+    -> embedded JSX runtime and normalizer bundle
     -> Logical IR
-    -> Go solver or Go renderer
+    -> Go solver or renderer
 ```
 
-esbuild transforms and bundles TSX, but does not execute it. A JavaScript runtime performs evaluation. Type checking may be offered as an optional development step through `tsc --noEmit`; it is not a runtime prerequisite.
+esbuild performs transformation only. The embedded JavaScript evaluator executes the bundle. The runtime and normalizer JavaScript should be built into the Go binary as versioned embedded assets.
 
-A Rust application does not have to support TSX directly. It can read normalized IR. An embedded JavaScript runtime for Rust remains an optional integration path and is not part of the core contract.
+The Go host must expose cancellation, memory and execution budgets, a controlled module resolver, diagnostic callbacks, and deterministic host services.
 
-## Layers and intermediate representations
+### 5.4 Rust host
 
-### Logical IR
+Rust implementations are required to consume versioned Logical IR or Solved IR. Direct TSX evaluation in Rust is optional and is not part of the first core contract. A later Rust frontend may embed a JavaScript engine as long as it produces byte-for-byte equivalent canonical Logical IR for the same frontend version and input.
 
-The Logical IR contains only logical information:
+## 6. Evaluation isolation
 
-- scopes and containment;
-- elements and intrinsic content;
-- layout strategies and constraints;
-- relative identities and references;
-- docks and dock groups;
-- channels, corridors, and routing preferences;
-- semantic links, independently labeled segments, and their grouping rules;
-- styles or semantic roles insofar as they affect size or layout.
+The host must distinguish at least two execution profiles:
 
-The Logical IR contains neither final pixel positions nor Excalidraw-specific element data.
+- `trusted`: local project code with explicitly configured import and host access;
+- `restricted`: untrusted or shared input with no ambient file-system, network, process, environment, clock, or randomness access.
 
-### Solved IR
+Restricted evaluation should provide only deterministic runtime services required by the JSX runtime and normalizer. Hosts must support:
 
-The Solved IR is the result of a layout and routing run. It may contain:
+- module and package allowlists;
+- source-size, dependency-count, execution-time, and memory budgets;
+- cancellation and termination;
+- controlled stack depth;
+- disabled or wrapped nondeterministic globals;
+- no network access unless explicitly supplied by the host;
+- no arbitrary native module loading.
 
-- measured element sizes;
-- computed positions;
-- reserved routing regions and tracks;
-- portals between scopes;
-- route networks with shared segments and branch points;
-- geometric paths and label positions.
+An embedded JavaScript engine is not automatically a security boundary. The threat model and evaluator-specific escape analysis must be documented before accepting hostile input.
 
-The Solved IR should remain renderer-neutral. An Excalidraw, SVG, or Canvas renderer translates it into its respective output format.
+## 7. Component expansion and JSX expression handling
 
-A renderer may instead consume Logical IR directly and use its own solver. This keeps experimentation and independent Go, Rust, and TypeScript implementations possible.
+The runtime normalizes JSX results into a small host-owned expression representation. It must handle:
 
-## Multiple independent structures
+- function components;
+- fragments;
+- nested arrays;
+- `null` and `false` results;
+- JSX keys for provenance and deterministic expansion;
+- source locations and component stacks;
+- typed handles allocated by the authoring runtime.
 
-The word "layer" is too ambiguous to serve several responsibilities in the core model. A diagram has at least four independent structures:
+Expressions must be immutable after creation or defensively copied before normalization. Runtime objects, functions, prototypes, symbols, and evaluator-specific handles must not cross the Logical IR boundary.
 
-1. **Containment:** Which scope or element contains which other element?
-2. **Layout:** Which elements are arranged together, and which constraints apply?
-3. **Routing:** Through which regions may link segments travel?
-4. **Paint order:** What is drawn in front of or behind what?
+Component expansion cannot inspect solved geometry. The compiler frontend therefore has no callback from the solver into TSX evaluation.
 
-Containment forms a tree. Layout and routing form additional graphs or constraint systems. Paint order is a separate relation again.
+## 8. Normalization API
 
-## Relative identities
+The frontend should expose a host-neutral result shape equivalent to:
 
-Author-provided IDs are always relative to their scope. They do not have to be globally unique.
+```ts
+interface CompileOptions {
+  entry: string;
+  trust: "trusted" | "restricted";
+  schemaVersion?: string;
+  features?: readonly string[];
+  signal?: AbortSignal;
+}
 
-```tsx
-<Scope id="orders">
-  <Node id="api" />
-</Scope>
-
-<Scope id="billing">
-  <Node id="api" />
-</Scope>
+interface CompileResult {
+  logicalIR?: unknown;
+  provenance?: unknown;
+  dependencies: readonly DependencyRecord[];
+  diagnostics: readonly Diagnostic[];
+}
 ```
 
-A reference is resolved relative to the scope in which it is declared. Internal references in a component tree therefore remain stable when the entire tree is moved or instantiated more than once.
+Failure to produce Logical IR must still return structured diagnostics and discovered dependencies. Expected user errors must not require parsing stderr or JavaScript stack strings.
 
-The normalizer may generate fully resolved structural addresses or opaque handles internally. These are not global IDs maintained by authors. The representation of resolved references in canonical IR serialization remains to be specified.
+Normalization phases and semantic validation rules are defined by the requirements and model. The implementation should make phases observable in traces, but phase-local internal data structures are not interchange formats.
 
-## Layout and ordering
+## 9. Language-neutral IR boundary
 
-Layouts are composable, nestable strategies. Expected foundational strategies include:
+Logical IR, Projection IR, and Solved IR must have explicit schema identifiers and versions. The schema package should generate or verify matching types for TypeScript, Go, and Rust to prevent handwritten drift.
 
-- Row and Column;
-- Stack and Overlay;
-- Grid;
-- Tree and Radial;
-- Graph and Layered;
-- unconstrained placement governed by constraints.
+The boundary must support:
 
-Order is unspecified by default. The solver may select an advantageous order to reduce crossings, route length, and space consumption.
+- canonical JSON;
+- canonical YAML as a lossless projection of the same data;
+- optional binary transport later, without changing semantics;
+- required and optional feature declarations;
+- compatibility checks before solving or rendering;
+- preservation of unknown optional extensions where possible;
+- rejection of unknown required extensions.
 
-If order is semantically required, it is expressed as a partial constraint. Such constraints may originate from elements, layouts, docks, dock groups, channels, links, or segments. Orders that are not constrained remain free.
+Provenance is a separate artifact. Absolute paths, source spans, component stacks, and evaluator details must not affect canonical Logical IR hashes.
 
-Constraints must eventually distinguish hard requirements from soft preferences. Conflicts should be reported as understandable diagnostics instead of being hidden behind arbitrary geometry.
+## 10. Renderer planning and solver feedback
 
-## Docks and dock groups
+A renderer-planning API should be equivalent to:
 
-A dock describes a logical attachment surface or connection point on an element. It may have a preferred or required side, a role, and further connection rules.
+```ts
+interface MaterializeOptions {
+  target: RenderTarget;
+  policy: MaterializationPolicy;
+  capabilities: readonly string[];
+  inheritedContext?: Readonly<Record<string, ContextValue>>;
+  seed?: string;
+  signal?: AbortSignal;
+}
 
-Several segments may attach to the same dock. Dock groups specify which of those segments may or must be routed together. At least the following join intents are expected:
+interface MaterializeResult {
+  projectionIR?: unknown;
+  diagnostics: readonly Diagnostic[];
+  scoreExplanations: readonly ScoreExplanation[];
+}
 
-- `require`: a shared path is mandatory;
-- `prefer`: the router should use a shared path when possible;
-- `allow`: the router may decide freely;
-- `forbid`: paths must remain separate.
+interface SolveOptions {
+  viewport?: Region;
+  selection?: readonly InstanceKey[];
+  seed?: string;
+  signal?: AbortSignal;
+}
 
-Two representations must also be distinguished:
+interface SolveResult {
+  solvedIR?: unknown;
+  diagnostics: readonly Diagnostic[];
+  invalidated?: readonly InstanceKey[];
+  rejectedViews?: readonly ViewRejection[];
+}
+```
 
-- **Merge:** Several semantic segments truly share one drawn route segment.
-- **Bundle:** Several segments travel closely in parallel but remain separate strokes.
+The concrete option types belong to the versioned Projection and Solved IR contracts. The renderer planner constructs immutable context per component instance, evaluates view scores, materializes hidden branches, applies conditional adjustments, resolves endpoint alternatives, and emits Projection IR. It must record enough context and score explanation to reproduce every choice.
 
-This distinction is necessary when segments have different styles, colors, or meanings.
+Normal endpoint lookup never enters a meta branch. During materialization, endpoint alternatives may inspect the selected view and resolve one branch-local suffix. A remaining unmaterialized suffix truncates to its deepest projected instance. The planner records the selected case and truncation point for diagnostics and caching.
 
-## Links, segments, and route networks
+The planner and solver may iterate when footprint, readability, layout, or routing rejects a tentative view. Rejection is structured feedback, not an invitation for the solver to select a hidden branch itself. Iteration must be bounded, cancellable, and detect cycles.
 
-Links can be declared in any scope. They do not necessarily belong to a global connection layer, and they are not merely children of a layout tree. Each Link contains any number of independently labeled Segments. A Segment connects an output half to an input half.
+Given identical Logical IR, renderer version, target, inherited context, capabilities, materialization policy, solver version, assets, and seed, the pair must emit canonical-equivalent Projection and Solved IR.
 
-A segment may cross scope boundaries. A hierarchical route may, for example:
+## 11. Renderer interface
 
-1. leave a source dock vertically;
-2. pass through a portal into a parent routing region;
-3. travel horizontally through a reserved channel there;
-4. pass through a target portal into another child scope;
-5. attach to a required side or dock group on the target.
+A public renderer owns a renderer planner and compatible solver integration, then passes Solved IR to a target painter. It returns output bytes or a streaming result together with optional Projection IR, optional Solved IR, score explanations, and structured diagnostics.
 
-The concrete geometry remains the router's responsibility. TSX describes axes, regions, docks, and preferences rather than coordinates. Scope ascents and descents are implicit unless an explicit constraint is necessary.
+Painter responsibilities include:
 
-Component ports, semantic connections, and geometric routes are separate layers:
+- mapping solved primitives to the target format;
+- resolving fonts, images, and other assets through host-provided services;
+- applying target-specific presentation that does not change model semantics;
+- clipping, pagination, tiling, or viewport output when requested;
+- reporting unsupported required features.
+
+A renderer package may expose policies such as `maximum-that-fits` and `outside-in`. Internally these policies drive context construction, score-based view materialization, conditional template adjustment, solving, and only then painting. They must not re-evaluate component code or hide view choices in target-specific output only.
+
+A renderer must not re-run component code. Target-specific IDs should derive deterministically from Solved IR identities where the output format permits it.
+
+## 12. Assets and dependency manifests
+
+Source modules and visual assets must resolve through host interfaces rather than ambient process state. The compiler records a manifest containing at least logical name, resolved origin, content hash, media type, and role.
+
+The default restricted host performs no network fetches. A caller may supply a resolver that fetches remote assets and returns immutable content-addressed data. Canonical build hashes use content, not retrieval timestamps or local absolute paths.
+
+Missing assets should produce diagnostics with source provenance. A renderer may use an explicit placeholder only when the active policy allows degraded output.
+
+## 13. Diagnostics and provenance
+
+Every stage emits the same structured diagnostic envelope:
+
+```ts
+interface Diagnostic {
+  stage: "transform" | "evaluate" | "normalize" | "solve" | "render";
+  severity: "error" | "warning" | "info";
+  code: string;
+  message: string;
+  source?: SourceSpan;
+  componentStack?: readonly ComponentFrame[];
+  entity?: string;
+  details?: Readonly<Record<string, unknown>>;
+}
+```
+
+Diagnostic codes are stable API. Human-readable messages may improve without becoming machine contracts.
+
+Provenance should map normalized entities back to source declarations, JSX keys, generated component instances, and component stacks. It must remain outside canonical domain hashes so that relocating a project does not change its model identity.
+
+## 14. Determinism and build identity
+
+A build identity must include at least:
+
+- entry source and all dependency contents;
+- frontend and JSX-runtime versions;
+- normalizer and schema versions;
+- enabled semantic features;
+- normalization-relevant options;
+- content-addressed assets that affect intrinsic measurement.
+
+It must exclude wall-clock time, temporary paths, process IDs, nondeterministic object iteration, and unrelated environment variables.
+
+Canonical Logical IR must be reproducible for the same build identity. Solver and renderer outputs may add their own versioned identities.
+
+## 15. Caching and incrementality
+
+The pipeline should expose cache boundaries after bundling, evaluation, normalization, solving, and rendering. Cache entries must be content-addressed and versioned by the stage implementation and schema.
+
+Large-model support requires interfaces that can invalidate by source dependency, normalized entity, solved region, viewport, or asset. A first implementation may recompute whole stages, but it must not encode whole-document recomputation into public contracts.
+
+Incremental and full execution must converge on canonical-equivalent results for the same affected region when no wider constraint requires invalidation.
+
+## 16. CLI and embedding surfaces
+
+The first CLI should provide commands equivalent to:
 
 ```text
-Ports          TSX-level input and output halves
-Link           semantic connection containing Segments
-Route Network  shared trunks, bundles, and branches
-Geometry       concrete route segments and curves
+excalmermaid check diagram.tsx
+excalmermaid normalize diagram.tsx --output logical.yaml
+excalmermaid materialize logical.yaml --target a4 --output projection.yaml
+excalmermaid solve projection.yaml --output solved.yaml
+excalmermaid paint solved.yaml --format excalidraw --output diagram.excalidraw
+excalmermaid render logical.yaml --target a4 --format excalidraw --output diagram.excalidraw
+excalmermaid build diagram.tsx --format svg --output diagram.svg
 ```
 
-Several segments can use a shared trunk and split later. The branch location is not necessarily specified as a point; it may instead be constrained to a relative region:
+Commands must support machine-readable diagnostics, stdin/stdout where meaningful, explicit schema and feature selection, cancellation, and reproducible-output modes.
+
+Embedding APIs in TypeScript and Go should mirror the same stage boundaries rather than expose one opaque `build()` function only.
+
+## 17. Testing and conformance plumbing
+
+The fixtures under [`examples/`](examples/) are golden inputs. Once implementations exist, each fixture should produce:
+
+- canonical Logical IR;
+- provenance with stable source mappings;
+- one or more Projection IR results with render contexts and view-score explanations;
+- one or more Solved IR results for named solvers;
+- renderer outputs;
+- structured diagnostics, including expected warnings.
+
+Required test layers are:
+
+- JSX-runtime expression tests;
+- component-expansion and normalization tests;
+- renderer-context, score, conditional-materialization, and endpoint-alternative tests;
+- schema validation and canonical serialization tests;
+- JSON/YAML round-trip tests;
+- cross-language TypeScript/Go/Rust consumer tests;
+- solver constraint and determinism tests;
+- renderer structural and visual regression tests;
+- restricted-evaluator security tests;
+- cancellation, budget, and malformed-input tests;
+- large generated-model and incremental invalidation tests.
+
+Tests must compare semantics before pixels. Visual regression thresholds are renderer-specific and cannot replace IR assertions.
+
+## 18. Proposed repository structure
 
 ```text
-branchPoint is within channels/backbone
+packages/
+  expression/
+  jsx-runtime/
+  authoring/
+  compiler/
+  normalizer/
+  schema/
+  solver-typescript/
+  renderer-excalidraw/
+go/
+  compiler/
+  solver/
+  renderer/
+rust/
+  schema/
+  solver/
+  renderer/
+cmd/
+  excalmermaid/
+examples/
 ```
 
-Without a more specific requirement, segments in the same dock group should by default split as late as possible, maximizing their shared path. Other preferences such as early, balanced, near source, or near target remain possible.
+The repository may start smaller. Boundaries should become packages only when code exists on both sides, but dependencies must continue to point in one direction:
 
-## Channels, corridors, and space reservation
+```text
+jsx runtime -> expression representation
+authoring API -> expression representation
+normalizer -> expression representation + schema
+compiler frontend -> JSX runtime + authoring API + normalizer
+solvers -> schema
+renderers -> schema
+CLI and hosts -> compiler frontend + solvers + renderers
+```
 
-Routing is not a drawing pass placed on top of an already completed layout. Layout and routing must cooperate:
+Solvers and renderers must not become dependencies of the authoring runtime or normalizer.
 
-1. Elements and scopes provide preliminary sizes.
-2. Link segments determine required docks, portals, corridors, and tracks.
-3. Layout reserves the required space.
-4. Final positions are computed.
-5. Route networks are geometrically resolved inside the reserved regions.
+## 19. Delivery sequence
 
-A channel can define at least an axis, capacity, minimum and preferred spacing, and pressure. High pressure penalizes occupied cross-sectional width and produces more tightly packed tracks or makes bundles more attractive. Minimum spacing remains a hard constraint. Pressure alone cannot permit joining that a dock, port, or segment group forbids.
+1. Freeze the first Logical, Projection, and Solved IR schemas and generate TypeScript, Go, and Rust bindings.
+2. Implement the custom JSX runtime and Node.js compiler frontend.
+3. Normalize every reference fixture to canonical Logical IR.
+4. Add deterministic renderer context, view scoring, and Projection IR materialization.
+5. Add a minimal deterministic solver and the first Excalidraw or SVG painter.
+6. Embed the frontend in Go through esbuild and goja.
+7. Add cross-language consumers and compatibility tests.
+8. Add viewport, tiling, caching, and incremental invalidation.
+9. Harden restricted evaluation and publish the threat model.
 
-## Normalization
-
-Normalization performs at least these steps:
-
-1. Evaluate TSX components recursively.
-2. Normalize fragments, arrays, conditions, and empty expressions.
-3. Expand high-level components down to core primitives.
-4. Validate scopes and relative references.
-5. Apply defaults according to a versioned rule set.
-6. Diagnose semantic errors and locally unsatisfiable requirements.
-7. Produce deterministic Logical IR.
-
-Normalization performs no layout. Components therefore cannot use positions, measured sizes, or routes as input.
-
-Component evaluation should be reproducible. An embedded runtime should, where possible, avoid unlimited access to the file system, network, clock, environment variables, or uncontrolled randomness. Execution limits and controlled interruption are especially important for untrusted input.
-
-## Serialization
-
-Logical IR and Solved IR require versioned, language-neutral serializations. JSON and YAML should represent the same data model without loss.
-
-A canonical YAML output must define at least:
-
-- fixed field order per element type;
-- unambiguous handling of defaults;
-- deterministic ordering of semantically unordered sets;
-- preservation of order only where it is semantically relevant;
-- no aliases, merge keys, or custom YAML tags;
-- unambiguous representation of numbers, strings, and units;
-- fixed encoding and line endings.
-
-Whether JSON or an abstract schema is the normative interchange format, with YAML as a canonical projection of it, remains open. This decision must not change the logical IR.
-
-The original TSX source cannot be reconstructed from normalized IR. After expansion, it is no longer possible to tell whether elements were written individually or generated by a component. Origin information and component stacks may be emitted as a separate source map or provenance file.
-
-## Expected core primitives
-
-The exact TSX surface has not yet been fixed. The currently expected semantic core comprises:
-
-- `Diagram`;
-- `Scope`;
-- `Layout`;
-- `Node`, or the more general `Element`;
-- `Dock`;
-- `DockGroup`;
-- `Input` and `Output` port bindings;
-- `Channel` or `Corridor`;
-- `Link`;
-- `Segment`;
-- `Constraint`.
-
-Diagram types and domain components do not belong in this core. They are ordinary TSX components and component libraries.
-
-## Non-goals
-
-- no new general-purpose or domain-specific programming language;
-- no pixel coordinates as the primary authoring model;
-- no hard-coded list of diagram types;
-- no reimplementation of TSX semantics in every renderer;
-- no lossless round trip from normalized IR to original TSX source;
-- no coupling of Logical IR to Excalidraw.
-
-## Next step: refine the TSX surface
-
-The component-port and Link/Segment model is fixed at the conceptual level. The remaining surface work must decide:
-
-- which elements are core primitives and which are library components;
-- how text, shapes, scopes, and layouts nest in TSX;
-- how relative element, dock, and region references are written;
-- the exact runtime representation and naming of typed port handles;
-- the cardinality and completeness rules for optional and many-valued ports;
-- the final set of sparse route helpers and semantic label placements;
-- how optional ordering and hard versus soft constraints are expressed;
-- how dock groups, joining, bundling, and branch regions are expressed;
-- which properties are inline and which may later be set through CSS-like rules;
-- how components carry provenance through normalization.
+This sequence is an implementation plan, not a change to model semantics. Any model or grammar change remains governed by [REQUIREMENTS.md](REQUIREMENTS.md), [MODEL.md](MODEL.md), and the reference fixtures.

@@ -107,7 +107,12 @@ export default (
           <Text>admit per forward</Text>
           <Text>pass</Text>
           <Port id="interpreter" side="left" />
-          <Port id="children" side="right" cardinality="many" />
+          <Port
+            id="children"
+            side="right"
+            cardinality="many"
+            sharing={{ mode: "merge", branch: "late" }}
+          />
         </Node>
 
         <Column id="work" gap="medium">
@@ -138,75 +143,87 @@ export default (
         <Node id="wait" role="join" style={{ fill: "light-purple", stroke: colors.purple }}>
           <Text>wait()</Text>
           <Text>join KV views</Text>
-          <Port id="children" side="left" cardinality="many" />
+          <Port
+            id="children"
+            side="left"
+            cardinality="many"
+            sharing={{ mode: "merge", branch: "late" }}
+          />
           <Port id="parent" side="top" />
         </Node>
 
         <Node id="shared-state" role="shared-kv" style={{ fill: "light-blue", stroke: colors.blue }}>
           <Text>Shared prefix KV blocks</Text>
           <Text>+ small branch-local state</Text>
-          <Port id="children" side="right" cardinality="many" />
+          <Port
+            id="children"
+            side="right"
+            cardinality="many"
+            sharing={{ mode: "bundle", branch: "late" }}
+          />
         </Node>
       </Grid>
 
-      <Note id="batching" role="annotation" anchor="next-pass" placement="above">
+      <Note id="batching" role="annotation" anchor="execution/work/next-pass" placement="above">
         continuous batching · radix KV cache
       </Note>
 
-      <Line from="interpreter.scheduler" to="scheduler.interpreter" style={{ stroke: colors.ink }} />
+      <Line from="execution/interpreter.scheduler" to="execution/scheduler.interpreter" style={{ stroke: colors.ink }} />
 
       {/* fan-out merges into one trunk and branches late; the dashed
           branch to the deferred child leaves the solid shared piece */}
       {[
-        ["a", "next-pass/child-a.schedule", false],
-        ["b", "next-pass/child-b.schedule", false],
-        ["c", "child-c.schedule", true],
+        ["a", "execution/work/next-pass/child-a.schedule", false],
+        ["b", "execution/work/next-pass/child-b.schedule", false],
+        ["c", "execution/work/child-c.schedule", true],
       ].map(([id, target, dashed]) => (
         <Line
           key={String(id)}
           id={`schedule-child-${id}`}
-          from="scheduler.children"
+          from="execution/scheduler.children"
           to={String(target)}
           style={{ stroke: colors.green, dash: dashed ? "dashed" : undefined }}
-          share={{ group: "scheduler-fanout", mode: "merge" }}
         />
       ))}
 
       {[
-        ["a", "next-pass/child-a.state", colors.blue],
-        ["b", "next-pass/child-b.state", colors.blue],
-        ["c", "child-c.state", colors.orange],
+        ["a", "execution/work/next-pass/child-a.state", colors.blue],
+        ["b", "execution/work/next-pass/child-b.state", colors.blue],
+        ["c", "execution/work/child-c.state", colors.orange],
       ].map(([id, target, stroke]) => (
         <Line
           key={String(id)}
           id={`state-child-${id}`}
-          from="shared-state.children"
+          from="execution/shared-state.children"
           to={String(target)}
           style={{ stroke: String(stroke), dash: "dashed" }}
-          share={{ group: "state-feed", mode: "bundle" }}
         />
       ))}
 
       {[
-        ["a", "next-pass/child-a.join", false],
-        ["b", "next-pass/child-b.join", false],
-        ["c", "child-c.join", true],
+        ["a", "execution/work/next-pass/child-a.join", false],
+        ["b", "execution/work/next-pass/child-b.join", false],
+        ["c", "execution/work/child-c.join", true],
       ].map(([id, source, dashed]) => (
         <Line
           key={String(id)}
           id={`join-child-${id}`}
           from={String(source)}
-          to="wait.children"
+          to="execution/wait.children"
           style={{ stroke: colors.purple, dash: dashed ? "dashed" : undefined }}
-          share={{ group: "child-completions", mode: "merge" }}
         />
       ))}
 
       <Note id="principle" role="principle" placement="inside-bottom">
         Model chooses the work graph. Engine chooses the schedule.
       </Note>
-      <Constraint kind="below" item="shared-state" reference="interpreter" />
-      <Constraint kind="below" item="child-c" reference="next-pass" strength="required" />
+      <Constraint kind="below" item="execution/shared-state" reference="execution/interpreter" />
+      <Constraint
+        kind="below"
+        item="execution/work/child-c"
+        reference="execution/work/next-pass"
+        strength="required"
+      />
     </Scope>
 
     {/* both crossings of the system-call boundary route implicitly
@@ -214,12 +231,12 @@ export default (
     <Line
       id="fork-system-call"
       from="user-mode/fork.kernel"
-      to="kernel/interpreter.system-call"
+      to="kernel/execution/interpreter.system-call"
       style={{ stroke: colors.orange }}
     />
     <Line
       id="resume-parent"
-      from="kernel/wait.parent"
+      from="kernel/execution/wait.parent"
       to="user-mode/resume.join"
       style={{ stroke: colors.purple }}
     />

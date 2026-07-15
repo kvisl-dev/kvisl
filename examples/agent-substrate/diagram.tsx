@@ -249,7 +249,7 @@ export default (
       </Grid>
 
       {/* annotations sit anchored, outside the content flow */}
-      <Note id="hot-path-note" role="annotation" anchor="kubernetes-api" placement="below">
+      <Note id="hot-path-note" role="annotation" anchor="layers/kubernetes-api" placement="below">
         No per-actor Kubernetes object on the hot path.
       </Note>
       <Note id="scheduling-note" role="annotation" placement="inside-bottom-left">
@@ -263,44 +263,44 @@ export default (
           the three columns; all boundary crossings stay implicit */}
       <Line
         id="actor-template-api"
-        from="substrate-control/ateapi.templates"
-        to="kubernetes-api/actor-template.api"
+        from="layers/control-and-storage/substrate-control/ateapi.templates"
+        to="layers/kubernetes-api/actor-template.api"
         style={{ stroke: colors.blue, dash: "dashed" }}
       >
-        <Segment through={gap("kubernetes-api", "control-and-storage")} />
+        <Segment through={gap("layers/kubernetes-api", "layers/control-and-storage")} />
       </Line>
       <Line
         id="resume-actor"
-        from="substrate-control/ateapi.workers"
-        to="runtime/atelet.api"
+        from="layers/control-and-storage/substrate-control/ateapi.workers"
+        to="layers/runtime/atelet.api"
         heads="both"
         style={{ stroke: colors.blue, dash: "dashed" }}
       >
         <Segment
-          through={gap("control-and-storage", "runtime")}
+          through={gap("layers/control-and-storage", "layers/runtime")}
           label="ResumeActor(actorID)"
         />
       </Line>
       <Line
         id="self-suspend"
-        from="runtime/worker-pod/sandbox/agent.suspend"
-        to="substrate-control/ateapi.suspend"
+        from="layers/runtime/worker-pod/sandbox/agent.suspend"
+        to="layers/control-and-storage/substrate-control/ateapi.suspend"
         style={{ stroke: colors.blue, dash: "dashed" }}
       >
         <Segment
-          through={gap("control-and-storage", "runtime")}
+          through={gap("layers/control-and-storage", "layers/runtime")}
           label={"api.ate-system.svc.cluster.local:443\nSuspendActor(actorID) · self-suspend"}
         />
       </Line>
       <Line
         id="checkpoint-transfer"
-        from="runtime/worker-pod/sandbox.snapshot"
-        to="snapshot-storage/checkpoint.transfer"
+        from="layers/runtime/worker-pod/sandbox.snapshot"
+        to="layers/control-and-storage/snapshot-storage/checkpoint.transfer"
         heads="both"
         style={{ stroke: colors.purple, dash: "dashed" }}
       >
         <Segment
-          through={gap("control-and-storage", "runtime")}
+          through={gap("layers/control-and-storage", "layers/runtime")}
           label={"restore download\ncheckpoint upload"}
         />
       </Line>
@@ -309,8 +309,8 @@ export default (
     {/* the controller path runs along the cluster's top padding band */}
     <Line
       id="worker-pool-controller"
-      from="cluster/kubernetes-api/worker-pool.controller"
-      to="cluster/runtime/worker-pod"
+      from="cluster/layers/kubernetes-api/worker-pool.controller"
+      to="cluster/layers/runtime/worker-pod"
       style={{ stroke: colors.gray, dash: "dashed" }}
     >
       <Segment
@@ -321,7 +321,7 @@ export default (
     <Line
       id="ingress-control"
       from="ingress/router.control"
-      to="cluster/substrate-control/ateapi.ingress"
+      to="cluster/layers/control-and-storage/substrate-control/ateapi.ingress"
       style={{ stroke: colors.blue, dash: "dashed" }}
     />
     {/* descends along the cluster's right padding and arrives from the
@@ -329,7 +329,7 @@ export default (
     <Line
       id="request-to-agent"
       from="ingress/worker-forward.worker"
-      to="cluster/runtime/worker-pod/sandbox/agent.request"
+      to="cluster/layers/runtime/worker-pod/sandbox/agent.request"
       style={{ stroke: colors.green }}
     >
       <Segment through={padding("cluster", "right")} />

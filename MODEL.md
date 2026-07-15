@@ -11,7 +11,9 @@ This document defines the conceptual data model and the Logical IR. [REQUIREMENT
 3. **Orientation is local.** Every scope has a local frame. All directional vocabulary — sides, axes, row/column — is expressed in the local frame. Rotating a scope re-orients its entire subtree without touching any child declaration.
 4. **Whitespace is the routing plane.** Corridors are not free-floating entities. They are the gaps and padding bands that layout produces anyway — implicit, addressable, and space-reserving, like margin and padding in CSS. A `Corridor` declaration refines such a region; it never invents one detached from the structure.
 5. **Lines are symmetric and segmented.** A line has two interchangeable ends. It consists of an ordered list of segments; most are implicit and inferred, some are explicitly pinned to a region or waypoint and can carry labels there.
-6. **Sharing is opt-in.** Lines share drawn geometry only when they are joined through a group. Within a group, sharing is maximal by default (branch as late as possible). Ungrouped lines never merge.
+6. **Named ports create joins.** Every port is identified by its owner and local ID. All line ends at that canonical port form one topological join; the port's sharing policy determines whether their adjacent paths merge, bundle, separate, or remain router-selected.
+7. **Containers are addressable.** Every author-declared structural container has a local ID and contributes one segment to its canonical containment path. Reusable components therefore create nested namespaces without requiring global IDs.
+8. **Views are renderer-instantiated meta branches.** View templates are invisible to ordinary paths. A renderer creates context, scores the alternatives, and materializes one branch without changing the component's semantic identity or canonical ports.
 
 ## 2. Frames and orientation
 
@@ -36,11 +38,23 @@ Rules:
 - Text content stays physically upright by default. `textOrientation: "upright" | "frame"` controls whether text rotates with the frame. Intrinsic size measurement happens in the resolved physical orientation.
 - Mirroring (flips) is not part of the first model version and is listed as an open decision.
 
-## 3. Containment, scopes, and identity
+## 3. Containment, containers, and identity
 
-A `Scope` opens a lexical namespace and is by default also a containment region. Layout containers (`Row`, `Column`, `Grid`, ...) do **not** open namespaces: every identifiable declaration is bound in its nearest enclosing scope. Author IDs are unique per scope, never globally. References are resolved relative to their declaring scope; `/` descends into child scopes, `..` ascends, `.` addresses a port on an entity.
+A `Scope` owns a semantic boundary and local frame and is by default also a containment region. Every ordinary structural container — including `Diagram`, `Scope`, explicit layout containers, `PortGroup`, and elements that own diagram entities — has a required local ID. IDs are unique among direct siblings, never globally. Every ordinary container contributes a segment to the canonical containment path; layout containers are therefore addressable even though their purpose remains layout rather than semantic scoping.
+
+`View`, `When`, and `Switch` also require IDs, but they belong to a separate meta tree. Neither a meta container nor any unmaterialized template descendant appears in ordinary path lookup.
+
+References are resolved relative to their containing ordinary container. `/` descends into a named child container, `..` ascends one container, and `.` selects a named port on an entity. For example:
+
+```text
+platform/production/control-plane/api.request
+```
+
+The address remains stable across component-view selection. `production/internals/layout` cannot accidentally reach a view named `internals`; normal lookup never enters that meta branch. A reusable component may contain the same relative path in every instance because its root container ID creates the instance namespace.
 
 Every entity has exactly one containment parent. Layout, routing, and paint relations may reference any entities regardless of containment.
+
+Port-group JSX children are membership shorthand rather than containment. Ports remain directly owned by their element or scope, so placing `tasks` inside `<PortGroup id="loop">` does not change the endpoint from `voice-agent.tasks` to `voice-agent/loop/tasks`. The group itself remains an addressable relation entity.
 
 Scopes are full endpoints: they can carry ports, be targets of lines, and be anchors for notes.
 
@@ -53,6 +67,20 @@ An `Element` (`Node` in the authoring surface) is a visible or intrinsically mea
 A layout arranges an explicit member set inside a container. JSX children are shorthand for that set. Strategies compose recursively: `row`, `column`, `stack`, `overlay`, `grid`, `tree`, `radial`, `layered`, `constraint`.
 
 **Ordering.** The default ordering policy is `prefer-source`: source order is a soft preference the solver may override only when it clearly reduces crossings, route length, or space. `free` releases the order entirely; `fixed` makes source order a hard constraint. This replaces the earlier `auto` default — the fixtures showed that authors reach for source order almost everywhere, so it should be the cheap default rather than an annotation on every layout.
+
+### 5.1 Component views
+
+A component view is a named meta branch owned by a component scope. Its descendants are template declarations, not active diagram entities. The branch and its template-local IDs are available to normalization, validation, scoring, and explicit meta-reference validation, but ordinary path resolution cannot see them.
+
+The renderer creates an immutable context for each component instance. It contains target properties, current outside-in allocation, inherited purpose and audience, semantic state, and renderer capabilities. Each view evaluates a serializable score expression against that context. The highest-scoring viable view wins; its template is materialized into Projection IR. Conditions inside the winning branch then adapt its instantiated structure and paths using the same context.
+
+Footprint, readability, routing space, and hard constraints can invalidate a tentative winner and cause deterministic fallback or rescoring. Logical IR retains all templates and score expressions. Projection IR records concrete render instances and the winning score explanation; Solved IR retains their provenance.
+
+The owner and its ports exist independently of every view. `PortPlacement` maps a stable port onto a template anchor without cloning its semantic identity. External connections normally target those stable ports.
+
+An ordinary deep endpoint is resolved against Projection IR. If the selected rendering did not instantiate its complete suffix, the endpoint truncates to the deepest instantiated object and attaches there automatically.
+
+An exceptional endpoint-alternative reference contains a common ordinary prefix and cases keyed by the selected view of an object on that path. For `api.{foo#view:abc, foo:bar}`, view `view` continues through branch-local `abc`; the unqualified case continues through ordinary `bar`. Exact view cases precede the default, and truncation remains the final fallback. The `#view` selector is part of this endpoint expression only and never exposes the meta tree to general path lookup.
 
 ## 6. Whitespace: margins, padding, gaps, and corridors
 
@@ -68,7 +96,7 @@ Regions are addressed structurally:
 
 ```ts
 gap(a, b)              // whitespace between two layout siblings
-padding(scope, side)   // whitespace band inside a container edge (local side)
+padding(container, side) // whitespace band inside a container edge (local side)
 ```
 
 A `Corridor` declaration refines an implicit region:
@@ -87,9 +115,15 @@ Elements may sit inside a corridor (a decision diamond in the middle of a vertic
 A **port** is a named attachment point on an element or scope. Ports are symmetric: they have no input/output direction — direction belongs to lines. A port declares:
 
 - a preferred or required side and position in the local frame;
-- cardinality (`one` default, `optional`, `many`);
+- cardinality (`one`, `optional`, `many`; geometric ports default to `many`);
 - capacity and minimum spacing for attached lines;
 - optionally a content type tag for compatibility checking.
+- an optional visible marker;
+- a sharing policy for the lines joined there.
+
+The canonical identity of a named port is `(owner entity, local port ID)`. An endpoint such as `api.request` creates that port implicitly when no declaration exists. A nested `<Port id="request" .../>`, a post-hoc `<Port ref="api.request" .../>`, and a TSX handle bound there all refine or alias that same identity. The normalizer collects these forms before merging properties, so source order is irrelevant. Conflicting explicit property values are diagnostics.
+
+An endpoint naming only `api` uses an anonymous automatic attachment point chosen by the router. It does not synthesize the stable named port `request` or any other author-visible ID.
 
 **Component boundaries.** Components are ordinary TSX functions. To let callers attach lines without knowing internals, the runtime provides opaque port handles:
 
@@ -99,7 +133,7 @@ declare function port<T>(options?: { cardinality?: "one" | "optional" | "many" }
 
 A handle is created by the caller, passed as a prop, and bound exactly once inside the component to a concrete port (`<Port bind={handle} .../>`) or forwarded to a child component. Handles are TSX-level composition constructs; they are fully resolved before Logical IR is emitted.
 
-**Port groups** collect several ports of one owner. A group keeps its members adjacent and ordered, and sets the default sharing behavior for lines attached to them:
+**Port groups** collect several distinct ports of one owner. They are unnecessary for multiple lines at one named port. A group keeps its members adjacent and ordered, and sets the default sharing behavior for lines attached to them:
 
 - `merge` — attached lines form a share group drawing one common path;
 - `bundle` — attached lines run closely parallel but remain separate strokes;
@@ -120,9 +154,11 @@ Labels belong to segments. A label has a placement along its segment (`start`, `
 
 Lines reserve routing space by default (`space: "reserve"`); `overlay` opts a line out of layout interaction. A line may list regions to `avoid`.
 
-## 9. Sharing: groups, trunks, and branches
+## 9. Sharing: port joins, groups, trunks, and branches
 
-Lines share drawn geometry **only** when joined through a group — either explicitly (`share={{ group, mode }}`) or implicitly by attaching to ports of a port group with `merge`/`bundle` affinity. Ungrouped lines attached to the same port stay separate.
+All line ends attached to one canonical named port belong to its topological join group. The port's sharing policy controls adjacent positive-length geometry: `merge` draws one trunk, `bundle` draws close parallel strokes, `separate` permits only the common endpoint and splits immediately, and `auto` lets the router choose. `auto` is the default.
+
+Port-group affinity coordinates lines on several distinct ports. An explicit line share group coordinates lines with no common named port. Neither creates a second identity for a join already induced by a canonical port.
 
 Within a share group:
 
@@ -148,8 +184,10 @@ Paint order is an independent relation of `before`/`after` pairs.
 ### 12.1 Invariants
 
 - Every entity has a compiler-internal `EntityKey`: deterministic for identical input, unique per document, not authored, not stable across arbitrary edits.
-- Author IDs remain scope-local bindings; the normalizer resolves references to keys and reports missing or ambiguous targets.
+- Author IDs remain containment-local bindings; every structural container has one, and the normalizer resolves hierarchical paths to keys.
+- A port's canonical identity is its resolved owner plus local port ID, regardless of whether it was implicit, explicitly declared, configured post-hoc, or reached through a handle.
 - Port handles are resolved before emission; provenance may record the component property and port involved.
+- View templates remain present in the meta domain of Logical IR and are invisible to ordinary references. Renderer materialization creates separate instance keys in Projection IR.
 - No functions, symbols, cycles, renderer objects, or absolute positions.
 
 ### 12.2 Document and entities
@@ -159,9 +197,13 @@ type EntityKey = number;
 type LocalId = string;
 
 type EntityKind =
+  | "diagram"
   | "scope"
   | "element"
   | "layout"
+  | "view"
+  | "conditional"
+  | "port-placement"
   | "port"
   | "port-group"
   | "corridor"
@@ -182,15 +224,33 @@ interface LogicalIR {
 interface EntityBase<Kind extends EntityKind> {
   key: EntityKey;
   kind: Kind;
-  id?: LocalId;
+  id: LocalId | null;
+  domain: "ordinary" | "meta";
   ownerScope: EntityKey | null;
   parent: EntityKey | null;
+  when?: ConditionIR;
   roles: readonly string[];
   classes: readonly string[];
 }
+
+type EntityIR =
+  | DiagramIR
+  | ScopeIR
+  | ElementIR
+  | LayoutIR
+  | ViewIR
+  | ConditionalIR
+  | PortPlacementIR
+  | CorridorIR
+  | PortIR
+  | PortGroupIR
+  | LineIR
+  | SegmentIR
+  | NoteIR
+  | ConstraintIR;
 ```
 
-`ownerScope` is the lexical scope; `parent` is containment.
+For `domain: "ordinary"`, `parent` is both containment and the parent used to construct author addresses. Ordinary lookup ignores every `domain: "meta"` entity. Meta parents instead form a hidden template tree rooted at a `ViewIR` or conditional meta container. `ownerScope` identifies the nearest local frame and does not participate in name resolution. `id` may be `null` only for compiler-generated or explicitly non-addressable leaf entities; it is required for every author-declared ordinary or meta container.
 
 ### 12.3 Directions, lengths, and regions
 
@@ -210,18 +270,26 @@ interface BoxLengths {
 
 type RegionRef =
   | { kind: "gap"; between: readonly [EntityKey, EntityKey] }
-  | { kind: "padding"; scope: EntityKey; side: Side }
+  | { kind: "padding"; container: EntityKey; side: Side }
   | { kind: "corridor"; corridor: EntityKey };
 ```
 
-### 12.4 Scopes and elements
+### 12.4 Diagram, scopes, and elements
 
 ```ts
+interface DiagramIR extends EntityBase<"diagram"> {
+  id: LocalId;
+  children: readonly EntityKey[];
+  views: readonly EntityKey[];
+}
+
 interface ScopeIR extends EntityBase<"scope"> {
+  id: LocalId;
   orientation: Orientation;
   boundary: "visible" | "invisible";
   children: readonly EntityKey[];
   ports: readonly EntityKey[];
+  views: readonly EntityKey[];
   defaultLayout?: EntityKey;
   padding?: BoxLengths;
   margin?: BoxLengths;
@@ -229,10 +297,12 @@ interface ScopeIR extends EntityBase<"scope"> {
 }
 
 interface ElementIR extends EntityBase<"element"> {
+  id: LocalId;
   primitive: PrimitiveSpec;
   content: readonly ContentSpec[];
   children: readonly EntityKey[];
   ports: readonly EntityKey[];
+  views: readonly EntityKey[];
   size: SizePolicy;
   margin?: BoxLengths;
   padding?: BoxLengths;
@@ -278,6 +348,7 @@ type SizeValue =
 
 ```ts
 interface LayoutIR extends EntityBase<"layout"> {
+  id: LocalId;
   container: EntityKey;
   members: readonly EntityKey[];
   strategy: LayoutStrategy;
@@ -304,6 +375,113 @@ type OrderingPolicy =
   | { kind: "fixed" }
   | { kind: "constraints"; constraints: readonly EntityKey[] };
 ```
+
+### 12.5.1 Component views
+
+```ts
+interface ViewIR extends EntityBase<"view"> {
+  id: LocalId;
+  domain: "meta";
+  owner: EntityKey; // ordinary diagram, scope, or element whose identity this view preserves
+  detail?: number;
+  score: ScoreIR;
+  requires?: ConditionIR;
+  templateChildren: readonly EntityKey[];
+  footprint?: ViewFootprint;
+  fallback?: EntityKey;
+}
+
+interface ConditionalIR extends EntityBase<"conditional"> {
+  id: LocalId;
+  domain: "meta";
+  mode: "when" | "switch-case";
+  templateChildren: readonly EntityKey[];
+}
+
+interface ScoreIR {
+  base: number;
+  adjustments: readonly ScoreAdjustmentIR[];
+}
+
+interface ScoreAdjustmentIR {
+  when: ConditionIR;
+  add: number;
+}
+
+type ConditionIR =
+  | { kind: "literal"; value: boolean }
+  | { kind: "all" | "any"; operands: readonly ConditionIR[] }
+  | { kind: "not"; operand: ConditionIR }
+  | {
+      kind: "compare";
+      operator: "eq" | "ne" | "lt" | "lte" | "gt" | "gte" | "in";
+      left: ContextValueIR;
+      right: ContextValueIR;
+    }
+  | {
+      kind: "extension";
+      namespace: string;
+      name: string;
+      data: Readonly<Record<string, unknown>>;
+    };
+
+type ContextValueIR =
+  | { kind: "context"; key: string }
+  | { kind: "literal"; value: string | number | boolean | readonly string[] };
+
+interface ViewFootprint {
+  minWidth?: Length;
+  minHeight?: Length;
+  preferredWidth?: Length;
+  preferredHeight?: Length;
+  preferredAspect?: number;
+  minReadableScale?: number;
+}
+```
+
+`templateChildren` and all of their descendants have `domain: "meta"`. They have branch-local IDs for validation and renderer instantiation, but no ordinary author path. The renderer evaluates `requires` and `score` using its context, then materializes the winning branch into Projection IR.
+
+### 12.5.2 Projection instances and renderer context
+
+```ts
+type InstanceKey = number;
+type ContextKey = number;
+
+interface ProjectionIR {
+  schema: "excalmermaid.projection";
+  version: string;
+  logicalSourceHash: string;
+  target: Readonly<Record<string, unknown>>;
+  root: InstanceKey;
+  contexts: readonly RenderContextIR[];
+  instances: readonly RenderInstanceIR[];
+}
+
+interface RenderContextIR {
+  key: ContextKey;
+  owner: InstanceKey;
+  parent?: ContextKey;
+  values: Readonly<Record<string, string | number | boolean | readonly string[]>>;
+  capabilities: readonly string[];
+}
+
+interface RenderInstanceIR {
+  key: InstanceKey;
+  source: EntityKey; // ordinary entity or selected meta-template declaration
+  parent: InstanceKey | null;
+  context: ContextKey;
+  selectedView?: EntityKey;
+  score?: ScoreExplanationIR;
+}
+
+interface ScoreExplanationIR {
+  base: number;
+  applied: readonly { adjustment: number; condition: boolean }[];
+  total: number;
+}
+```
+
+The renderer constructs contexts; author code only reads their declared keys through `ContextValueIR`. Projection instances are target-local and never replace stable `EntityKey` values. `source` preserves the ordinary or template declaration from which each instance was created.
 
 ### 12.6 Corridors
 
@@ -333,23 +511,44 @@ Implicit regions need no `CorridorIR` to be routable; a corridor entity exists o
 
 ```ts
 type SharingMode = "merge" | "bundle" | "auto";
+type PortSharingMode = SharingMode | "separate";
 type Affinity = "merge" | "bundle" | "free" | "separate";
 
 interface PortIR extends EntityBase<"port"> {
+  id: LocalId;
   owner: EntityKey; // element or scope
+  origin: "implicit" | "explicit" | "refined";
   side: Side | "auto";
   cardinality: "one" | "optional" | "many";
   capacity?: number;
   minSpacing?: Length;
   contentType?: string; // runtime tag from port<T>() when available
+  marker?: PortMarkerSpec;
+  sharing: { mode: PortSharingMode; branch?: BranchPolicy };
 }
 
+type PortMarkerSpec =
+  | "none"
+  | "circle"
+  | "square"
+  | "diamond"
+  | { kind: "extension"; namespace: string; name: string };
+
 interface PortGroupIR extends EntityBase<"port-group"> {
+  id: LocalId;
   owner: EntityKey;
   members: readonly EntityKey[];
   order: OrderingPolicy;
   affinity: Affinity;
   branch?: BranchPolicy;
+}
+
+interface PortPlacementIR extends EntityBase<"port-placement"> {
+  domain: "meta";
+  view: EntityKey;
+  port: EntityKey;   // canonical ordinary owner port
+  anchor: EntityKey; // branch-local meta-template entity
+  side: Side | "auto";
 }
 
 interface BranchPolicy {
@@ -380,13 +579,37 @@ type HeadSpec =
   | { kind: "extension"; namespace: string; name: string };
 
 interface EndpointIR {
-  target: EntityKey; // port, element, or scope
+  target: EndpointTargetIR;
   side?: Side;       // local hint when target is not a port
 }
 
+type EndpointTargetIR =
+  | {
+      kind: "path";
+      path: readonly EntityKey[];
+      onUnmaterialized: "truncate";
+    }
+  | {
+      kind: "alternatives";
+      prefix: readonly EntityKey[];
+      cases: readonly EndpointAlternativeCaseIR[];
+      onUnmaterialized: "truncate";
+    };
+
+interface EndpointAlternativeCaseIR {
+  base: EntityKey;             // ordinary object whose rendered view is inspected
+  view?: EntityKey;            // exact ViewIR selector; absent means default case
+  suffix: readonly EntityKey[]; // ordinary or branch-local resolved declaration chain
+}
+
+// Resolution order: exact selected-view case, unqualified default case,
+// then truncation at the deepest EntityKey with a Projection IR instance.
+
 interface ShareSpec {
-  group: LocalId;
-  scope: EntityKey; // scope in which the group name is bound
+  source:
+    | { kind: "port"; port: EntityKey }
+    | { kind: "port-group"; group: EntityKey }
+    | { kind: "explicit"; id: LocalId; parent: EntityKey };
   mode: SharingMode;
   branch?: BranchPolicy;
 }
@@ -501,11 +724,17 @@ Extension keys are namespace-qualified. Consumers reject unknown required extens
 
 How authoring constructs normalize (details and phases in [REQUIREMENTS.md](REQUIREMENTS.md)):
 
-- `Row`/`Column`/`Grid`/... produce a `LayoutIR` on an anonymous or containing entity; they do not open scopes.
+- `Row`/`Column`/`Grid`/... outside meta branches produce addressable ordinary `LayoutIR`. The same declarations inside a view remain meta templates until materialized.
+- Every author-declared ordinary structural container retains its ID and containment parent; the normalizer never flattens it out of the address model. Meta containers and descendants retain IDs in their hidden branch-local tree.
 - Physical direction words in the source are stored as local directions; only the per-scope `orientation` carries rotation.
 - `gap()`/`padding()` calls become `RegionRef` values; a bare corridor id becomes `{ kind: "corridor" }`.
+- A named endpoint whose port has not been declared synthesizes a `PortIR` with `origin: "implicit"`. Nested and post-hoc `Port` declarations refine that same owner-and-ID identity, and TSX handles resolve to it.
 - A `Line` without explicit segments emits only implicit segments. Explicit `<Segment>` children are kept in order; the normalizer weaves implicit traversal segments between them.
 - A line-level `label` becomes a `LabelIR` with `placement: "auto"` attached to the line's most prominent segment at solve time.
 - `heads="both"` and friends resolve to the per-end `heads` tuple.
-- Port group affinity `merge`/`bundle` induces a `ShareSpec` on attached lines unless they declare their own.
+- Lines sharing one canonical named port receive a port-derived `ShareSpec`; its mode and branch policy come from `PortIR.sharing`. Port-group affinity and explicit line groups apply only when they add a relation across distinct ports.
+- `View` declarations emit hidden `ViewIR` alternatives with score expressions and template children. Normalization does not select or instantiate them.
+- Ordinary reference resolution skips the meta domain. Endpoint-alternative syntax emits an `alternatives` target whose exact-view and default cases are validated separately. Renderer materialization chooses a case, then truncates at the deepest instantiated object if necessary.
+- `PortPlacement` emits a meta mapping from one canonical ordinary port to one anchor in the containing view template.
+- The renderer creates context, evaluates scores and conditions, and emits Projection IR before layout and routing. This stage never re-runs TSX.
 - Notes with an anchor leave layout membership; notes without one join their parent's layout.
