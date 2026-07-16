@@ -1,11 +1,8 @@
 > **Pre-Prototype — only design and docs**
 
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="contrib/logo-dark.png">
-    <source media="(prefers-color-scheme: light)" srcset="contrib/logo.png">
-    <img alt="Kvísl Script" src="contrib/logo.png" width="760">
-  </picture>
+  <img alt="Kvísl Script" src="contrib/logo.png#gh-light-mode-only" width="507">
+  <img alt="Kvísl Script" src="contrib/logo-dark.png#gh-dark-mode-only" width="507">
 </p>
 
 # Kvísl Script
@@ -16,13 +13,8 @@ The long-term target is a model detailed enough to describe a complete distribut
 
 ## Flagship example
 
-<a href="examples/agent-substrate/diagram.tsx">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="examples/agent-substrate/original-dark.png">
-    <source media="(prefers-color-scheme: light)" srcset="examples/agent-substrate/original.png">
-    <img alt="Agent Substrate component design" src="examples/agent-substrate/original.png">
-  </picture>
-</a>
+[![Agent Substrate component design](examples/agent-substrate/original.png#gh-light-mode-only)](examples/agent-substrate/diagram.tsx)
+[![Agent Substrate component design](examples/agent-substrate/original-dark.png#gh-dark-mode-only)](examples/agent-substrate/diagram.tsx)
 
 The [Agent Substrate model](examples/agent-substrate/diagram.tsx) is the kind of architecture diagram Kvísl is built to create: visually rich, deeply nested, and crossed by connections that do not flatten its hierarchy. Its source describes components, containment, ports, layout intent, and meaningful routing regions rather than drawing coordinates. An agent can expand, restructure, and refine it over many iterations while Kvísl recomputes the concrete layout and routes.
 
