@@ -1,0 +1,85 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="760" viewBox="0 0 1200 760" role="img" aria-labelledby="title desc">
+  <title id="title">Place an order UML sequence diagram</title>
+  <desc id="desc">Four lifelines exchange ordered request and reply messages. Activation bars span occurrences and a loop fragment contains payment status polling.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10" fill="none" stroke="#344054" stroke-width="1.5"/>
+    </marker>
+    <style>
+      text { font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #172033; }
+      .title { font-size: 21px; font-weight: 600; }
+      .name { font-size: 15px; font-weight: 600; }
+      .small { font-size: 13px; fill: #5f6b7c; }
+      .head { fill: #eef5ff; stroke: #2878c8; stroke-width: 2.2; }
+      .spine { stroke: #7b8798; stroke-width: 2; stroke-dasharray: 8 7; }
+      .message { fill: none; stroke: #344054; stroke-width: 2.2; marker-end: url(#arrow); }
+      .reply { fill: none; stroke: #6d4aff; stroke-width: 2.2; stroke-dasharray: 8 6; marker-end: url(#arrow); }
+      .activation { fill: #ffffff; stroke: #2878c8; stroke-width: 2; }
+    </style>
+  </defs>
+
+  <rect x="1" y="1" width="1198" height="758" rx="22" fill="#f8fafc" stroke="#d8dee8" stroke-width="2"/>
+  <text x="42" y="43" class="title">Place an order — sequence diagram</text>
+
+  <!-- heads -->
+  <rect x="70" y="76" width="190" height="65" rx="10" class="head"/>
+  <text x="165" y="103" text-anchor="middle" class="name">customer: Customer</text>
+  <text x="165" y="124" text-anchor="middle" class="small">actor</text>
+  <rect x="350" y="76" width="210" height="65" rx="10" class="head"/>
+  <text x="455" y="103" text-anchor="middle" class="name">checkout</text>
+  <text x="455" y="124" text-anchor="middle" class="small">CheckoutService</text>
+  <rect x="650" y="76" width="210" height="65" rx="10" class="head"/>
+  <text x="755" y="103" text-anchor="middle" class="name">inventory</text>
+  <text x="755" y="124" text-anchor="middle" class="small">InventoryService</text>
+  <rect x="950" y="76" width="190" height="65" rx="10" class="head"/>
+  <text x="1045" y="103" text-anchor="middle" class="name">payment</text>
+  <text x="1045" y="124" text-anchor="middle" class="small">PaymentProvider</text>
+
+  <!-- lifelines -->
+  <line x1="165" y1="141" x2="165" y2="704" class="spine"/>
+  <line x1="455" y1="141" x2="455" y2="704" class="spine"/>
+  <line x1="755" y1="141" x2="755" y2="704" class="spine"/>
+  <line x1="1045" y1="141" x2="1045" y2="704" class="spine"/>
+
+  <!-- activations -->
+  <rect x="447" y="176" width="16" height="478" class="activation"/>
+  <rect x="747" y="238" width="16" height="58" class="activation"/>
+  <rect x="1037" y="330" width="16" height="258" class="activation"/>
+
+  <!-- messages -->
+  <path d="M165 190 L447 190" class="message"/>
+  <text x="306" y="181" text-anchor="middle" class="name">1  submit(order)</text>
+
+  <path d="M463 250 L747 250" class="message"/>
+  <text x="605" y="241" text-anchor="middle" class="name">2  reserve(items)</text>
+
+  <path d="M747 292 L463 292" class="reply"/>
+  <text x="605" y="283" text-anchor="middle" class="name">3  reservation</text>
+
+  <path d="M463 342 L1037 342" class="message"/>
+  <text x="750" y="333" text-anchor="middle" class="name">4  authorize(total)</text>
+
+  <!-- loop fragment -->
+  <rect x="420" y="382" width="665" height="152" rx="8" fill="#ffffff" fill-opacity="0.72" stroke="#6d4aff" stroke-width="2"/>
+  <path d="M420 382 L590 382 L570 412 L420 412 Z" fill="#f1edff" stroke="#6d4aff" stroke-width="2"/>
+  <text x="438" y="402" class="name">loop [pending and attempts &lt; 3]</text>
+  <path d="M463 444 L1037 444" class="message"/>
+  <text x="750" y="435" text-anchor="middle" class="name">5  status()</text>
+  <path d="M1037 496 L463 496" class="reply"/>
+  <text x="750" y="487" text-anchor="middle" class="name">6  pending</text>
+
+  <path d="M1037 578 L463 578" class="reply"/>
+  <text x="750" y="569" text-anchor="middle" class="name">7  authorized</text>
+
+  <path d="M447 642 L165 642" class="reply"/>
+  <text x="306" y="633" text-anchor="middle" class="name">8  confirmation</text>
+
+  <circle cx="165" cy="190" r="5" fill="#ffffff" stroke="#344054" stroke-width="2"/>
+  <circle cx="455" cy="190" r="5" fill="#ffffff" stroke="#344054" stroke-width="2"/>
+  <circle cx="455" cy="250" r="5" fill="#ffffff" stroke="#344054" stroke-width="2"/>
+  <circle cx="755" cy="250" r="5" fill="#ffffff" stroke="#344054" stroke-width="2"/>
+  <circle cx="755" cy="292" r="5" fill="#ffffff" stroke="#6d4aff" stroke-width="2"/>
+  <circle cx="455" cy="292" r="5" fill="#ffffff" stroke="#6d4aff" stroke-width="2"/>
+
+  <text x="600" y="732" text-anchor="middle" class="small">Source order defines time; the UML library derives occurrences, alignments, activation extents, messages, and fragment frames.</text>
+</svg>

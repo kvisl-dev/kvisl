@@ -4,8 +4,6 @@ Excalmermaid is a composable modelling language for design diagrams. It aims to 
 
 The long-term target is a model detailed enough to describe an entire Kubernetes landscape or an entire Linux system, from the highest architectural boundaries down to the lowest useful implementation level. A DIN A0 poster is a normal output size, not the limit of the model.
 
-Status: language and data-model design. There is no working compiler, solver, or renderer yet.
-
 ## Why
 
 Large technical drawings usually fail in one of two ways: a diagram language supports only a narrow family of charts, or a drawing tool leaves authors maintaining positions and routes manually. Both approaches become fragile as a system grows.
@@ -34,7 +32,7 @@ Components are ordinary TypeScript functions. Callers normally attach lines thro
 
 High-level architecture and low-level implementation detail coexist in the same logical graph. A component may provide named meta views for a symbol, summary, specialized projection, or detailed internals. Unselected view templates are invisible to normal paths and do not create active objects or a second component identity.
 
-A renderer creates context for each component instance, including target medium, page or viewport, available space, purpose, state, and capabilities. View selection works like media and container queries: declaration order is preference order, and the first view whose condition holds and whose footprint fits wins. In `maximum-that-fits` mode the renderer works outside-in, instantiates that branch, and conditionally adapts it before layout and routing.
+View selection works like media and container queries against a renderer-created context; the exact semantics live in [REQUIREMENTS.md](REQUIREMENTS.md) section 7.4.
 
 ### No coordinate authoring
 
@@ -59,9 +57,9 @@ diagram.tsx
     -> Excalidraw, SVG, Canvas, or another painter
 ```
 
-## Authoring direction
+## Authoring
 
-The exact API is still a draft, but the intended composition looks like this:
+Composition looks like this:
 
 ```tsx
 type ServiceProps = {
@@ -129,14 +127,22 @@ An endpoint that names only an object, such as `services/client/ui`, creates a d
 
 A normal deep line target stops at the deepest object instantiated by the selected views. If a line truly needs a different target for one rendered view, endpoint alternatives provide the explicit escape hatch through a typed `alt()` helper: it chooses `abc` when `foo` renders view `view`, otherwise `foo/bar`. A compact string spelling may exist as sugar, but the structured helper is normative, and normal paths never expose the meta tree.
 
-## Documents
+## Documentation
+
+- [Overview](docs/overview.md) explains the model and where Excalmermaid fits.
+- [Getting started](docs/getting-started.md) creates and renders a TSX model as an editable Excalidraw document.
+- [Routing, corridors, and ports](docs/routing-and-ports.md) illustrates hierarchy-crossing routes, sharing modes, port groups, and docks.
+- [UML with Excalmermaid](docs/uml.md) covers the UML library and its normalization to the core model.
+- [Documentation index](docs/README.md) links the complete guide set.
+
+The language and implementation contracts are documented separately:
 
 - [DESIGN.md](DESIGN.md) describes implementation architecture and plumbing only.
 - [REQUIREMENTS.md](REQUIREMENTS.md) states the normative language and system requirements.
 - [MODEL.md](MODEL.md) defines the conceptual data model and draft Logical IR.
-- [`examples/`](examples/) contains visual reference fixtures and pre-implementation grammar examples.
+- [`examples/`](examples/) contains complete architecture and UML models.
 
-The documents and fixtures are written before implementation on purpose. A grammar change must update every affected fixture so the language is continuously tested against real design drawings rather than toy flowcharts.
+A grammar change must update every affected fixture so the language stays tested against real design drawings rather than toy flowcharts.
 
 ## Reference fixtures
 
@@ -149,9 +155,9 @@ Each fixture contains the original drawing and the TSX model intended to reprodu
 
 The references exercise nested containment, repeated components, long hierarchy-crossing routes, shared trunks, fan-out and fan-in, routing corridors, annotations, boundaries, and mixed levels of detail.
 
-## UML grammar examples
+## UML examples
 
-[`examples/uml/`](examples/uml/) contains complete TSX formulations for class, object, component, deployment, package, use-case, sequence, activity, and state-machine diagrams. These examples have no `original.png`; they test the breadth and composability of the language rather than reproduction of one supplied drawing.
+[`examples/uml/`](examples/uml/) contains complete TSX formulations for class, object, component, deployment, package, use-case, sequence, activity, and state-machine diagrams.
 
 The UML vocabulary is expressed as an ordinary TSX component library over the core model. UML diagram types therefore do not become privileged syntax or renderer-specific IR variants.
 

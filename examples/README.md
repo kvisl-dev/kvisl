@@ -1,10 +1,10 @@
 # Examples
 
-The examples are design inputs for the language. They do not require a compiler or renderer to exist yet.
+The examples are complete Excalmermaid models covering architecture drawings, UML, and focused language features.
 
 ## Visual reference fixtures
 
-These directories pair a supplied drawing with the TSX model intended to reproduce it:
+These directories pair a reference drawing with its TSX model:
 
 - [`vegvisir-voice-agents/`](vegvisir-voice-agents/)
 - [`modelplane-fleet-inference/`](modelplane-fleet-inference/)
@@ -15,4 +15,6 @@ Each visual fixture contains `original.png` and `diagram.tsx`.
 
 ## Grammar-coverage examples
 
-[`uml/`](uml/) contains TSX-only examples for the principal UML diagram families. They test whether the core model can host a broad notation as a composable library. They are not tied to a supplied bitmap and therefore do not have `original.png` files.
+[`uml/`](uml/) contains examples for the principal UML diagram families. They demonstrate how the core model hosts a broad notation as a composable library.
+
+[`coverage/`](coverage/) exercises core features the visual fixtures do not reach: a component embedded upright and rotated 90°, `strictPorts`, `separate` port-group anti-affinity, `avoid` regions, an explicit share group without a common named port, and theme tokens. The modelplane fixture additionally carries a conditional rule (the media-query analog).

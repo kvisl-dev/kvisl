@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="540" viewBox="0 0 1200 540" role="img" aria-labelledby="title desc">
+  <title id="title">A line routed through a parent padding corridor</title>
+  <desc id="desc">A line leaves a source inside the left subsystem vertically, travels horizontally through reserved parent padding, then enters the right subsystem vertically and docks at the target.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#6d4aff"/>
+    </marker>
+    <style>
+      text { font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #172033; }
+      .small { font-size: 15px; }
+      .label { font-size: 17px; font-weight: 600; }
+      .muted { fill: #5f6b7c; }
+      .scope { fill: #ffffff; stroke: #7b8798; stroke-width: 2; }
+      .node { fill: #eef5ff; stroke: #2878c8; stroke-width: 2.5; }
+      .route { fill: none; stroke: #6d4aff; stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; }
+    </style>
+  </defs>
+
+  <rect x="1" y="1" width="1198" height="538" rx="22" fill="#f8fafc" stroke="#d8dee8" stroke-width="2"/>
+  <text x="40" y="42" class="label">Hierarchy-crossing route</text>
+
+  <rect x="40" y="65" width="1120" height="430" rx="22" fill="#ffffff" stroke="#344054" stroke-width="2.5"/>
+  <text x="68" y="96" class="label">parent scope</text>
+
+  <rect x="70" y="116" width="1060" height="82" rx="12" fill="#eaf7f5" stroke="#18a999" stroke-width="2" stroke-dasharray="8 6"/>
+  <text x="92" y="145" class="label">parent top-padding corridor</text>
+  <text x="600" y="175" text-anchor="middle" class="small muted">reserved by layout because the route and label occupy this band</text>
+
+  <rect x="92" y="225" width="410" height="220" rx="18" class="scope"/>
+  <text x="116" y="258" class="label">source subsystem</text>
+  <rect x="175" y="345" width="235" height="62" rx="14" class="node"/>
+  <text x="292.5" y="382" text-anchor="middle" class="label">producer</text>
+  <circle cx="292.5" cy="345" r="7" fill="#ffffff" stroke="#6d4aff" stroke-width="3"/>
+
+  <rect x="698" y="225" width="410" height="220" rx="18" class="scope"/>
+  <text x="722" y="258" class="label">target subsystem</text>
+  <rect x="790" y="345" width="235" height="62" rx="14" class="node"/>
+  <text x="907.5" y="382" text-anchor="middle" class="label">consumer</text>
+  <circle cx="907.5" cy="345" r="7" fill="#ffffff" stroke="#6d4aff" stroke-width="3"/>
+
+  <path d="M 292.5 345 L 292.5 157 L 907.5 157 L 907.5 345" class="route" marker-end="url(#arrow)"/>
+
+  <rect x="205" y="269" width="175" height="36" rx="18" fill="#f1edff"/>
+  <text x="292.5" y="292" text-anchor="middle" class="small">implicit exit</text>
+
+  <rect x="465" y="123" width="270" height="36" rx="18" fill="#dff5f1"/>
+  <text x="600" y="146" text-anchor="middle" class="small">explicit corridor segment + label</text>
+
+  <rect x="820" y="269" width="175" height="36" rx="18" fill="#f1edff"/>
+  <text x="907.5" y="292" text-anchor="middle" class="small">implicit entry</text>
+
+  <text x="600" y="474" text-anchor="middle" class="small muted">The author selects the region. The router chooses portals, tracks, bends, and dock geometry.</text>
+</svg>

@@ -1,8 +1,8 @@
 # UML grammar examples
 
-This directory contains pre-implementation TSX examples for the principal UML diagram families. They are language-design fixtures: their purpose is to prove that UML notation can be expressed as composable library components over the Excalmermaid core rather than as privileged core diagram types.
+This directory contains TSX examples for the principal UML diagram families. UML notation is expressed as composable library components over the Excalmermaid core rather than as privileged core diagram types.
 
-Unlike the visual reference fixtures in the parent directory, these examples do not currently have an `original.png` and are not pixel-reproduction targets. Each file is nevertheless intended to be a complete logical model with no absolute coordinates.
+Each file is a complete logical model with no absolute coordinates.
 
 The current set covers:
 
@@ -16,7 +16,7 @@ The current set covers:
 - [activity diagrams](activity-diagram.tsx);
 - [state-machine diagrams](state-machine-diagram.tsx).
 
-[`uml.tsx`](uml.tsx) is an illustrative UML component library implemented with ordinary TSX components and core entities. It ships its notation presentation as a library-layer stylesheet (`umlStyles`), so a theme or document can override any of it without touching the components. It is part of the grammar design, not a runtime implementation.
+[`uml.tsx`](uml.tsx) is a UML component library implemented with ordinary TSX components and core entities. It ships its notation presentation as a library-layer stylesheet (`umlStyles`), so a theme or document can override any of it without touching the components.
 
 More specialized UML families — communication, composite-structure, timing, interaction-overview, and profile diagrams — are candidates for a later coverage set. The current set first establishes the structural, behavioral, and interaction mechanisms on which those notations build.
 

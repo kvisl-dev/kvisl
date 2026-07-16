@@ -1,0 +1,111 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="700" viewBox="0 0 1200 700" role="img" aria-labelledby="title desc">
+  <title id="title">Port group affinity modes</title>
+  <desc id="desc">Four panels compare merge, bundle, free, and separate affinity for lines attached to three distinct named ports in one PortGroup.</desc>
+  <defs>
+    <style>
+      text { font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #172033; }
+      .heading { font-size: 20px; font-weight: 600; }
+      .label { font-size: 14px; font-weight: 600; }
+      .small { font-size: 13px; fill: #5f6b7c; }
+      .panel { fill: #ffffff; stroke: #d0d7e2; stroke-width: 2; }
+      .object { fill: #eef5ff; stroke: #2878c8; stroke-width: 2.5; }
+      .peer { fill: #fff7df; stroke: #d78b00; stroke-width: 2; }
+      .route { fill: none; stroke: #6d4aff; stroke-width: 2.8; stroke-linecap: round; stroke-linejoin: round; }
+      .trunk { fill: none; stroke: #6d4aff; stroke-width: 6; stroke-linecap: round; }
+      .group { fill: none; stroke: #18a999; stroke-width: 3; }
+    </style>
+  </defs>
+
+  <rect x="1" y="1" width="1198" height="698" rx="22" fill="#f8fafc" stroke="#d8dee8" stroke-width="2"/>
+  <text x="40" y="42" class="heading">One PortGroup, three distinct ports</text>
+
+  <!-- merge -->
+  <g transform="translate(35 68)">
+    <rect width="550" height="270" rx="18" class="panel"/>
+    <text x="275" y="36" text-anchor="middle" class="heading">merge affinity</text>
+    <text x="275" y="58" text-anchor="middle" class="small">distinct docks, shared positive-length geometry</text>
+    <rect x="28" y="82" width="105" height="150" rx="14" class="object"/>
+    <text x="80" y="151" text-anchor="middle" class="label">service</text>
+    <path d="M148 94 L140 94 L140 220 L148 220" class="group"/>
+    <rect x="126" y="99" width="14" height="14" rx="2" fill="#fff" stroke="#2878c8" stroke-width="3"/>
+    <rect x="126" y="150" width="14" height="14" rx="2" fill="#fff" stroke="#2878c8" stroke-width="3"/>
+    <rect x="126" y="201" width="14" height="14" rx="2" fill="#fff" stroke="#2878c8" stroke-width="3"/>
+    <text x="151" y="89" class="small">group</text>
+    <rect x="425" y="88" width="92" height="38" rx="10" class="peer"/><text x="471" y="112" text-anchor="middle" class="label">reader</text>
+    <rect x="425" y="138" width="92" height="38" rx="10" class="peer"/><text x="471" y="162" text-anchor="middle" class="label">writer</text>
+    <rect x="425" y="188" width="92" height="38" rx="10" class="peer"/><text x="471" y="212" text-anchor="middle" class="label">watcher</text>
+    <path d="M140 106 C180 106 180 144 215 157" class="route"/>
+    <path d="M140 157 L215 157" class="route"/>
+    <path d="M140 208 C180 208 180 170 215 157" class="route"/>
+    <path d="M215 157 L330 157" class="trunk"/>
+    <path d="M330 157 C365 144 375 107 425 107" class="route"/>
+    <path d="M330 157 L425 157" class="route"/>
+    <path d="M330 157 C365 170 375 207 425 207" class="route"/>
+    <text x="275" y="251" text-anchor="middle" class="small">The group creates a share relation across different ports.</text>
+  </g>
+
+  <!-- bundle -->
+  <g transform="translate(615 68)">
+    <rect width="550" height="270" rx="18" class="panel"/>
+    <text x="275" y="36" text-anchor="middle" class="heading">bundle affinity</text>
+    <text x="275" y="58" text-anchor="middle" class="small">separate strokes kept close and parallel</text>
+    <rect x="28" y="82" width="105" height="150" rx="14" class="object"/>
+    <text x="80" y="151" text-anchor="middle" class="label">service</text>
+    <path d="M148 94 L140 94 L140 220 L148 220" class="group"/>
+    <rect x="126" y="99" width="14" height="14" rx="2" fill="#fff" stroke="#2878c8" stroke-width="3"/>
+    <rect x="126" y="150" width="14" height="14" rx="2" fill="#fff" stroke="#2878c8" stroke-width="3"/>
+    <rect x="126" y="201" width="14" height="14" rx="2" fill="#fff" stroke="#2878c8" stroke-width="3"/>
+    <text x="151" y="89" class="small">group</text>
+    <rect x="425" y="88" width="92" height="38" rx="10" class="peer"/><text x="471" y="112" text-anchor="middle" class="label">reader</text>
+    <rect x="425" y="138" width="92" height="38" rx="10" class="peer"/><text x="471" y="162" text-anchor="middle" class="label">writer</text>
+    <rect x="425" y="188" width="92" height="38" rx="10" class="peer"/><text x="471" y="212" text-anchor="middle" class="label">watcher</text>
+    <path d="M140 106 C190 106 190 145 230 145 L350 145 C385 145 385 107 425 107" class="route" stroke="#2878c8"/>
+    <path d="M140 157 L425 157" class="route"/>
+    <path d="M140 208 C190 208 190 169 230 169 L350 169 C385 169 385 207 425 207" class="route" stroke="#18a999"/>
+    <text x="275" y="251" text-anchor="middle" class="small">The strokes remain individually addressable and styled.</text>
+  </g>
+
+  <!-- free -->
+  <g transform="translate(35 368)">
+    <rect width="550" height="270" rx="18" class="panel"/>
+    <text x="275" y="36" text-anchor="middle" class="heading">free affinity</text>
+    <text x="275" y="58" text-anchor="middle" class="small">the group adds no route relationship</text>
+    <rect x="28" y="82" width="105" height="150" rx="14" class="object"/>
+    <text x="80" y="151" text-anchor="middle" class="label">service</text>
+    <path d="M148 94 L140 94 L140 220 L148 220" class="group"/>
+    <rect x="126" y="99" width="14" height="14" rx="2" fill="#fff" stroke="#2878c8" stroke-width="3"/>
+    <rect x="126" y="150" width="14" height="14" rx="2" fill="#fff" stroke="#2878c8" stroke-width="3"/>
+    <rect x="126" y="201" width="14" height="14" rx="2" fill="#fff" stroke="#2878c8" stroke-width="3"/>
+    <text x="151" y="89" class="small">group</text>
+    <rect x="425" y="88" width="92" height="38" rx="10" class="peer"/><text x="471" y="112" text-anchor="middle" class="label">reader</text>
+    <rect x="425" y="138" width="92" height="38" rx="10" class="peer"/><text x="471" y="162" text-anchor="middle" class="label">writer</text>
+    <rect x="425" y="188" width="92" height="38" rx="10" class="peer"/><text x="471" y="212" text-anchor="middle" class="label">watcher</text>
+    <path d="M140 106 C235 78 330 130 425 107" class="route"/>
+    <path d="M140 157 C245 194 330 115 425 157" class="route"/>
+    <path d="M140 208 C230 230 350 180 425 207" class="route"/>
+    <text x="275" y="251" text-anchor="middle" class="small">Each line is routed independently.</text>
+  </g>
+
+  <!-- separate -->
+  <g transform="translate(615 368)">
+    <rect width="550" height="270" rx="18" class="panel"/>
+    <text x="275" y="36" text-anchor="middle" class="heading">separate affinity</text>
+    <text x="275" y="58" text-anchor="middle" class="small">anti-affinity keeps routes visibly apart</text>
+    <rect x="28" y="82" width="105" height="150" rx="14" class="object"/>
+    <text x="80" y="151" text-anchor="middle" class="label">service</text>
+    <path d="M148 94 L140 94 L140 220 L148 220" class="group"/>
+    <rect x="126" y="99" width="14" height="14" rx="2" fill="#fff" stroke="#2878c8" stroke-width="3"/>
+    <rect x="126" y="150" width="14" height="14" rx="2" fill="#fff" stroke="#2878c8" stroke-width="3"/>
+    <rect x="126" y="201" width="14" height="14" rx="2" fill="#fff" stroke="#2878c8" stroke-width="3"/>
+    <text x="151" y="89" class="small">group</text>
+    <rect x="425" y="88" width="92" height="38" rx="10" class="peer"/><text x="471" y="112" text-anchor="middle" class="label">reader</text>
+    <rect x="425" y="138" width="92" height="38" rx="10" class="peer"/><text x="471" y="162" text-anchor="middle" class="label">writer</text>
+    <rect x="425" y="188" width="92" height="38" rx="10" class="peer"/><text x="471" y="212" text-anchor="middle" class="label">watcher</text>
+    <path d="M140 106 L200 106 L200 78 L365 78 L365 107 L425 107" class="route"/>
+    <path d="M140 157 L425 157" class="route"/>
+    <path d="M140 208 L200 208 L200 236 L365 236 L365 207 L425 207" class="route"/>
+    <text x="275" y="251" text-anchor="middle" class="small">The router must preserve visible spacing between tracks.</text>
+  </g>
+
+  <text x="600" y="677" text-anchor="middle" class="small">The ports retain separate canonical identities in every mode; affinity changes only the relation between attached lines.</text>
+</svg>

@@ -1,0 +1,75 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="610" viewBox="0 0 1200 610" role="img" aria-labelledby="title desc">
+  <title id="title">Named ports, port groups, and line-owned docks</title>
+  <desc id="desc">Three panels compare one shared named port, a group of three distinct named ports, and three private line-owned docks on the same object.</desc>
+  <defs>
+    <style>
+      text { font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #172033; }
+      .heading { font-size: 20px; font-weight: 600; }
+      .label { font-size: 15px; font-weight: 600; }
+      .small { font-size: 14px; fill: #5f6b7c; }
+      .panel { fill: #ffffff; stroke: #d0d7e2; stroke-width: 2; }
+      .object { fill: #eef5ff; stroke: #2878c8; stroke-width: 2.5; }
+      .source { fill: #fff7df; stroke: #d78b00; stroke-width: 2; }
+      .line { fill: none; stroke: #6d4aff; stroke-width: 3; stroke-linecap: round; }
+    </style>
+  </defs>
+
+  <rect x="1" y="1" width="1198" height="608" rx="22" fill="#f8fafc" stroke="#d8dee8" stroke-width="2"/>
+  <text x="40" y="42" class="heading">Attachment identity is explicit</text>
+
+  <!-- named port -->
+  <rect x="35" y="68" width="350" height="490" rx="18" class="panel"/>
+  <text x="210" y="106" text-anchor="middle" class="heading">same named port</text>
+  <text x="210" y="131" text-anchor="middle" class="small">one reusable dock identity</text>
+  <rect x="55" y="190" width="92" height="40" rx="10" class="source"/><text x="101" y="215" text-anchor="middle" class="label">line A</text>
+  <rect x="55" y="285" width="92" height="40" rx="10" class="source"/><text x="101" y="310" text-anchor="middle" class="label">line B</text>
+  <rect x="55" y="380" width="92" height="40" rx="10" class="source"/><text x="101" y="405" text-anchor="middle" class="label">line C</text>
+  <rect x="270" y="202" width="90" height="205" rx="16" class="object"/><text x="315" y="291" text-anchor="middle" class="label">service</text><text x="315" y="313" text-anchor="middle" class="small">events</text>
+  <circle cx="270" cy="305" r="9" fill="#ffffff" stroke="#6d4aff" stroke-width="3"/>
+  <path d="M147 210 C210 210 215 270 270 305" class="line"/>
+  <path d="M147 305 L270 305" class="line"/>
+  <path d="M147 400 C210 400 215 340 270 305" class="line"/>
+  <text x="210" y="463" text-anchor="middle" class="small">All ends identify `service.events`.</text>
+  <text x="210" y="486" text-anchor="middle" class="small">They form one topological join.</text>
+  <rect x="112" y="510" width="196" height="30" rx="15" fill="#f1edff"/><text x="210" y="530" text-anchor="middle" class="small">sharing lives on the port</text>
+
+  <!-- port group -->
+  <rect x="425" y="68" width="350" height="490" rx="18" class="panel"/>
+  <text x="600" y="106" text-anchor="middle" class="heading">PortGroup</text>
+  <text x="600" y="131" text-anchor="middle" class="small">several distinct named ports</text>
+  <rect x="445" y="190" width="92" height="40" rx="10" class="source"/><text x="491" y="215" text-anchor="middle" class="label">reader</text>
+  <rect x="445" y="285" width="92" height="40" rx="10" class="source"/><text x="491" y="310" text-anchor="middle" class="label">writer</text>
+  <rect x="445" y="380" width="92" height="40" rx="10" class="source"/><text x="491" y="405" text-anchor="middle" class="label">watcher</text>
+  <rect x="660" y="180" width="90" height="250" rx="16" class="object"/><text x="705" y="296" text-anchor="middle" class="label">store</text>
+  <rect x="653" y="205" width="14" height="14" rx="2" fill="#ffffff" stroke="#2878c8" stroke-width="3"/>
+  <rect x="653" y="298" width="14" height="14" rx="2" fill="#ffffff" stroke="#2878c8" stroke-width="3"/>
+  <rect x="653" y="391" width="14" height="14" rx="2" fill="#ffffff" stroke="#2878c8" stroke-width="3"/>
+  <path d="M537 210 L653 212" class="line"/>
+  <path d="M537 305 L653 305" class="line"/>
+  <path d="M537 400 L653 398" class="line"/>
+  <path d="M638 193 L625 193 L625 417 L638 417" fill="none" stroke="#18a999" stroke-width="3"/>
+  <text x="618" y="184" text-anchor="end" class="small">group</text>
+  <text x="600" y="463" text-anchor="middle" class="small">`read`, `write`, and `watch` remain</text>
+  <text x="600" y="486" text-anchor="middle" class="small">separate identities, kept adjacent.</text>
+  <rect x="488" y="510" width="224" height="30" rx="15" fill="#dff5f1"/><text x="600" y="530" text-anchor="middle" class="small">order + affinity + branch policy</text>
+
+  <!-- line-owned docks -->
+  <rect x="815" y="68" width="350" height="490" rx="18" class="panel"/>
+  <text x="990" y="106" text-anchor="middle" class="heading">object-only endpoints</text>
+  <text x="990" y="131" text-anchor="middle" class="small">one private dock per line end</text>
+  <rect x="835" y="190" width="92" height="40" rx="10" class="source"/><text x="881" y="215" text-anchor="middle" class="label">line A</text>
+  <rect x="835" y="285" width="92" height="40" rx="10" class="source"/><text x="881" y="310" text-anchor="middle" class="label">line B</text>
+  <rect x="835" y="380" width="92" height="40" rx="10" class="source"/><text x="881" y="405" text-anchor="middle" class="label">line C</text>
+  <rect x="1050" y="180" width="90" height="250" rx="16" class="object"/><text x="1095" y="297" text-anchor="middle" class="label">service</text>
+  <circle cx="1050" cy="220" r="8" fill="#ffffff" stroke="#6d4aff" stroke-width="3"/>
+  <circle cx="1050" cy="305" r="8" fill="#ffffff" stroke="#6d4aff" stroke-width="3"/>
+  <circle cx="1050" cy="390" r="8" fill="#ffffff" stroke="#6d4aff" stroke-width="3"/>
+  <path d="M927 210 L1050 220" class="line"/>
+  <path d="M927 305 L1050 305" class="line"/>
+  <path d="M927 400 L1050 390" class="line"/>
+  <text x="990" y="463" text-anchor="middle" class="small">Every endpoint names only `service`.</text>
+  <text x="990" y="486" text-anchor="middle" class="small">Coincident placement still cannot join.</text>
+  <rect x="879" y="510" width="222" height="30" rx="15" fill="#f1edff"/><text x="990" y="530" text-anchor="middle" class="small">identity = line + end index</text>
+
+  <text x="600" y="588" text-anchor="middle" class="small">Named ports join. Port groups coordinate distinct ports. Object-only endpoints stay private.</text>
+</svg>

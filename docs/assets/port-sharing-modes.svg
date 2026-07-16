@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="590" viewBox="0 0 1200 590" role="img" aria-labelledby="title desc">
+  <title id="title">Port sharing modes</title>
+  <desc id="desc">Three panels compare merge, bundle, and separate routing for three lines attached to the same named port.</desc>
+  <defs>
+    <style>
+      text { font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #172033; }
+      .heading { font-size: 20px; font-weight: 600; }
+      .label { font-size: 16px; font-weight: 600; }
+      .small { font-size: 14px; fill: #5f6b7c; }
+      .panel { fill: #ffffff; stroke: #d0d7e2; stroke-width: 2; }
+      .target { fill: #eef5ff; stroke: #2878c8; stroke-width: 2.5; }
+      .source { fill: #fff7df; stroke: #d78b00; stroke-width: 2; }
+      .line { fill: none; stroke: #6d4aff; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+      .trunk { fill: none; stroke: #6d4aff; stroke-width: 7; stroke-linecap: round; }
+      .bundle { fill: none; stroke-width: 2.5; stroke-linecap: round; }
+    </style>
+  </defs>
+
+  <rect x="1" y="1" width="1198" height="588" rx="22" fill="#f8fafc" stroke="#d8dee8" stroke-width="2"/>
+  <text x="40" y="42" class="heading">Three lines, one canonical named port</text>
+
+  <!-- merge -->
+  <rect x="35" y="68" width="350" height="475" rx="18" class="panel"/>
+  <text x="210" y="106" text-anchor="middle" class="heading">merge</text>
+  <text x="210" y="131" text-anchor="middle" class="small">one genuine shared stroke</text>
+  <rect x="55" y="178" width="95" height="44" rx="11" class="source"/><text x="102.5" y="205" text-anchor="middle" class="label">A</text>
+  <rect x="55" y="280" width="95" height="44" rx="11" class="source"/><text x="102.5" y="307" text-anchor="middle" class="label">B</text>
+  <rect x="55" y="382" width="95" height="44" rx="11" class="source"/><text x="102.5" y="409" text-anchor="middle" class="label">C</text>
+  <rect x="278" y="247" width="82" height="110" rx="14" class="target"/><text x="319" y="296" text-anchor="middle" class="label">sink</text><text x="319" y="317" text-anchor="middle" class="small">events</text>
+  <circle cx="278" cy="302" r="8" fill="#ffffff" stroke="#6d4aff" stroke-width="3"/>
+  <path d="M150 200 C185 200 185 276 220 302" class="line"/>
+  <path d="M150 302 L220 302" class="line"/>
+  <path d="M150 404 C185 404 185 328 220 302" class="line"/>
+  <path d="M220 302 L278 302" class="trunk"/>
+  <circle cx="220" cy="302" r="6" fill="#6d4aff"/>
+  <text x="210" y="475" text-anchor="middle" class="small">Branches meet as late as possible,</text>
+  <text x="210" y="496" text-anchor="middle" class="small">then share one trunk into the port.</text>
+
+  <!-- bundle -->
+  <rect x="425" y="68" width="350" height="475" rx="18" class="panel"/>
+  <text x="600" y="106" text-anchor="middle" class="heading">bundle</text>
+  <text x="600" y="131" text-anchor="middle" class="small">separate strokes, closely parallel</text>
+  <rect x="445" y="178" width="95" height="44" rx="11" class="source"/><text x="492.5" y="205" text-anchor="middle" class="label">A</text>
+  <rect x="445" y="280" width="95" height="44" rx="11" class="source"/><text x="492.5" y="307" text-anchor="middle" class="label">B</text>
+  <rect x="445" y="382" width="95" height="44" rx="11" class="source"/><text x="492.5" y="409" text-anchor="middle" class="label">C</text>
+  <rect x="668" y="247" width="82" height="110" rx="14" class="target"/><text x="709" y="296" text-anchor="middle" class="label">sink</text><text x="709" y="317" text-anchor="middle" class="small">events</text>
+  <circle cx="668" cy="302" r="8" fill="#ffffff" stroke="#6d4aff" stroke-width="3"/>
+  <path d="M540 200 C575 200 575 282 610 288 L660 288 L668 302" class="bundle" stroke="#2878c8"/>
+  <path d="M540 302 L668 302" class="bundle" stroke="#6d4aff"/>
+  <path d="M540 404 C575 404 575 322 610 316 L660 316 L668 302" class="bundle" stroke="#18a999"/>
+  <text x="600" y="475" text-anchor="middle" class="small">The routes stay visually associated</text>
+  <text x="600" y="496" text-anchor="middle" class="small">without becoming the same stroke.</text>
+
+  <!-- separate -->
+  <rect x="815" y="68" width="350" height="475" rx="18" class="panel"/>
+  <text x="990" y="106" text-anchor="middle" class="heading">separate</text>
+  <text x="990" y="131" text-anchor="middle" class="small">only the dock is shared</text>
+  <rect x="835" y="178" width="95" height="44" rx="11" class="source"/><text x="882.5" y="205" text-anchor="middle" class="label">A</text>
+  <rect x="835" y="280" width="95" height="44" rx="11" class="source"/><text x="882.5" y="307" text-anchor="middle" class="label">B</text>
+  <rect x="835" y="382" width="95" height="44" rx="11" class="source"/><text x="882.5" y="409" text-anchor="middle" class="label">C</text>
+  <rect x="1058" y="247" width="82" height="110" rx="14" class="target"/><text x="1099" y="296" text-anchor="middle" class="label">sink</text><text x="1099" y="317" text-anchor="middle" class="small">events</text>
+  <circle cx="1058" cy="302" r="8" fill="#ffffff" stroke="#6d4aff" stroke-width="3"/>
+  <path d="M930 200 C1005 200 1018 278 1058 302" class="line"/>
+  <path d="M930 302 L1058 302" class="line"/>
+  <path d="M930 404 C1005 404 1018 326 1058 302" class="line"/>
+  <text x="990" y="475" text-anchor="middle" class="small">Every path splits immediately;</text>
+  <text x="990" y="496" text-anchor="middle" class="small">no positive-length trunk is allowed.</text>
+
+  <text x="600" y="570" text-anchor="middle" class="small">Cardinality permits attachments; the sharing policy controls adjacent geometry.</text>
+</svg>
