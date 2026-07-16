@@ -24,10 +24,11 @@ export default (
           <UmlUseCase id="notify" name="Send notification" />
         </Grid>
 
-        <UmlRelation id="checkout-auth" kind="include" from="cases/checkout" to="cases/authenticate" name="«include»" />
-        <UmlRelation id="checkout-pay" kind="include" from="cases/checkout" to="cases/pay" name="«include»" />
-        <UmlRelation id="refund-notify" kind="include" from="cases/refund" to="cases/notify" name="«include»" />
-        <UmlRelation id="refund-checkout" kind="extend" from="cases/refund" to="cases/checkout" name="«extend» [paid]" />
+        {/* the «include» / «extend» keywords derive from the relation kind */}
+        <UmlRelation id="checkout-auth" kind="include" from="cases/checkout" to="cases/authenticate" />
+        <UmlRelation id="checkout-pay" kind="include" from="cases/checkout" to="cases/pay" />
+        <UmlRelation id="refund-notify" kind="include" from="cases/refund" to="cases/notify" />
+        <UmlRelation id="refund-checkout" kind="extend" from="cases/refund" to="cases/checkout" guard="paid" />
       </Scope>
 
       <Column id="secondary-actors" gap="large">

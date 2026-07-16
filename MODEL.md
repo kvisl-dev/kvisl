@@ -15,6 +15,7 @@ This document defines the conceptual data model and the Logical IR. [REQUIREMENT
 7. **Entity-only endpoints own their docks.** A line end that names no port receives a distinct dock identity derived from that line and end. Coincident automatic docks do not imply a join.
 8. **Containers are addressable.** Every author-declared structural container has a local ID and contributes one segment to its canonical containment path. Reusable components therefore create nested namespaces without requiring global IDs.
 9. **Views are renderer-instantiated meta branches.** View templates are invisible to ordinary paths. A renderer creates context, scores the alternatives, and materializes one branch without changing the component's semantic identity or canonical ports.
+10. **Drawings depict subjects.** Any entity may carry an opaque reference to a semantic subject defined outside the diagram. The core records and round-trips that reference; interpreting it — identity, consistency across diagrams, metamodel validation — belongs to libraries and tooling.
 
 ## 2. Frames and orientation
 
@@ -59,9 +60,15 @@ Port-group JSX children are membership shorthand rather than containment. Ports 
 
 Scopes are full endpoints: they can carry ports, be targets of lines, and be anchors for notes.
 
+### 3.1 Semantic subjects
+
+An entity may declare a **subject**: a namespaced, opaque reference to a semantic entity defined outside the diagram (`{ namespace: "uml", id: "sales/Order" }`). Several depictions — a class in a class diagram, a lifeline classifier in an interaction, an artifact in a deployment — can reference the same subject from different documents. The normalizer stores and serializes the reference without interpreting it. Cross-diagram identity management, subject catalogs, and metamodel validation are library and tooling concerns; TSX makes the authoring side nearly free because a subject is just a module-level TypeScript value that several diagram files import.
+
 ## 4. Elements, content, and sizing
 
 An `Element` (`Node` in the authoring surface) is a visible or intrinsically measurable object: a shape primitive with structured content (text runs, icons, images), ports, and a size policy. Sizing is intrinsic by default — derived from content, padding, and minimum/maximum bounds. Fixed sizes are geometric constraints, not positions.
+
+Content composes into **groups**: an ordered content run may contain nested groups with a role (`attributes`, `operations`, ...). Groups are the model for compartments — a theme derives dividers and spacing between adjacent groups from their roles, so notation like UML class compartments needs no empty divider pseudo-content. The authoring surface exposes groups as `<Compartment role="...">` children of an element.
 
 ## 5. Layout
 
@@ -81,7 +88,17 @@ The owner and its ports exist independently of every view. `PortPlacement` maps 
 
 An ordinary deep endpoint is resolved against Projection IR. If the selected rendering did not instantiate its complete suffix, the endpoint truncates to the deepest instantiated object and attaches there automatically.
 
-An exceptional endpoint-alternative reference contains a common ordinary prefix and cases keyed by the selected view of an object on that path. For `api.{foo#view:abc, foo:bar}`, view `view` continues through branch-local `abc`; the unqualified case continues through ordinary `bar`. Exact view cases precede the default, and truncation remains the final fallback. The `#view` selector is part of this endpoint expression only and never exposes the meta tree to general path lookup.
+An exceptional endpoint-alternative reference contains a common ordinary prefix and cases keyed by the selected view of an object on that path. The normative authoring form is a typed helper — a string mini-grammar would violate the "no custom syntax embedded in TSX text" rule:
+
+```tsx
+to={alt({
+  prefix: "api",
+  cases: [{ base: "foo", view: "view", suffix: "abc" }],
+  default: "foo/bar",
+})}
+```
+
+If the renderer instantiated `foo` with the view named `view`, the selected case continues through branch-local `abc`; otherwise the default case continues through ordinary `foo/bar`. Exact view cases precede the default, and truncation remains the final fallback. A compact string spelling such as `api.{foo#view:abc, foo:bar}` may exist as documented sugar, but it must normalize to exactly the same structured value and never exposes the meta tree to general path lookup.
 
 ## 6. Whitespace: margins, padding, gaps, and corridors
 
@@ -124,6 +141,8 @@ A **port** is a named attachment point on an element or scope. Ports are symmetr
 
 The canonical identity of a named port is `(owner entity, local port ID)`. An endpoint such as `api.request` creates that port implicitly when no declaration exists. A nested `<Port id="request" .../>`, a post-hoc `<Port ref="api.request" .../>`, and a TSX handle bound there all refine or alias that same identity. The normalizer collects these forms before merging properties, so source order is irrelevant. Conflicting explicit property values are diagnostics.
 
+Implicit creation absorbs typos: `api.reqest` silently becomes a second port and a separate join. The normalizer therefore warns when an implicitly created port has exactly one attachment and an ID close to another port on the same owner, and a container can opt into `strictPorts`, where endpoints may only name explicitly declared ports.
+
 Every line end has a dock identity. An endpoint naming only `api` receives a line-owned dock whose identity is derived from `(line key, end index)` and whose position is chosen by the router. It does not synthesize the stable named port `request` or any other author-visible ID. Two lines targeting `api` without a port own distinct docks and do not join even if solving places those docks at the same coordinate.
 
 A dock carries a base presentation style. Its line contributes an overlay to the rendered dock: non-conflicting properties from both are retained, and the line wins property conflicts. Named-port docks and line-owned docks use the same cascade. Dock-only properties such as marker shape or fill therefore compose with line properties such as stroke or width.
@@ -153,7 +172,21 @@ A **line** is the semantic connection unit.
   - `implicit` — inferred by the normalizer: hierarchy climbs and descents toward the least common ancestor, and connective runs through implicit corridors. Authors never enumerate crossed boundaries.
   - `explicit` — authored pins. An explicit segment either passes `through` a region (a named corridor, `gap(...)`, or `padding(...)`) or `via` a waypoint entity. Explicit segments are where labels live: "this line goes out into the whitespace between the boxes, and the label sits there."
 
-Labels belong to segments. A label has a placement along its segment (`start`, `center`, `end`, `auto`) and an orientation (`upright` or `along` the segment). A line-level `label` is sugar for an automatically placed label on the line's most prominent run.
+Labels belong to segments and to ends. A segment label has a placement along its segment (`start`, `center`, `end`, `auto`) and an orientation (`upright` or `along` the segment); an end label renders near its dock. A line-level `label` is sugar for an automatically placed label on the line's most prominent run.
+
+**Structured ends.** Instead of `from`/`to` props, a line may declare its two ends as children — the line then reads literally from end to end, with segments in between:
+
+```tsx
+<Line id="customer-orders" role="uml-association">
+  <End ref="customer.orders" head={hollowDiamond}
+       labels={[{ text: "customer", role: "role" }, { text: "1", role: "multiplicity" }]} />
+  <Segment through={gap("customers", "orders")} label="orders" />
+  <End ref="order.customer" head="open-arrow"
+       labels={[{ text: "0..*", role: "multiplicity" }]} />
+</Line>
+```
+
+An `End` carries the endpoint reference plus everything that adorns that end: per-end head, dock style, side hint, and ordered end labels. Exactly two `End` children are required when the form is used; mixing `End` children with `from`/`to` props, or with a conflicting line-level `heads` value, is a diagnostic. `from`/`to` remain the sugar for the common two-liner and normalize into the same two endpoint records.
 
 Lines reserve routing space by default (`space: "reserve"`); `overlay` opts a line out of layout interaction. A line may list regions to `avoid`.
 
@@ -178,7 +211,9 @@ A `Note` is annotation content placed by an **anchor relation** instead of layou
 
 ## 11. Constraints and paint order
 
-Constraints are typed, serializable, and carry a strength (`required` or a weighted preference). Families include ordering (`before`/`after`, also for ports, corridor tracks, and corridors within a region), `adjacent`, `align`, `same-size`, `near`, `below`/`between` conveniences, `avoid-overlap`, and routing prohibitions. Partial orders are preferred; unmentioned entities stay unconstrained; hard cycles are diagnostics.
+Constraints are typed, serializable, and carry a strength (`required` or a weighted preference). Families include ordering (`before`/`after`, also for ports, corridor tracks, and corridors within a region), `adjacent`, `align`, `same-size`, `near`, `inside`, `below`/`between` conveniences, `avoid-overlap`, and routing prohibitions. Partial orders are preferred; unmentioned entities stay unconstrained; hard cycles are diagnostics.
+
+An `extent` constraint stretches one element along an axis between two anchor entities: the element's extent spans from the position of the first anchor to the position of the second. This is the model for activation bars on a lifeline, fork/join bars spanning their flows, brackets, and similar span-shaped visuals — they stay honest elements instead of abusing thick overlay lines. The exact edge-versus-center anchor semantics remain to be refined.
 
 Paint order is an independent relation of `before`/`after` pairs.
 
@@ -225,6 +260,11 @@ interface LogicalIR {
   extensions?: Readonly<Record<string, unknown>>;
 }
 
+interface SubjectRef {
+  namespace: string;
+  id: string;
+}
+
 interface EntityBase<Kind extends EntityKind> {
   key: EntityKey;
   kind: Kind;
@@ -232,6 +272,7 @@ interface EntityBase<Kind extends EntityKind> {
   domain: "ordinary" | "meta";
   ownerScope: EntityKey | null;
   parent: EntityKey | null;
+  subject?: SubjectRef;
   when?: ConditionIR;
   roles: readonly string[];
   classes: readonly string[];
@@ -329,7 +370,8 @@ type PrimitiveSpec =
 type ContentSpec =
   | { kind: "text"; value: string; role?: string; orientation?: "upright" | "frame" }
   | { kind: "icon"; name: string; namespace?: string }
-  | { kind: "image"; source: string; alt?: string };
+  | { kind: "image"; source: string; alt?: string }
+  | { kind: "group"; role?: string; items: readonly ContentSpec[] };
 
 interface SizePolicy {
   width: SizeValue;
@@ -597,6 +639,7 @@ interface EndpointIR {
   target: EndpointTargetIR;
   dock: EndpointDockIR;
   side?: Side;       // local hint when target is not a port
+  labels: readonly LabelIR[]; // end adornments, rendered near the dock
 }
 
 type EndpointDockIR =
@@ -671,7 +714,9 @@ interface LineStyleSpec {
 }
 ```
 
-An authoring-level `labels` collection on a line is normalization sugar, not another IR location for labels. `start` entries attach to the first suitable inferred or explicit segment, `end` entries to the last, and `center` or `auto` entries to a suitable prominent segment. Multiple entries remain distinct `LabelIR` values in source order. This supports relation names, endpoint roles, multiplicities, guards, and sequence numbers without encoding several semantics into one string.
+An authoring-level `labels` collection on a line is normalization sugar, not another IR location for labels. `start` entries attach to the labels of `ends[0]`, `end` entries to `ends[1]`, and `center` or `auto` entries to a suitable prominent segment. Labels declared on `<End>` children land directly on their `EndpointIR`. Multiple entries remain distinct `LabelIR` values in source order. This supports relation names, endpoint roles, multiplicities, guards, and sequence numbers without encoding several semantics into one string.
+
+`<End>` children normalize into the same `EndpointIR` records as `from`/`to` props: the first `End` becomes `ends[0]`, per-`End` `head` values fill the `heads` tuple, a per-`End` `dock` block becomes the port-independent dock style, and `labels` land on the endpoint. Mixing `End` children with `from`/`to` props or with a conflicting line-level `heads` value is a diagnostic.
 
 `traversal` segments are the normalizer's record of inferred hierarchy crossings toward the least common ancestor. They are always `origin: "implicit"`; concrete portals, tracks, and bends first appear in Solved IR.
 
@@ -728,6 +773,12 @@ type ConstraintIR =
       container: EntityKey;
       padding?: Length;
     })
+  | (ConstraintBase<"extent"> & {
+      item: EntityKey;
+      axis: Axis;
+      from: EntityKey; // anchor entities
+      to: EntityKey;
+    })
   | (ConstraintBase<"below"> & { item: EntityKey; reference: EntityKey })
   | (ConstraintBase<"between"> & { item: EntityKey; first: EntityKey; second: EntityKey })
   | (ConstraintBase<"avoid-overlap"> & { members: readonly EntityKey[] });
@@ -770,12 +821,15 @@ How authoring constructs normalize (details and phases in [REQUIREMENTS.md](REQU
 - A named endpoint whose port has not been declared synthesizes a `PortIR` with `origin: "implicit"`. Nested and post-hoc `Port` declarations refine that same owner-and-ID identity, and TSX handles resolve to it.
 - An entity-only endpoint emits a `line-owned` `EndpointDockIR` derived from its line key and end index. It never synthesizes a `PortIR`, and equal target entities do not merge these dock identities.
 - A `Line` without explicit segments emits only implicit segments. Explicit `<Segment>` children are kept in order; the normalizer weaves implicit traversal segments between them.
-- A line-level `label` becomes a `LabelIR` with `placement: "auto"`; an authoring-level `labels` collection becomes several ordered `LabelIR` values distributed onto suitable start, center, end, or automatic segments.
+- `<End>` children normalize to `ends[0]` and `ends[1]` with their heads, dock styles, side hints, and end labels; `from`/`to` props are sugar for the same records. Mixing both forms, or fewer or more than two `End` children, is a diagnostic.
+- A line-level `label` becomes a `LabelIR` with `placement: "auto"`; an authoring-level `labels` collection distributes onto the two endpoints (`start`/`end`) and a suitable prominent segment (`center`/`auto`).
 - `heads="both"` and friends resolve to the per-end `heads` tuple.
+- `<Compartment>` children of an element become `group` content entries; a theme derives dividers between adjacent groups.
+- A `subject` prop becomes the entity's `SubjectRef`; the normalizer round-trips it without interpretation.
 - Lines sharing one canonical named port receive a port-derived `ShareSpec`; its mode and branch policy come from `PortIR.sharing`. Port-group affinity and explicit line groups apply only when they add a relation across distinct ports.
 - Dock style resolution overlays compatible line-style properties onto the port or line-owned dock style. The line wins conflicts and non-conflicting properties from both inputs survive.
 - `View` declarations emit hidden `ViewIR` alternatives with score expressions and template children. Normalization does not select or instantiate them.
-- Ordinary reference resolution skips the meta domain. Endpoint-alternative syntax emits an `alternatives` target whose exact-view and default cases are validated separately. Renderer materialization chooses a case, then truncates at the deepest instantiated object if necessary.
+- Ordinary reference resolution skips the meta domain. The typed `alt()` helper — and any string sugar for it — emits an `alternatives` target whose exact-view and default cases are validated separately. Renderer materialization chooses a case, then truncates at the deepest instantiated object if necessary.
 - `PortPlacement` emits a meta mapping from one canonical ordinary port to one anchor in the containing view template.
 - The renderer creates context, evaluates scores and conditions, and emits Projection IR before layout and routing. This stage never re-runs TSX.
 - Notes with an anchor leave layout membership; notes without one join their parent's layout.

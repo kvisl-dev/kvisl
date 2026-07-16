@@ -1,76 +1,53 @@
-// Pre-implementation UML grammar example. Message order is logical; shared
-// occurrence rows are expressed by constraints rather than Y coordinates.
+// Pre-implementation UML grammar example. JSX order inside Interaction is the
+// temporal order. The library derives occurrences, alignments, activations,
+// and fragment frames from the messages; the core never models time.
 
-import { Constraint, Diagram, Row, Scope, Title } from "@excalmermaid/core";
-import { UmlLifeline, UmlRelation } from "./uml";
-
-const slots = ["m1", "m2", "m3", "m4", "m5", "m6", "m7", "m8"] as const;
+import { Diagram, Title } from "@excalmermaid/core";
+import { Interaction, Lifeline, Loop, Message, Reply } from "./uml";
 
 export default (
   <Diagram id="uml-sequence-example" theme="uml">
     <Title>Place an order — sequence diagram</Title>
 
-    <Row id="lifelines" gap="large" order="fixed" align="start">
-      <UmlLifeline id="customer" name="customer: Customer" events={slots} />
-      <UmlLifeline
+    <Interaction id="checkout-flow">
+      {/* the same subject as the Customer class in the class diagram */}
+      <Lifeline
+        id="customer"
+        name="customer"
+        classifier="Customer"
+        subject={{ namespace: "uml", id: "sales/Customer" }}
+      />
+      <Lifeline
         id="checkout"
-        name="checkout: CheckoutService"
-        events={slots}
-        activations={[{ id: "activation", from: "m1", to: "m8" }]}
+        name="checkout"
+        classifier="CheckoutService"
+        activations={[{ id: "handling", from: "submit", to: "confirmation" }]}
       />
-      <UmlLifeline
+      <Lifeline
         id="inventory"
-        name="inventory: InventoryService"
-        events={slots}
-        activations={[{ id: "activation", from: "m2", to: "m3" }]}
+        name="inventory"
+        classifier="InventoryService"
+        activations={[{ id: "reserving", from: "reserve", to: "reserved" }]}
       />
-      <UmlLifeline
+      <Lifeline
         id="payment"
-        name="payment: PaymentProvider"
-        events={slots}
-        activations={[{ id: "activation", from: "m4", to: "m7" }]}
+        name="payment"
+        classifier="PaymentProvider"
+        activations={[{ id: "authorizing", from: "authorize", to: "authorized" }]}
       />
-    </Row>
 
-    {slots.map((slot) => (
-      <Constraint
-        key={`${slot}-row`}
-        id={`${slot}-row`}
-        kind="align"
-        edge="center-y"
-        members={[
-          `lifelines/customer/${slot}`,
-          `lifelines/checkout/${slot}`,
-          `lifelines/inventory/${slot}`,
-          `lifelines/payment/${slot}`,
-        ]}
-        strength="required"
-      />
-    ))}
+      <Message id="submit" from="customer" to="checkout" call="submit(order)" />
+      <Message id="reserve" from="checkout" to="inventory" call="reserve(items)" />
+      <Reply id="reserved" from="inventory" to="checkout" value="reservation" />
+      <Message id="authorize" from="checkout" to="payment" call="authorize(total)" />
 
-    <UmlRelation id="submit" kind="message" sequence="1" from="lifelines/customer/m1.message" to="lifelines/checkout/m1.message" name="submit(order)" />
-    <UmlRelation id="reserve" kind="message" sequence="2" from="lifelines/checkout/m2.message" to="lifelines/inventory/m2.message" name="reserve(items)" />
-    <UmlRelation id="reserved" kind="reply" sequence="2.1" from="lifelines/inventory/m3.message" to="lifelines/checkout/m3.message" name="reservation" />
-    <UmlRelation id="authorize" kind="message" sequence="3" from="lifelines/checkout/m4.message" to="lifelines/payment/m4.message" name="authorize(total)" />
+      <Loop id="payment-retry" guard="pending and attempts < 3">
+        <Message id="poll" from="checkout" to="payment" call="status()" />
+        <Reply id="pending" from="payment" to="checkout" value="pending" />
+      </Loop>
 
-    <Scope id="payment-retry" role="uml-combined-fragment" label="loop [pending and attempts < 3]">
-      <UmlRelation id="poll" kind="message" sequence="3.1" from="../lifelines/checkout/m5.message" to="../lifelines/payment/m5.message" name="status()" />
-      <UmlRelation id="pending" kind="reply" sequence="3.2" from="../lifelines/payment/m6.message" to="../lifelines/checkout/m6.message" name="pending" />
-    </Scope>
-    <Constraint
-      id="payment-retry-frame"
-      kind="inside"
-      container="payment-retry"
-      members={[
-        "lifelines/checkout/m5",
-        "lifelines/payment/m5",
-        "lifelines/checkout/m6",
-        "lifelines/payment/m6",
-      ]}
-      strength="required"
-    />
-
-    <UmlRelation id="authorized" kind="reply" sequence="3.3" from="lifelines/payment/m7.message" to="lifelines/checkout/m7.message" name="authorized" />
-    <UmlRelation id="confirmation" kind="reply" sequence="4" from="lifelines/checkout/m8.message" to="lifelines/customer/m8.message" name="confirmation" />
+      <Reply id="authorized" from="payment" to="checkout" value="authorized" />
+      <Reply id="confirmation" from="checkout" to="customer" value="confirmation" />
+    </Interaction>
   </Diagram>
 );

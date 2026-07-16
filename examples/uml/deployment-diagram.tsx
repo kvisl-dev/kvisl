@@ -58,7 +58,7 @@ export default (
       kind="dependency"
       from="topology/cloud/checkout-pod/checkout-image"
       to="topology/cloud/checkout-pod/checkout"
-      name="«deploy»"
+      keyword="deploy"
     />
   </Diagram>
 );

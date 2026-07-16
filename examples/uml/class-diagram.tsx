@@ -1,7 +1,14 @@
 // Pre-implementation UML grammar example. No absolute coordinates.
+// Associations use structured ends; generalizations join at a named port and
+// share one hollow-triangle trunk; ref() composition keeps deep paths short.
 
-import { Diagram, Grid, Title } from "@excalmermaid/core";
-import { UmlClass, UmlPackage, UmlRelation } from "./uml";
+import { Diagram, Grid, Port, Title, ref } from "@excalmermaid/core";
+import { UmlAssociation, UmlClass, UmlEnd, UmlPackage, UmlRelation } from "./uml";
+
+const customer = ref("model/customer");
+const order = ref("model/order");
+const lineItem = ref("model/line-item");
+const paymentMethod = ref("model/payment-method");
 
 export default (
   <Diagram id="uml-class-example" theme="uml">
@@ -12,6 +19,7 @@ export default (
         <UmlClass
           id="customer"
           name="Customer"
+          subject={{ namespace: "uml", id: "sales/Customer" }}
           attributes={[
             { visibility: "-", text: "id: CustomerId" },
             { visibility: "-", text: "email: Email" },
@@ -26,6 +34,7 @@ export default (
         <UmlClass
           id="order"
           name="Order"
+          subject={{ namespace: "uml", id: "sales/Order" }}
           attributes={[
             { visibility: "-", text: "number: OrderNumber" },
             { visibility: "-", text: "status: OrderStatus" },
@@ -53,56 +62,56 @@ export default (
 
         <UmlClass id="payment-method" name="PaymentMethod" abstract />
         <UmlClass id="credit-card" name="CreditCardPayment" />
+        <UmlClass id="paypal" name="PaypalPayment" />
         <UmlClass id="payment-authorizer" name="PaymentAuthorizer" stereotype="interface" />
         <UmlClass id="stripe-authorizer" name="StripeAuthorizer" />
         <UmlClass id="order-repository" name="OrderRepository" stereotype="interface" />
       </Grid>
 
-      <UmlRelation
-        id="customer-orders"
-        kind="association"
-        from="model/customer.orders"
-        to="model/order.customer"
-        fromRole="customer"
-        fromMultiplicity="1"
-        toRole="orders"
-        toMultiplicity="0..*"
+      {/* both subclass arrows join at this port and share one triangle trunk */}
+      <Port
+        ref={paymentMethod.port("generalizations")}
+        side="bottom"
+        sharing={{ mode: "merge", branch: "late" }}
       />
-      <UmlRelation
-        id="order-items"
-        kind="composition"
-        from="model/order.items"
-        to="model/line-item.order"
-        fromMultiplicity="1"
-        toMultiplicity="1..*"
-      />
+
+      <UmlAssociation id="customer-orders">
+        <UmlEnd ref={customer.port("orders")} role="customer" multiplicity="1" />
+        <UmlEnd ref={order.port("customer")} role="orders" multiplicity="0..*" />
+      </UmlAssociation>
+
+      <UmlAssociation id="order-items">
+        <UmlEnd ref={order.port("items")} aggregation="composite" multiplicity="1" />
+        <UmlEnd ref={lineItem.port("order")} multiplicity="1..*" />
+      </UmlAssociation>
+
+      <UmlAssociation id="customer-payment-methods">
+        <UmlEnd ref={customer.port("payments")} aggregation="shared" multiplicity="1" />
+        <UmlEnd ref={paymentMethod} multiplicity="0..*" />
+      </UmlAssociation>
+
+      <UmlAssociation id="order-payment" name="pays with">
+        <UmlEnd ref={order.port("payment")} />
+        <UmlEnd ref={paymentMethod} navigable multiplicity="1" />
+      </UmlAssociation>
+
       <UmlRelation
         id="credit-card-generalization"
         kind="generalization"
         from="model/credit-card"
-        to="model/payment-method"
+        to={paymentMethod.port("generalizations")}
       />
       <UmlRelation
-        id="customer-payment-methods"
-        kind="aggregation"
-        from="model/customer.payments"
-        to="model/payment-method"
-        fromMultiplicity="1"
-        toMultiplicity="0..*"
+        id="paypal-generalization"
+        kind="generalization"
+        from="model/paypal"
+        to={paymentMethod.port("generalizations")}
       />
       <UmlRelation
         id="stripe-realization"
         kind="realization"
         from="model/stripe-authorizer"
         to="model/payment-authorizer"
-      />
-      <UmlRelation
-        id="order-payment"
-        kind="directed-association"
-        from="model/order.payment"
-        to="model/payment-method"
-        name="pays with"
-        toMultiplicity="1"
       />
       <UmlRelation
         id="repository-dependency"

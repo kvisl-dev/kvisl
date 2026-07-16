@@ -2,7 +2,7 @@
 // deliberately exercise distinct line-owned docks.
 
 import { Diagram, Row, Title } from "@excalmermaid/core";
-import { UmlObject, UmlRelation } from "./uml";
+import { UmlAssociation, UmlEnd, UmlObject, UmlRelation } from "./uml";
 
 export default (
   <Diagram id="uml-object-example" theme="uml">
@@ -45,7 +45,10 @@ export default (
     </Row>
 
     <UmlRelation id="alice-order" kind="association" from="instances/alice" to="instances/order-4711" name="orders" />
-    <UmlRelation id="order-line" kind="composition" from="instances/order-4711" to="instances/line-1" name="items" />
+    <UmlAssociation id="order-line" name="items">
+      <UmlEnd ref="instances/order-4711" aggregation="composite" />
+      <UmlEnd ref="instances/line-1" />
+    </UmlAssociation>
     <UmlRelation id="order-payment" kind="association" from="instances/order-4711" to="instances/payment-1" name="payment" />
   </Diagram>
 );

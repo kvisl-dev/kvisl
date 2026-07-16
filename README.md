@@ -131,7 +131,7 @@ A named endpoint such as `services/client/ui.health` implicitly defines `health`
 
 An endpoint that names only an object, such as `services/client/ui`, creates a distinct dock owned by that line end. It does not create a port or join with another object-only endpoint. Dock and line styles both contribute to the rendered attachment: non-conflicting properties compose, while the line style overrides any property also supplied by the dock.
 
-A normal deep line target stops at the deepest object instantiated by the selected views. If a line truly needs a different target for one rendered view, endpoint alternatives provide the explicit escape hatch: `api.{foo#view:abc, foo:bar}` chooses `abc` when `foo` renders view `view`, otherwise `bar`. The `#view` selector is local to this endpoint expression; normal paths never expose the meta tree.
+A normal deep line target stops at the deepest object instantiated by the selected views. If a line truly needs a different target for one rendered view, endpoint alternatives provide the explicit escape hatch through a typed `alt()` helper: it chooses `abc` when `foo` renders view `view`, otherwise `foo/bar`. A compact string spelling may exist as sugar, but the structured helper is normative, and normal paths never expose the meta tree.
 
 ## Documents
 

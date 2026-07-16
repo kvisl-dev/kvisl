@@ -125,6 +125,8 @@ Components MAY call other components and use ordinary TypeScript abstractions. T
 
 Components MAY construct serializable render conditions through authoring helpers. They MUST NOT branch on target size, renderer capability, or solved geometry during TSX evaluation, because doing so would erase the unchosen meta branch before another renderer can instantiate it.
 
+A library MAY use declaration components whose JSX result is a deterministic, serializable, library-private value consumed by an enclosing component before that enclosing component expands to core expressions. This permits an interaction component, for example, to interpret ordered `Lifeline`, `Message`, and `Loop` declarations and lower them to ordinary scopes, lines, and constraints. Private declaration values are not diagram entities, require no author ID, and MUST NOT reach a core component, the document root, or Logical IR; doing so is a diagnostic. The precise TypeScript typing and provenance protocol remains an open grammar decision.
+
 The runtime SHOULD evaluate components deterministically and, where possible, without unrestricted access to the clock, randomness, network, environment variables, or file system. A first implementation MAY be less restrictive for trusted local modules, but the semantic result MUST still be defined as reproducible.
 
 ### 2.4 Expression values
@@ -169,6 +171,7 @@ The precise component names and property forms remain subject to design. Normali
 - `PortGroup`: adjacency, ordering, and affinity rules for ports;
 - `Corridor`: named refinement of an implicit whitespace routing region;
 - `Line`: symmetric semantic connection built from segments;
+- `End`: structured declaration of one line end with its reference, head, dock style, and end labels;
 - `Segment`: one leg of a line, explicit or implicit, labelable;
 - `Note`: annotation placed by an anchor relation;
 - `Constraint`: hard requirement or soft preference;
@@ -233,6 +236,12 @@ All ordinary intermediate containers on a deep path MUST be author-addressable. 
 
 Port-group JSX nesting is membership shorthand, not another owner for the ports. A port remains canonically owned by its enclosing element or scope and is selected with `owner.port`; the named `PortGroup` itself is independently addressable for ordering and affinity constraints.
 
+### 4.4 Semantic subjects
+
+Every entity MUST be able to carry an optional, namespaced, serializable subject reference identifying the semantic entity it depicts (`subject={{ namespace: "uml", id: "sales/Order" }}`). The normalizer MUST store and round-trip the reference without interpreting it. Several diagrams MUST be able to reference the same subject so that a class, a lifeline classifier, and a deployment artifact can depict one definition.
+
+Identity schemes, subject catalogs, cross-diagram consistency, and metamodel validation MUST NOT be core normalizer features; they belong to libraries and tooling built on the preserved references. Sharing a subject definition across diagram files SHOULD use ordinary TypeScript module values.
+
 ## 5. Orientation
 
 Every scope MUST own a local frame. All directional vocabulary inside a scope — sides (`top`, `right`, `bottom`, `left`), axes (`horizontal`, `vertical`), layout directions (`row`, `column`), note placements — MUST be interpreted in that local frame.
@@ -267,6 +276,22 @@ It MUST also permit richer content without compressing it into an untyped string
   <Text role="subtitle">public</Text>
 </Node>
 ```
+
+Content MUST support ordered, role-tagged groups so that compartmented notation is structural rather than simulated with divider pseudo-content:
+
+```tsx
+<Node id="order" role="uml-class">
+  <Text role="uml-class-name">Order</Text>
+  <Compartment role="attributes">
+    <Text>- number: OrderNumber</Text>
+  </Compartment>
+  <Compartment role="operations">
+    <Text>+ total(): Money</Text>
+  </Compartment>
+</Node>
+```
+
+A theme MUST be able to derive dividers and spacing between adjacent groups from their roles.
 
 The exact set of shape primitives remains open. Extensions MUST be namespaced and serializable; arbitrary renderer objects or JavaScript classes MUST NOT enter the IR.
 
@@ -350,18 +375,22 @@ Ports owned by the component remain stable across views. `PortPlacement` maps on
 
 References from outside a component SHOULD target stable component ports or stable semantic children. An ordinary deep endpoint is resolved against Projection IR. If some suffix was not instantiated by the selected views, the endpoint MUST truncate to the deepest instantiated object on that path and attach there using automatic docking. This is the default behavior for a line whose semantic destination exists more deeply than the current rendering exposes.
 
-As a break-glass escape hatch, a line endpoint MAY contain explicit view alternatives. The current candidate syntax is:
+As a break-glass escape hatch, a line endpoint MAY contain explicit view alternatives. The normative authoring form MUST be a typed helper — a string mini-grammar would violate section 2.1:
 
 ```tsx
 <Line
   from="client.request"
-  to="api.{foo#view:abc, foo:bar}"
+  to={alt({
+    prefix: "api",
+    cases: [{ base: "foo", view: "view", suffix: "abc" }],
+    default: "foo/bar",
+  })}
 />
 ```
 
-This endpoint has the common prefix `api`. If the renderer instantiated `foo` with the view named `view`, the selected case continues to branch-local target `abc`. Otherwise the unqualified case continues through the ordinary target `foo.bar`. An exact `#view` case has precedence over the unqualified case; if neither applies, or if the chosen suffix is only partially instantiated, resolution truncates to the deepest instantiated object.
+This endpoint has the common prefix `api`. If the renderer instantiated `foo` with the view named `view`, the selected case continues to branch-local target `abc`. Otherwise the default case continues through the ordinary target `foo/bar`. An exact view case has precedence over the default; if neither applies, or if the chosen suffix is only partially instantiated, resolution truncates to the deepest instantiated object.
 
-The braces and `#view` selector belong to endpoint-alternative syntax, not ordinary path lookup. They do not make the meta tree globally visible. The normalized representation MUST keep common prefix, cases, selected-view predicates, suffixes, and truncation policy structurally rather than preserve an opaque string. Typed helper syntax MAY normalize identically. This mechanism SHOULD remain exceptional; stable component ports plus `PortPlacement` are the composable default.
+A compact string spelling such as `api.{foo#view:abc, foo:bar}` MAY exist as documented sugar, but it MUST normalize to exactly the same structured value, and it never makes the meta tree visible to ordinary path lookup. The normalized representation MUST keep common prefix, cases, selected-view predicates, suffixes, and truncation policy structurally rather than preserve an opaque string. This mechanism SHOULD remain exceptional; stable component ports plus `PortPlacement` are the composable default.
 
 The renderer owns materialization. For every component instance it creates an immutable context from the render request, inherited context, renderer capabilities, semantic state, and current outside-in allocation. Views evaluate their score expressions against that context. The renderer then instantiates the winning viable branch into Projection IR, evaluates conditional adjustments inside that branch, and submits the projection to layout and routing. A solve may reject a tentative branch and ask the renderer planner to instantiate its fallback. Solved IR MUST retain the selected view, context snapshot or hash, score explanation, and template provenance for every materialized instance.
 
@@ -399,6 +428,8 @@ Every line end MUST resolve to a dock identity. A named port is a reusable dock 
 Two different entity-only line ends on the same object MUST receive different line-owned docks. They MUST NOT form a join merely because the router places them at the same coordinate. A line-owned dock MUST NOT synthesize an author-visible port, participate in a named-port join, or consume named-port cardinality. Explicit line share groups MAY still coordinate the adjacent paths without changing the distinct dock identities.
 
 A named endpoint reference such as `api.request` MUST resolve to the canonical port identity `(api, request)`. If no explicit declaration exists, the normalizer MUST create that named port implicitly with default properties. Referencing only `api` requests an anonymous automatic attachment point and MUST NOT create a stable named port.
+
+Implicit creation absorbs typos: a misspelled port name silently becomes a second port and a separate join instead of an error. The normalizer SHOULD warn when an implicitly created port has exactly one attached line end and its ID is within a small edit distance of another port on the same owner. A container MUST be able to opt into strict ports (`strictPorts`), under which endpoints may only name explicitly declared ports and implicit creation is an error.
 
 Both a dock and its line MUST be able to contribute presentation properties to the rendered attachment. The effective dock style MUST be a property-wise cascade: first the dock's own style, then the compatible line style as an overlay. Properties supplied only by the dock remain; properties supplied only by the line are added; when both supply the same property, the line value wins. This rule applies to named-port docks and line-owned docks alike. Marker shape, fill, size, and other dock-only properties remain available even when stroke, width, opacity, roughness, or an explicit dock override comes from the line.
 
@@ -471,9 +502,23 @@ Ports MUST be groupable. A port group coordinates several distinct ports; it is 
 
 ## 9. Lines, segments, and sharing
 
-### 9.1 Symmetric lines
+### 9.1 Symmetric lines and structured ends
 
 A `Line` is the semantic connection unit. It MUST be declarable in every scope. Its two ends MUST be symmetric: `from` and `to` are positional labels, and direction is expressed by head properties (`forward`, `backward`, `both`, `none`, plus per-end head shapes), not by an asymmetry of the ends.
+
+A line MUST also accept its two ends as structured `End` children, so that everything adorning one end — reference, head, dock style, side hint, and ordered end labels — is declared at that end instead of through paired `fromX`/`toX` properties:
+
+```tsx
+<Line id="customer-orders" role="uml-association">
+  <End ref="customer.orders" head={hollowDiamond}
+       labels={[{ text: "customer", role: "role" }, { text: "1", role: "multiplicity" }]} />
+  <Segment through={gap("customers", "orders")} label="orders" />
+  <End ref="order.customer" head="open-arrow"
+       labels={[{ text: "0..*", role: "multiplicity" }]} />
+</Line>
+```
+
+When the structured form is used, exactly two `End` children MUST be present, the first binding `ends[0]`. Mixing `End` children with `from`/`to` props, or with a conflicting line-level `heads` value, MUST be a diagnostic. Both forms MUST normalize to identical endpoint records.
 
 ### 9.2 Segments, implicit and explicit
 
@@ -505,11 +550,11 @@ The normalizer MUST weave implicit segments around explicit ones and MUST reject
 
 ### 9.3 Labels
 
-A label belongs to a segment. Pinning a segment into a whitespace region and labeling it there MUST be the primary way to place a label "out in the white space between the boxes". A line-level `label` MUST be accepted as sugar for an automatically placed label on the line's most prominent run.
+A label belongs to a segment or to an end. Pinning a segment into a whitespace region and labeling it there MUST be the primary way to place a label "out in the white space between the boxes". End labels declared on `End` children MUST render near their dock. A line-level `label` MUST be accepted as sugar for an automatically placed label on the line's most prominent run.
 
-Labels MUST support placement along their segment (`start`, `center`, `end`, `auto`) and orientation (`upright` or `along` the segment). Rich structured label content MAY be added later, but plain text MUST be supported.
+Segment labels MUST support placement along their segment (`start`, `center`, `end`, `auto`) and orientation (`upright` or `along` the segment). Rich structured label content MAY be added later, but plain text MUST be supported.
 
-A line MUST also accept an ordered collection of label specifications as authoring sugar for labels on inferred segments. This is required for notations such as UML associations, where one semantic relation can carry a name near its center plus roles and multiplicities near both ends. A `start` label normalizes onto the first suitable segment, an `end` label onto the last suitable segment, and `center` or `auto` onto a suitable prominent segment. Several labels at the same placement MUST remain distinct and be orderable; they MUST NOT be concatenated into one opaque string.
+A line MUST also accept an ordered collection of label specifications as authoring sugar. This is required for notations such as UML associations, where one semantic relation can carry a name near its center plus roles and multiplicities near both ends. A `start` entry normalizes onto the labels of `ends[0]`, an `end` entry onto `ends[1]`, and `center` or `auto` onto a suitable prominent segment. Several labels at the same placement MUST remain distinct and be orderable; they MUST NOT be concatenated into one opaque string. `End` children are the preferred authoring form for end labels; the collection remains for prop-style lines.
 
 ### 9.4 Port joins and shared geometry
 
@@ -566,10 +611,13 @@ At least these constraint families SHOULD be available:
 - `sameWidth`, `sameHeight`, and `sameSize`;
 - `near`;
 - `inside`;
+- `extent`: stretch one element along an axis between two anchor entities;
 - `avoidOverlap`;
 - `avoidCrossing`;
 - routing through or outside a region;
 - paint order before or behind an object.
+
+The `extent` family exists so that span-shaped visuals — activation bars on a lifeline, fork and join bars spanning their flows, brackets — remain honest elements stretched between anchors instead of thick overlay lines.
 
 Partial-order constraints MUST be preferred. Objects not mentioned remain unconstrained. Cycles in hard ordering constraints MUST produce diagnostics.
 
@@ -673,7 +721,7 @@ Normalization MUST include at least these phases:
 7. Merge all declarations for each canonical `(owner, local port ID)` and diagnose conflicting explicit properties.
 8. Resolve every required port handle and named-port endpoint to a canonical port; assign every entity-only endpoint a distinct line-owned dock identity derived from its line and end index.
 9. Resolve ordinary entity and region references without entering meta branches; normalize endpoint alternatives into common prefixes, selected-view cases, branch-local suffixes, defaults, and truncation policy.
-10. Canonicalize defaults and shorthand forms (line-level labels, `heads` sugar, layout components versus properties).
+10. Canonicalize defaults and shorthand forms (`End` children versus `from`/`to` props, line-level labels, `heads` sugar, compartments, layout components versus properties).
 11. Weave implicit segments around explicit ones; infer least common ancestors and traversals.
 12. Derive join groups from common canonical ports without joining distinct line-owned docks, then apply port sharing policies, explicit share groups, and port-group affinity.
 13. Preserve every component view template, port-placement mapping, and normalized condition tree for renderer materialization.
@@ -694,6 +742,10 @@ At least these errors MUST be detected before solving:
 - duplicate or unstable line-owned dock identities, or a line-owned dock accidentally participating in a named-port join;
 - statically or dynamically incompatible port payload types;
 - port handles or component functions remaining after lowering;
+- a library-private declaration value reaching a core component, document root, or Logical IR;
+- inside a `strictPorts` container, an endpoint that names an undeclared port;
+- mixed `End` children and `from`/`to` props, fewer or more than two `End` children, or an `End` head conflicting with a line-level `heads` value;
+- an `extent` constraint whose anchors do not resolve or whose axis is invalid;
 - `gap()` between entities that are not layout siblings, or region references that do not resolve;
 - explicit segment sequences no route can satisfy;
 - required `merge` with incompatible styles on the shared piece;
@@ -821,14 +873,18 @@ The first grammar and IR version MUST cover at least these golden scenarios:
 40. The same Logical IR materializes different print, screen, narrow, and wide projections because renderer-created contexts produce different explainable view scores, without re-running TSX.
 41. A conditional line or segment appears only when its condition holds, and a required connection removed by the condition produces a diagnostic.
 42. Cyclic or non-converging size-dependent view fallback is detected and diagnosed deterministically.
-43. A deep ordinary endpoint truncates to its deepest instantiated object when the selected rendering hides its suffix; `api.{foo#view:abc, foo:bar}` selects `abc` for view `view`, otherwise selects `bar`, and still truncates if the chosen suffix is only partly instantiated.
+43. A deep ordinary endpoint truncates to its deepest instantiated object when the selected rendering hides its suffix; an `alt()` endpoint selects `abc` for view `view`, otherwise selects the default `foo/bar`, and still truncates if the chosen suffix is only partly instantiated.
 44. Two lines target the same entity without naming a port and receive distinct line-owned docks; they do not join even if the router chooses the same physical attachment position.
 45. A dock supplies a marker and fill while its line supplies stroke and width; all four properties appear in the effective dock style, and a conflicting line property overrides the corresponding dock property.
-46. A UML class association carries a center name plus independent roles and multiplicities near both ends; all labels remain separate `LabelIR` values on inferred segments.
+46. A UML class association carries a center name plus independent roles and multiplicities near both ends; end labels remain separate `LabelIR` values on their endpoints and the name on a segment.
 47. Generalization, realization, aggregation, composition, dependency, include, extend, transition, and message components normalize to ordinary lines with typed or namespaced endpoint heads, dash styles, and labels.
-48. A sequence diagram aligns corresponding occurrences across independently contained lifelines and orders messages without authoring absolute coordinates; activation bars and a combined fragment remain logical line, scope, and constraint structures.
+48. A sequence diagram derives its occurrences from declared messages, aligns corresponding occurrences across independently contained lifelines, and orders messages without authoring absolute coordinates; activation bars are elements under `extent` constraints and a combined fragment remains a scope plus `inside` constraint.
 49. Activity and state-machine control flows cross partition and composite-state boundaries through ordinary hierarchy traversal, including guards, decisions, forks, joins, history, and final pseudostates.
 50. Every UML grammar example expands to the core Logical IR vocabulary without a diagram-type-specific IR root.
+51. A line declared with two `End` children normalizes to the same endpoint records as the equivalent `from`/`to` form, with end labels on their endpoints.
+52. An element under an `extent` constraint spans exactly from its first anchor to its second along the stated axis.
+53. Two diagrams depicting the same subject reference serialize and read back with that shared `SubjectRef` intact, without any core interpretation.
+54. Inside a `strictPorts` container, an endpoint naming an undeclared port produces a diagnostic; outside, an implicitly created single-attachment port with a near-duplicate name produces a warning.
 
 ## 19. Open grammar decisions
 
@@ -848,20 +904,22 @@ The following details must be decided next by comparing the concrete TSX fixture
 - automatic IDs for non-container entities and their stability guarantees;
 - inline styles versus a CSS-like cascade;
 - the final TSX object syntax for configuring a line-owned dock and line-level dock-style overrides;
-- the final authoring sugar and collision policy for several ordered labels at the start, center, or end of one line;
-- which UML endpoint adornments, compartments, stereotypes, and tagged values are standardized library vocabulary versus namespaced extensions;
-- the reusable constraint vocabulary for lifeline occurrence alignment, activation spans, and combined interaction fragments;
+- the exact `End` prop surface (structured labels versus convenience props such as `role` and `multiplicity` at the core level);
+- which UML endpoint adornments, stereotypes, and tagged values are standardized library vocabulary versus namespaced extensions;
+- the `extent` anchor semantics (edge-to-edge versus center-to-center) and whether spans may follow a line's route rather than an axis;
+- how far the semantic-subject layer reaches: identity schemes, subject catalogs, and which validations a UML model library owns;
 - exact units for size, spacing, margin, padding, pressure, and weights;
 - how corridors subdividing one gap are ordered and addressed;
 - whether a share group can carry its trunk pinning once instead of per line;
 - grouping lines into higher-level semantic flows (line sets) as a library concept;
 - representation of resolved references and regions in canonical JSON and YAML;
 - which core shorthand forms normalization accepts;
+- the children-as-data protocol that lets library containers such as an interaction interpret typed child declarations before expansion;
 - which provenance data the JSX runtime must capture;
 - how reference fixtures express relative placement without turning preferences into accidental hard order;
 - the standardized condition-context vocabulary and utility function for automatic component-view choice;
 - score ranges, tie-breaking, context inheritance, and score-explanation serialization;
 - how view-local port placement maps onto a component's canonical semantic ports;
-- the final separators, escaping, nesting, and completeness rules for endpoint alternatives such as `api.{foo#view:abc, foo:bar}`;
+- the exact `alt()` helper shape and whether the string sugar `api.{foo#view:abc, foo:bar}` ships at all;
 - the exact TSX helpers or object syntax for `Condition`, `When`, `Switch`, and conditional paths;
 - how much renderer/solver backtracking outside-in materialization requires before falling back to a less detailed view;

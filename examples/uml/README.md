@@ -24,12 +24,13 @@ More specialized UML families — communication, composite-structure, timing, in
 
 These examples intentionally exercise requirements that simpler architecture drawings do not:
 
-- class and object compartments;
-- stereotypes, tagged values, visibility, and underlined instance names;
-- endpoint adornments such as hollow triangles and filled or hollow diamonds;
-- several labels on one relationship, including endpoint roles and multiplicities;
+- class and object compartments as structured content groups;
+- stereotypes and keywords as structured values the theme decorates, not «string» text;
+- endpoint adornments through structured line ends (`UmlEnd` over the core `End` grammar): hollow triangles, filled and hollow diamonds, navigability, roles, and multiplicities;
+- generalizations joining at one named port and sharing a triangle trunk;
 - nested package, component, execution-environment, and composite-state boundaries;
-- alignment of interaction occurrences across independently contained lifelines;
-- ordered messages, activations, guards, fragments, forks, joins, decisions, and pseudostates.
+- interactions where JSX order is the temporal order: `Interaction`/`Lifeline`/`Message`/`Reply`/`Loop` expand into occurrences derived from messages, per-message alignment, activation bars under `extent` constraints, and fragment frames — the core never models time;
+- a shared semantic `subject` referenced from a class diagram and a lifeline classifier;
+- guards, forks, joins, decisions, and pseudostates.
 
 Where exact convenience syntax is still unsettled, the examples choose one typed, serializable form and the requirements record the remaining grammar decision. The normalized semantics are the important contract.

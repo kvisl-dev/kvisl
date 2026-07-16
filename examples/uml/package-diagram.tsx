@@ -29,9 +29,10 @@ export default (
       </UmlPackage>
     </Grid>
 
-    <UmlRelation id="checkout-inventory" kind="dependency" from="packages/checkout" to="packages/inventory" name="«import»" />
-    <UmlRelation id="checkout-payments" kind="dependency" from="packages/checkout" to="packages/payments" name="«access»" />
-    <UmlRelation id="checkout-shared" kind="dependency" from="packages/checkout" to="packages/shared-kernel" name="«import»" />
-    <UmlRelation id="payments-shared" kind="dependency" from="packages/payments" to="packages/shared-kernel" name="«merge»" />
+    {/* keywords are structured; the theme renders the guillemets */}
+    <UmlRelation id="checkout-inventory" kind="dependency" from="packages/checkout" to="packages/inventory" keyword="import" />
+    <UmlRelation id="checkout-payments" kind="dependency" from="packages/checkout" to="packages/payments" keyword="access" />
+    <UmlRelation id="checkout-shared" kind="dependency" from="packages/checkout" to="packages/shared-kernel" keyword="import" />
+    <UmlRelation id="payments-shared" kind="dependency" from="packages/payments" to="packages/shared-kernel" keyword="merge" />
   </Diagram>
 );
