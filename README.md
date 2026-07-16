@@ -1,5 +1,13 @@
 > **Pre-Prototype — only design and docs**
 
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="contrib/logo-dark.png">
+    <source media="(prefers-color-scheme: light)" srcset="contrib/logo.png">
+    <img alt="Kvísl Script" src="contrib/logo.png" width="760">
+  </picture>
+</p>
+
 # Kvísl Script
 
 Kvísl Script, or Kvísl for short, is a composable modelling language for architecture diagrams. It is designed for agents to understand, edit, and evolve those diagrams over many iterations without accumulating hand-maintained coordinates or routing geometry. It aims to scale from a small sketch to an effectively unbounded system canvas while keeping logical structure — not pixel coordinates — as the source of truth.
@@ -8,7 +16,13 @@ The long-term target is a model detailed enough to describe a complete distribut
 
 ## Flagship example
 
-[![Agent Substrate component design](examples/agent-substrate/original.png)](examples/agent-substrate/diagram.tsx)
+<a href="examples/agent-substrate/diagram.tsx">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="examples/agent-substrate/original-dark.png">
+    <source media="(prefers-color-scheme: light)" srcset="examples/agent-substrate/original.png">
+    <img alt="Agent Substrate component design" src="examples/agent-substrate/original.png">
+  </picture>
+</a>
 
 The [Agent Substrate model](examples/agent-substrate/diagram.tsx) is the kind of architecture diagram Kvísl is built to create: visually rich, deeply nested, and crossed by connections that do not flatten its hierarchy. Its source describes components, containment, ports, layout intent, and meaningful routing regions rather than drawing coordinates. An agent can expand, restructure, and refine it over many iterations while Kvísl recomputes the concrete layout and routes.
 
