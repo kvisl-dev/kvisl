@@ -82,6 +82,16 @@ In particular, the surface MUST provide:
 
 Pixel coordinates MUST NOT be the primary authoring abstraction. Fixed sizes, minimum sizes, and other geometric constraints MAY be supported. Absolute positions MAY eventually be added as an explicitly marked escape hatch, but ordinary diagrams must not require them.
 
+### 1.6 Conformance profiles
+
+The requirements group into three profiles so that implementations can be built and claimed incrementally:
+
+- **Core** — objects, content and tokens, layout, whitespace routing and corridors, ports and docks, lines, sharing, anchoring and frames, constraints, styling rules, Logical IR, and serialization;
+- **Adaptive** — component views and first-fit selection, conditions, `When`/`Switch`, `PortPlacement`, endpoint alternatives, renderer planning, and Projection IR;
+- **Libraries** — notation vocabularies such as the UML library, built entirely on the other profiles.
+
+Core is mandatory. An implementation MUST declare which further profiles it implements and MUST NOT claim a profile partially. A Core-only implementation treats view declarations as preserved but uninterpreted meta data. Each conformance scenario in section 18 belongs to the profile of the features it exercises.
+
 ## 2. TSX evaluation
 
 ### 2.1 Existing language
@@ -652,11 +662,21 @@ Selectors MUST match on entity kind, shape, roles, classes, and IDs, combined wi
 - structural pseudo-classes (`nth-child`-alikes) and sibling combinators MUST NOT exist: the solver may reorder layout members, so order-dependent selectors would be unstable;
 - multi-step structural selectors MUST NOT cross **style boundaries**. A component's root container is a style boundary by default (marked during expansion; a component may opt out). Roles and classes are the public styling API that themes match across boundaries — single-step role or class selectors match everywhere.
 
-### 12.3 Conditional rules
+### 12.3 Tokens
+
+A cascade layer MUST be able to define named tokens — the custom-property analog — for lengths and colors:
+
+```tsx
+const theme = tokens({ "pale-blue": "#dbeafe", small: 8, medium: 16, large: 24 });
+```
+
+Length- and color-valued properties, including inline props such as `gap="large"`, MUST accept token references by name. Token resolution MUST follow the same layer precedence as rules, so a document can override a theme's palette or spacing scale without touching any rule. A color name that resolves to no token MUST pass through as a literal painter value; a length name that resolves to no token MUST be a diagnostic, because lengths have no literal string form. The spacing words and palette names used throughout the fixtures are theme-supplied tokens.
+
+### 12.4 Conditional rules
 
 A rule MAY carry a condition from the shared condition model of section 7.5 — the media-query and container-query analog. Conditions read the render context and outside-in allocation, never solved geometry, so styling cannot create a layout cycle. A conditional rule applies only while its condition holds in the current render context.
 
-### 12.4 What rules may and may not do
+### 12.5 What rules may and may not do
 
 Rules MUST be able to set presentation properties (fill, stroke, stroke width, dash, opacity, roughness, fonts, text orientation, dock markers) and metric defaults (margin, padding, gap, minimum sizes, spacing). Properties that influence intrinsic size or routing space MUST be resolved before layout and routing; purely painterly properties MAY be applied later.
 
@@ -789,6 +809,7 @@ At least these errors MUST be detected before solving:
 - invalid orientation values;
 - an invalid selector (structural pseudo-class, sibling combinator, or unknown matcher);
 - a rule whose declarations name properties outside the typed namespace without an extension namespace;
+- a length-valued property referencing an unresolved token;
 - a multi-step selector that depends on crossing a closed style boundary (lint-level warning);
 - duplicate view IDs on one owner or an invalid view selector or footprint;
 - invalid, non-serializable, or cyclic render conditions;
@@ -938,6 +959,7 @@ The first grammar and IR version MUST cover at least these golden scenarios:
 64. Re-exporting a locally edited model into an existing Excalidraw document updates the affected elements by canonical-address identity; unrelated elements, their IDs, and their hand-drawn seeds stay byte-identical.
 65. An Excalidraw export keeps arrows bound to their target elements and labels bound as text, so moving a box in the editor keeps its connections attached.
 66. An SVG export contains one group per object with roles and classes as `class` attributes and canonical addresses as stable IDs.
+67. A document-layer token overrides a theme-layer token of the same name; every rule and inline value referencing it resolves to the new value without any rule changing.
 
 ## 19. Open grammar decisions
 

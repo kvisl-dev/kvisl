@@ -272,6 +272,8 @@ renderer default  <  theme  <  library  <  document  <  inline style prop
 
 Within one layer, later rules win; across layers, the higher layer wins. There is no CSS specificity arithmetic — layers replace it. The dock cascade of section 7 (line overlays dock) is the same mechanism at the innermost level.
 
+**Tokens.** A cascade layer may define named tokens — the custom-property analog: `tokens({ "pale-blue": "#dbeafe", large: 24 })`. Length- and color-valued properties reference tokens by name (`gap="large"`, `stroke: "pale-blue"`); resolution follows the same layer precedence as rules, so a document can override a theme's palette or spacing scale without touching any rule. A color name that resolves to no token passes through as a literal for the painter; a length name that resolves to no token is a diagnostic, because a length has no literal string form. The spacing words and palette names throughout the fixtures are theme-supplied tokens.
+
 **Selectors** match on entity kind, shape, roles, classes, and IDs, combined with descendant and child combinators. Two deliberate exclusions:
 
 - no structural pseudo-classes (`nth-child`, sibling combinators): the solver may reorder layout members, so selectors depending on source or solved order would be unstable;
@@ -279,7 +281,7 @@ Within one layer, later rules win; across layers, the higher layer wins. There i
 
 **Conditions** on rules are the same `ConditionIR` used by view selection and `When`/`Switch`: comparisons over the bounded renderer context (medium, page class, allocated inline/block size, purpose, state, capabilities). A conditional rule is a media query or container query; conditions read the outside-in allocation, never solved geometry, so no styling/layout cycle exists.
 
-**What rules may set.** Presentation properties (fill, stroke, stroke width, dash, opacity, roughness, fonts, text orientation, dock markers) and metric defaults (margin, padding, gap, minimum sizes, spacing). Metric properties resolve before layout and routing, like every size-affecting input.
+**What rules may set.** Presentation properties (fill, fill style, stroke, stroke width, dash, opacity, roughness, fonts, text orientation, dock markers) and metric defaults (margin, padding, gap, minimum sizes, spacing). Metric properties resolve before layout and routing, like every size-affecting input.
 
 **What rules may never do.** Change topology, identity, membership, ports, sharing, routing, layout strategy, or entity existence. There is no `display: none` analog — structural alternatives belong to views and `When`. Corridor pressure and port sharing policies are semantics, not styles.
 
@@ -319,6 +321,7 @@ type EntityKind =
   | "line"
   | "segment"
   | "rule"
+  | "token-set"
   | "constraint";
 
 interface LogicalIR {
@@ -372,7 +375,7 @@ type Side = "top" | "right" | "bottom" | "left"; // always local to the owning f
 type Axis = "horizontal" | "vertical";           // always local
 type Orientation = 0 | 90 | 180 | 270;
 
-type Length = number; // unit to be specified; never an absolute position
+type Length = number | string; // model units, or a token name resolved through the cascade; never an absolute position
 
 interface BoxLengths {
   top?: Length;
@@ -796,6 +799,13 @@ interface RuleIR extends EntityBase<"rule"> {
   declarations: StyleProperties;
 }
 
+type TokenValue = string | number;
+
+interface TokenSetIR extends EntityBase<"token-set"> {
+  layer: RuleLayer;
+  values: Readonly<Record<string, TokenValue>>;
+}
+
 interface SelectorStepIR {
   kind?: EntityKind;
   shape?: string;            // primitive kind or "namespace:name"
@@ -810,7 +820,7 @@ interface SelectorIR {
 }
 ```
 
-Cascade resolution per entity and property: renderer default, then matching theme rules, library rules, document rules (later rules win within a layer), then the inline `style` value. Conditional rules participate only while their condition holds in the current render context. Multi-step selectors never match across an object with `styleBoundary: true`; single-step role/class selectors match everywhere. Inheritable properties flow down containment after cascade resolution.
+Cascade resolution per entity and property: renderer default, then matching theme rules, library rules, document rules (later rules win within a layer), then the inline `style` value. Conditional rules participate only while their condition holds in the current render context. Multi-step selectors never match across an object with `styleBoundary: true`; single-step role/class selectors match everywhere. Inheritable properties flow down containment after cascade resolution. Token names in resolved values are replaced through the same layer precedence; an unresolved token in a length position is a diagnostic, in a color position a literal.
 
 ### 13.10 Constraints and paint order
 
@@ -886,7 +896,7 @@ How authoring constructs normalize (details and phases in [REQUIREMENTS.md](REQU
 - A `subject` prop becomes the entity's `SubjectRef`; the normalizer round-trips it without interpretation.
 - Lines sharing one canonical named port receive a port-derived `ShareSpec`; its mode and branch policy come from `PortIR.sharing`. Port-group affinity and explicit line groups apply only when they add a relation across distinct ports.
 - `below`, `above`, and `between` constraint sugar normalizes to spatial `order` relations.
-- `rule()` declarations become `RuleIR` entities in their declaring layer; typed selector helpers and any equivalent string form normalize to the same `SelectorIR`. Inline `style` props stay on their entities as the innermost cascade layer.
+- `rule()` declarations become `RuleIR` entities and `tokens()` declarations become `TokenSetIR` entities in their declaring layer; typed selector helpers and any equivalent string form normalize to the same `SelectorIR`. Inline `style` props stay on their entities as the innermost cascade layer.
 - `View` declarations emit `ViewIR` alternatives in declaration order with their `requires` conditions and template children. Normalization does not select or instantiate them; the renderer takes the first viable view in order.
 - Ordinary reference resolution skips the meta domain. The typed `alt()` helper — and any string sugar for it — emits an `alternatives` target whose exact-view and default cases are validated separately. Renderer materialization chooses a case, then truncates at the deepest instantiated object if necessary.
 - `PortPlacement` emits a meta mapping from one canonical ordinary port to one anchor in the containing view template.

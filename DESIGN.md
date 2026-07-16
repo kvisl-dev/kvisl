@@ -90,7 +90,7 @@ The schema package owns version identifiers, machine-readable schemas, feature d
 
 ### 3.6 Renderer planners
 
-A renderer planner consumes Logical IR plus target options and renderer capabilities. It constructs per-instance render contexts, selects the first viable hidden view branch in declaration order, materializes the selected templates, evaluates conditional template adjustments, and emits Projection IR. It may cooperate iteratively with a solver when allocation or routing feedback invalidates a tentative branch. It never evaluates TSX.
+A renderer planner consumes Logical IR plus target options and renderer capabilities. It constructs per-instance render contexts, selects and materializes view branches per REQUIREMENTS section 7.4, evaluates conditional template adjustments, and emits Projection IR. It may cooperate iteratively with a solver when allocation or routing feedback invalidates a tentative branch. It never evaluates TSX.
 
 ### 3.7 Solvers
 
@@ -261,7 +261,7 @@ interface SolveResult {
 }
 ```
 
-The concrete option types belong to the versioned Projection and Solved IR contracts. The renderer planner constructs immutable context per component instance, evaluates view conditions in declaration order, materializes the first viable branch, applies conditional template adjustments, resolves endpoint alternatives, and emits Projection IR. It must record enough context and selection explanation to reproduce every choice.
+The concrete option types belong to the versioned Projection and Solved IR contracts. The renderer planner constructs immutable context per component instance, applies the selection semantics of REQUIREMENTS section 7.4, resolves endpoint alternatives, and emits Projection IR. It must record enough context and selection explanation to reproduce every choice.
 
 Normal endpoint lookup never enters a meta branch. During materialization, endpoint alternatives may inspect the selected view and resolve one branch-local suffix. A remaining unmaterialized suffix truncates to its deepest projected instance. The planner records the selected case and truncation point for diagnostics and caching.
 
