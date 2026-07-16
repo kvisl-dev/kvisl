@@ -1,5 +1,5 @@
 // CLI: transform a diagram.tsx with esbuild, evaluate it against the
-// Excalmermaid JSX runtime, normalize, and print canonical Logical IR JSON.
+// Kvísl JSX runtime, normalize, and print canonical Logical IR JSON.
 //
 //   node tools/normalize.mjs examples/coverage/diagram.tsx
 
@@ -14,12 +14,12 @@ const corePkg = path.join(repo, "packages", "core");
 
 // map the published package name onto the in-repo sources
 const aliasPlugin = {
-  name: "excalmermaid-alias",
+  name: "kvisl-alias",
   setup(b) {
-    b.onResolve({ filter: /^@excalmermaid\/core\/jsx-runtime$/ }, () => ({
+    b.onResolve({ filter: /^@kvisl\/core\/jsx-runtime$/ }, () => ({
       path: path.join(corePkg, "jsx-runtime.mjs"),
     }));
-    b.onResolve({ filter: /^@excalmermaid\/core$/ }, () => ({
+    b.onResolve({ filter: /^@kvisl\/core$/ }, () => ({
       path: path.join(corePkg, "index.mjs"),
     }));
   },
@@ -32,7 +32,7 @@ export async function normalizeFile(entry) {
     write: false,
     format: "esm",
     jsx: "automatic",
-    jsxImportSource: "@excalmermaid/core",
+    jsxImportSource: "@kvisl/core",
     plugins: [aliasPlugin],
   });
   const code = result.outputFiles[0].text;

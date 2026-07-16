@@ -1,6 +1,6 @@
 # Examples
 
-The examples are complete Excalmermaid models covering architecture drawings, UML, and focused language features.
+The examples are complete Kvísl Script models covering architecture drawings, UML, and focused language features.
 
 ## Visual reference fixtures
 

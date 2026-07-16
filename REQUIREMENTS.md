@@ -1,8 +1,8 @@
-# Excalmermaid Requirements
+# Kvísl Script Requirements
 
 Status: Working draft
 
-This document states the requirements for Excalmermaid: the TSX authoring surface, its semantics, and the properties the toolchain must guarantee. The data model and the Logical IR shapes live in [MODEL.md](MODEL.md); implementation architecture and plumbing live in [DESIGN.md](DESIGN.md). In this document, "grammar" means the TSX authoring surface: components, properties, references, and their semantics. Excalmermaid does not extend the TypeScript or TSX grammar.
+This document states the requirements for Kvísl Script, shortened to Kvísl: the TSX authoring surface, its semantics, and the properties the toolchain must guarantee. The data model and the Logical IR shapes live in [MODEL.md](MODEL.md); implementation architecture and plumbing live in [DESIGN.md](DESIGN.md). In this document, "grammar" means the TSX authoring surface: components, properties, references, and their semantics. Kvísl does not extend the TypeScript or TSX grammar.
 
 The keywords **MUST**, **SHOULD**, and **MAY** indicate requirements, strong recommendations, and optional capabilities.
 
@@ -10,7 +10,7 @@ The keywords **MUST**, **SHOULD**, and **MAY** indicate requirements, strong rec
 
 ### 1.1 Vision
 
-Excalmermaid MUST be a modelling language for design diagrams whose primary property is composition. A model should be able to start as a handful of boxes and grow into an effectively unbounded system canvas without changing authoring paradigms or falling back to hand-maintained coordinates.
+Kvísl MUST be a modelling language for design diagrams whose primary property is composition. A model should be able to start as a handful of boxes and grow into an effectively unbounded system canvas without changing authoring paradigms or falling back to hand-maintained coordinates.
 
 The same language MUST support both overview and lowest-level detail. It should be possible to model, for example, an entire Kubernetes landscape — clusters, control planes, nodes, workloads, resources, controllers, storage, networking, and their internal relationships — or an entire Linux system from machines and subsystems down through processes, syscalls, namespaces, memory, devices, and implementation-level components.
 
@@ -48,7 +48,7 @@ A level-of-detail-capable renderer MUST provide an outside-in materialization st
 
 The authoring model MUST leave room for responsive meta branches comparable to print styles, media queries, and container queries on the web. Target-dependent conditions MUST be represented as typed, serializable data evaluated during renderer materialization, never as arbitrary JavaScript callbacks executed by Go or Rust renderers. Conditions MAY inspect a bounded rendering context such as medium, page format, viewport class, allocated inline or block size, purpose, semantic state, and renderer capabilities. They MUST NOT inspect unconstrained mutable process state.
 
-The same condition model SHOULD later apply to nested `When`/`Switch` meta branches and to conditional lines or segments. This permits responsive structure and conditional paths without turning Excalmermaid into another general-purpose programming language. Conditions depending on allocated size require deterministic outside-in iteration or fallback; implementations MUST detect non-converging selection cycles.
+The same condition model SHOULD later apply to nested `When`/`Switch` meta branches and to conditional lines or segments. This permits responsive structure and conditional paths without turning Kvísl into another general-purpose programming language. Conditions depending on allocated size require deterministic outside-in iteration or fallback; implementations MUST detect non-converging selection cycles.
 
 DIN A4, DIN A0, a viewport, and an infinite canvas are render targets, not component semantics. For example, an A4 request using `maximum-that-fits` will usually select less internal detail than an A0 request, while preserving the same component identities and external connectivity.
 
@@ -98,14 +98,14 @@ Core is mandatory. An implementation MUST declare which further profiles it impl
 
 Diagrams MUST be valid TypeScript/TSX modules. Standard language features such as imports, functions, local variables, conditions, array operations, and generics MAY be used.
 
-Excalmermaid MUST NOT parse a custom syntax embedded in TSX text. Meaning arises exclusively from:
+Kvísl MUST NOT parse a custom syntax embedded in TSX text. Meaning arises exclusively from:
 
 - TypeScript expressions;
 - JSX components;
 - properties and children;
-- exported Excalmermaid helper functions.
+- exported Kvísl helper functions.
 
-React MUST NOT be a runtime dependency. JSX transformation MUST target an Excalmermaid-owned runtime.
+React MUST NOT be a runtime dependency. JSX transformation MUST target a Kvísl-owned runtime.
 
 ### 2.2 Modules and root value
 
@@ -152,7 +152,7 @@ type Expression =
 
 Fragments, nested arrays, and `null` or `false` produced by conditions MUST be supported. Strings and numbers as children MUST only be accepted where the receiving component declares textual or numeric content.
 
-Unknown DOM or HTML elements MUST be errors. TSX has no DOM semantics in Excalmermaid.
+Unknown DOM or HTML elements MUST be errors. TSX has no DOM semantics in Kvísl.
 
 ### 2.5 Keys and IDs
 
@@ -692,7 +692,7 @@ Logical IR MUST NOT contain Excalidraw-specific object classes. All properties M
 
 ### 12.6 Deliberate CSS exclusions
 
-Excalmermaid adopts CSS mechanisms selectively. The following CSS features MUST NOT exist, each for a stated reason rather than as an omission:
+Kvísl adopts CSS mechanisms selectively. The following CSS features MUST NOT exist, each for a stated reason rather than as an omission:
 
 - **specificity arithmetic** — the five fixed cascade layers replace it (section 12.1); rule precedence stays explainable without selector-weight puzzles;
 - **`!important`** — an escalation hatch that fights layering; the document and inline layers are the sanctioned override paths;

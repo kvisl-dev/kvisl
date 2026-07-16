@@ -1,7 +1,7 @@
 // Pre-implementation UML grammar example. Package dependencies cross nested
 // containment without flattening package identity.
 
-import { Diagram, Grid, Title } from "@excalmermaid/core";
+import { Diagram, Grid, Title } from "@kvisl/core";
 import { UmlClass, UmlPackage, UmlRelation } from "./uml";
 
 export default (

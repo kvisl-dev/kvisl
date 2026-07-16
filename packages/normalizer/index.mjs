@@ -1,4 +1,4 @@
-// Excalmermaid normalizer — Core-profile slice.
+// Kvísl normalizer — Core-profile slice.
 //
 // Covers: component expansion, the object primitive with Node/Scope/layout
 // sugar, Text/label content normalization, ports (explicit, grouped, and
@@ -12,7 +12,7 @@
 
 import { CORE } from "../core/index.mjs";
 
-const SCHEMA = "excalmermaid.logical";
+const SCHEMA = "kvisl.logical";
 const VERSION = "0.1.0";
 
 // ---------------------------------------------------------------------------

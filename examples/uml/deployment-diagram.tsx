@@ -1,7 +1,7 @@
 // Pre-implementation UML grammar example. Nested scopes express deployment
 // containment independently of communication paths.
 
-import { Diagram, Port, Row, Title } from "@excalmermaid/core";
+import { Diagram, Port, Row, Title } from "@kvisl/core";
 import { UmlArtifact, UmlComponent, UmlDeploymentNode, UmlRelation } from "./uml";
 
 export default (

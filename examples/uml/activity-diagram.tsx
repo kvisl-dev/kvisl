@@ -1,7 +1,7 @@
 // Pre-implementation UML grammar example. Activity partitions are scopes and
 // control flows cross them with inferred hierarchy traversal.
 
-import { Diagram, Grid, Title } from "@excalmermaid/core";
+import { Diagram, Grid, Title } from "@kvisl/core";
 import { UmlAction, UmlActivityPartition, UmlPseudostate, UmlRelation } from "./uml";
 
 export default (

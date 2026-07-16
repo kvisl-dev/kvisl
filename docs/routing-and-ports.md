@@ -1,6 +1,6 @@
 # Routing, corridors, and ports
 
-Excalmermaid treats routing as part of the logical model, but not as authored geometry. Authors name meaningful attachment identities and route regions; the solver chooses concrete portals, tracks, bends, and dock positions.
+Kvísl treats routing as part of the logical model, but not as authored geometry. Authors name meaningful attachment identities and route regions; the solver chooses concrete portals, tracks, bends, and dock positions.
 
 The illustrations on this page show how logical attachment and routing instructions map to solved geometry.
 

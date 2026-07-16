@@ -1,5 +1,5 @@
 {
-  "schema": "excalmermaid.logical",
+  "schema": "kvisl.logical",
   "version": "0.1.0",
   "root": 1,
   "entities": [

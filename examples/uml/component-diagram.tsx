@@ -1,7 +1,7 @@
 // Pre-implementation UML grammar example. Components are ordinary reusable
 // TSX components exposing named ports.
 
-import { Diagram, Row, Scope, Title } from "@excalmermaid/core";
+import { Diagram, Row, Scope, Title } from "@kvisl/core";
 import { UmlComponent, UmlRelation } from "./uml";
 
 const provided = { kind: "extension", namespace: "uml", name: "provided-interface" } as const;

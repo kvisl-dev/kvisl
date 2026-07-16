@@ -1,5 +1,5 @@
 // Pre-implementation UML component library. It demonstrates how UML notation
-// composes from the Excalmermaid core; it is not a runtime implementation.
+// composes from the Kvísl core; it is not a runtime implementation.
 
 import {
   Compartment,
@@ -13,7 +13,7 @@ import {
   Text,
   role,
   rule,
-} from "@excalmermaid/core";
+} from "@kvisl/core";
 
 type Child = unknown;
 type Endpoint = string;

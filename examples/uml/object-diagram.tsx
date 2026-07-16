@@ -1,7 +1,7 @@
 // Pre-implementation UML grammar example. Entity-only relationship ends
 // deliberately exercise distinct line-owned docks.
 
-import { Diagram, Row, Title } from "@excalmermaid/core";
+import { Diagram, Row, Title } from "@kvisl/core";
 import { UmlAssociation, UmlEnd, UmlObject, UmlRelation } from "./uml";
 
 export default (

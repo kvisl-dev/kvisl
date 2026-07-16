@@ -1,6 +1,6 @@
-# UML with Excalmermaid
+# UML with Kvísl Script
 
-UML is an Excalmermaid library, not a separate renderer or a privileged branch of the core model. UML components expand into the same objects, layouts, ports, lines, constraints, subjects, styles, and paint relations used by architecture diagrams.
+UML is a Kvísl library, not a separate renderer or a privileged branch of the core model. UML components expand into the same objects, layouts, ports, lines, constraints, subjects, styles, and paint relations used by architecture diagrams.
 
 This keeps UML composable with non-UML content. A deployment node may contain ordinary infrastructure components; a component diagram may connect to a detailed service model; several diagrams may depict the same semantic subject.
 
@@ -9,7 +9,7 @@ The examples on this page use the library in [`examples/uml/uml.tsx`](../example
 ## Render a UML diagram
 
 ```console
-$ excalmermaid render examples/uml/class-diagram.tsx \
+$ kvisl render examples/uml/class-diagram.tsx \
     --output order-domain.excalidraw
 ```
 
@@ -101,7 +101,7 @@ Several generalizations can attach to the same named port on a superclass. The c
 />
 ```
 
-This is not special inheritance routing. It is the same named-port join and merged path used elsewhere in Excalmermaid, with a UML head supplied by the library.
+This is not special inheritance routing. It is the same named-port join and merged path used elsewhere in Kvísl, with a UML head supplied by the library.
 
 ![Two generalizations joining into one hollow-triangle trunk at a named port](assets/uml-generalization-trunk.svg)
 
@@ -226,4 +226,4 @@ This boundary lets another notation library reuse the same renderer and solver w
 
 UML components are conveniences, not closed syntax. A model may place an ordinary `Node` inside a deployment node, route a normal line through a UML package, add a corridor between activity partitions, or constrain a UML frame with the same relations used elsewhere.
 
-The normalized result remains one coherent Excalmermaid model.
+The normalized result remains one coherent Kvísl model.

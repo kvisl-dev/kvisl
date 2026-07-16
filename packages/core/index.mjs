@@ -1,8 +1,8 @@
-// Excalmermaid authoring surface — the Core-profile subset used by the
+// Kvísl authoring surface — the Core-profile subset used by the
 // normalizer slice. Core components are inert markers; the normalizer
 // interprets them after component expansion.
 
-export const CORE = Symbol.for("excalmermaid.core");
+export const CORE = Symbol.for("kvisl.core");
 
 function coreType(kind) {
   return Object.freeze({ [CORE]: kind });

@@ -2,7 +2,7 @@
 // temporal order. The library derives occurrences, alignments, activations,
 // and fragment frames from the messages; the core never models time.
 
-import { Diagram, Title } from "@excalmermaid/core";
+import { Diagram, Title } from "@kvisl/core";
 import { Interaction, Lifeline, Loop, Message, Reply } from "./uml";
 
 export default (

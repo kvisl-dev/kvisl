@@ -1,4 +1,4 @@
-// Excalmermaid JSX runtime: creates immutable authoring expressions.
+// Kvísl JSX runtime: creates immutable authoring expressions.
 // No React, no reconciliation, no DOM — expansion happens in the normalizer.
 
 export function jsx(type, props, key) {
@@ -8,4 +8,4 @@ export function jsx(type, props, key) {
 export const jsxs = jsx;
 export const jsxDEV = jsx;
 
-export const Fragment = Symbol.for("excalmermaid.fragment");
+export const Fragment = Symbol.for("kvisl.fragment");

@@ -1,6 +1,6 @@
 # UML grammar examples
 
-This directory contains TSX examples for the principal UML diagram families. UML notation is expressed as composable library components over the Excalmermaid core rather than as privileged core diagram types.
+This directory contains TSX examples for the principal UML diagram families. UML notation is expressed as composable library components over the Kvísl Script core rather than as privileged core diagram types.
 
 Each file is a complete logical model with no absolute coordinates.
 

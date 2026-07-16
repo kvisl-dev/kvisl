@@ -17,7 +17,7 @@ import {
   role,
   rule,
   tokens,
-} from "@excalmermaid/core";
+} from "@kvisl/core";
 
 const palette = tokens({ "flow-blue": "#2563eb", "probe-gray": "#6b7280" });
 

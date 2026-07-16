@@ -23,7 +23,7 @@ import {
   role,
   rule,
   self,
-} from "@excalmermaid/core";
+} from "@kvisl/core";
 
 const styles = [
   rule(role("device"), { fill: "near-white", stroke: "muted-gray" }),

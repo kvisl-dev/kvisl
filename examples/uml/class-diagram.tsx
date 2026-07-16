@@ -2,7 +2,7 @@
 // Associations use structured ends; generalizations join at a named port and
 // share one hollow-triangle trunk; ref() composition keeps deep paths short.
 
-import { Diagram, Grid, Port, Title, ref } from "@excalmermaid/core";
+import { Diagram, Grid, Port, Title, ref } from "@kvisl/core";
 import { UmlAssociation, UmlClass, UmlEnd, UmlPackage, UmlRelation } from "./uml";
 
 const customer = ref("model/customer");

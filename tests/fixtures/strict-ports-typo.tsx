@@ -1,7 +1,7 @@
 // Negative fixture: inside a strictPorts container, an endpoint naming an
 // undeclared port must be a diagnostic instead of a silent implicit port.
 
-import { Diagram, Line, Node, Port, Scope } from "@excalmermaid/core";
+import { Diagram, Line, Node, Port, Scope } from "@kvisl/core";
 
 export default (
   <Diagram id="strict-ports-typo">

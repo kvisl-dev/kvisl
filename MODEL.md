@@ -1,4 +1,4 @@
-# Excalmermaid Data Model
+# Kvísl Script Data Model
 
 Status: Working draft
 
@@ -330,7 +330,7 @@ type EntityKind =
   | "constraint";
 
 interface LogicalIR {
-  schema: "excalmermaid.logical";
+  schema: "kvisl.logical";
   version: string;
   root: EntityKey; // the diagram root object
   entities: readonly EntityIR[];
@@ -550,7 +550,7 @@ type InstanceKey = number;
 type ContextKey = number;
 
 interface ProjectionIR {
-  schema: "excalmermaid.projection";
+  schema: "kvisl.projection";
   version: string;
   logicalSourceHash: string;
   target: Readonly<Record<string, unknown>>;

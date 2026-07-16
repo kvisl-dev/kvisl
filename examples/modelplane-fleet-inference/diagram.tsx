@@ -30,7 +30,7 @@ import {
   gte,
   role,
   rule,
-} from "@excalmermaid/core";
+} from "@kvisl/core";
 
 const styles = [
   rule(role("serving-cluster"), { fill: "near-white", stroke: "structural-gray" }),

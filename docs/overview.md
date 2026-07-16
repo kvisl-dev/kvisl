@@ -1,6 +1,6 @@
 # Overview
 
-Excalmermaid is a modelling language for technical design diagrams. It combines the composability of code with the visual freedom of a drawing tool, while keeping logical structure — not pixel coordinates — as the source of truth.
+Kvísl Script, or Kvísl for short, is a modelling language for technical design diagrams. It combines the composability of code with the visual freedom of a drawing tool, while keeping logical structure — not pixel coordinates — as the source of truth.
 
 ## The problem
 
@@ -8,7 +8,7 @@ Small diagrams are easy. Large, evolving diagrams are not.
 
 A free-form canvas lets an author draw almost anything, but every structural change creates manual layout and routing work. Traditional diagram languages automate layout, but commonly flatten the problem into one graph or support only a fixed family of diagram types. Both approaches become awkward when a drawing contains reusable subsystems, nested boundaries, long cross-hierarchy connections, different levels of detail, and page-sized routing structure.
 
-Excalmermaid is designed for drawings that may begin as five boxes and grow into a DIN A0 architecture poster or an effectively unbounded model of a complete Kubernetes or Linux system.
+Kvísl is designed for drawings that may begin as five boxes and grow into a DIN A0 architecture poster or an effectively unbounded model of a complete Kubernetes or Linux system.
 
 ## The model in one example
 
@@ -50,7 +50,7 @@ The component caller knows the public port handle but not the service's internal
 
 ## The mental model
 
-Excalmermaid has a small core rather than a catalogue of diagram types.
+Kvísl has a small core rather than a catalogue of diagram types.
 
 ### Objects and containment
 
@@ -140,7 +140,7 @@ The linked source formulates this Modelplane architecture without authored pixel
 
 ## Who is this for?
 
-Excalmermaid is primarily for agents tasked with building awesome, visually brilliant architecture sketches. The logical model gives an agent enough structure to compose large drawings, route connections intentionally, choose suitable detail, and regenerate the result without maintaining pixel coordinates.
+Kvísl is primarily for agents tasked with building awesome, visually brilliant architecture sketches. The logical model gives an agent enough structure to compose large drawings, route connections intentionally, choose suitable detail, and regenerate the result without maintaining pixel coordinates.
 
 It is especially useful for agents working on behalf of:
 
@@ -174,5 +174,5 @@ Feedback is most useful against a concrete artifact: read one [reference model](
 
 - Follow the [getting started guide](getting-started.md) to create and render a model.
 - See [routing, corridors, and ports](routing-and-ports.md) for illustrated routing semantics.
-- Read [UML with Excalmermaid](uml.md) to see how a substantial notation composes over the core.
+- Read [UML with Kvísl Script](uml.md) to see how a substantial notation composes over the core.
 - Consult the [requirements](../REQUIREMENTS.md) and [data model](../MODEL.md) for normative detail.

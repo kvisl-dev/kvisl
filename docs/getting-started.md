@@ -15,10 +15,10 @@ import {
   Row,
   Text,
   Title,
-} from "@excalmermaid/core";
+} from "@kvisl/core";
 
 export default (
-  <Diagram id="hello-excalmermaid" theme="excalidraw-handdrawn">
+  <Diagram id="hello-kvisl" theme="excalidraw-handdrawn">
     <Title>Checkout architecture</Title>
 
     <Row id="system" gap="large">
@@ -46,7 +46,7 @@ export default (
 Render it:
 
 ```console
-$ excalmermaid render architecture.tsx --output architecture.excalidraw
+$ kvisl render architecture.tsx --output architecture.excalidraw
 ```
 
 The command evaluates the TSX module, expands components, normalizes the logical model, lays it out, routes the line, and writes an editable Excalidraw document.
@@ -264,7 +264,7 @@ Views are hidden meta branches. Declaration order is preference order, and the r
 Render for a constrained page:
 
 ```console
-$ excalmermaid render architecture.tsx \
+$ kvisl render architecture.tsx \
     --target a4 \
     --policy maximum-that-fits \
     --output architecture-a4.excalidraw
@@ -273,7 +273,7 @@ $ excalmermaid render architecture.tsx \
 Render the same model for a large poster:
 
 ```console
-$ excalmermaid render architecture.tsx \
+$ kvisl render architecture.tsx \
     --target a0 \
     --policy maximum-that-fits \
     --output architecture-a0.excalidraw
@@ -302,10 +302,10 @@ The local row becomes a physical column. Local left/right ports, corridors, and 
 The single render command is the normal path. The CLI also exposes the pipeline when a model or solver choice needs explanation:
 
 ```console
-$ excalmermaid normalize architecture.tsx --output logical.yaml
-$ excalmermaid materialize logical.yaml --target a4 --output projection.yaml
-$ excalmermaid solve projection.yaml --output solved.yaml
-$ excalmermaid paint solved.yaml --format excalidraw --output architecture.excalidraw
+$ kvisl normalize architecture.tsx --output logical.yaml
+$ kvisl materialize logical.yaml --target a4 --output projection.yaml
+$ kvisl solve projection.yaml --output solved.yaml
+$ kvisl paint solved.yaml --format excalidraw --output architecture.excalidraw
 ```
 
 - Logical IR contains normalized objects, ports, lines, rules, constraints, and hidden view templates.
@@ -316,7 +316,7 @@ All three are versioned and language-neutral so TypeScript, Go, and Rust tools c
 
 ## What the author controls
 
-An Excalmermaid author should normally control:
+A Kvísl author should normally control:
 
 - semantic containment and reusable component boundaries;
 - local IDs and public ports;
@@ -337,6 +337,6 @@ If a diagram repeatedly requires control below that boundary, prefer another log
 
 ## Next steps
 
-- Read [UML with Excalmermaid](uml.md) for a substantial library built over the core.
+- Read [UML with Kvísl Script](uml.md) for a substantial library built over the core.
 - Explore the complete [visual fixtures](../examples/README.md).
 - Use the [requirements](../REQUIREMENTS.md) and [data model](../MODEL.md) when a guide intentionally omits an edge case.

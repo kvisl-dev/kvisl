@@ -1,8 +1,8 @@
-# Excalmermaid Implementation Design
+# Kvísl Script Implementation Design
 
 Status: Draft
 
-This document describes the implementation architecture and plumbing required to build Excalmermaid. It deliberately does not define diagram semantics, authoring primitives, layout behavior, routing behavior, or Logical IR fields.
+This document describes the implementation architecture and plumbing required to build Kvísl Script, shortened to Kvísl. It deliberately does not define diagram semantics, authoring primitives, layout behavior, routing behavior, or Logical IR fields.
 
 - [REQUIREMENTS.md](REQUIREMENTS.md) states what the system must support.
 - [MODEL.md](MODEL.md) defines the conceptual model and Logical IR.
@@ -104,7 +104,7 @@ A target painter consumes Solved IR and produces a target format. A public rende
 
 esbuild is the primary transformation and bundling implementation. It provides a maintained TSX parser, fast builds, a JavaScript API, and a native Go API.
 
-The transform must use automatic JSX mode with the Excalmermaid JSX runtime as its import source. It must preserve source maps through bundling so that runtime and normalization diagnostics map back to original TSX modules.
+The transform must use automatic JSX mode with the Kvísl JSX runtime as its import source. It must preserve source maps through bundling so that runtime and normalization diagnostics map back to original TSX modules.
 
 Bundling is responsible for:
 
@@ -364,13 +364,13 @@ Incremental and full execution must converge on canonical-equivalent results for
 The first CLI should provide commands equivalent to:
 
 ```text
-excalmermaid check diagram.tsx
-excalmermaid normalize diagram.tsx --output logical.yaml
-excalmermaid materialize logical.yaml --target a4 --output projection.yaml
-excalmermaid solve projection.yaml --output solved.yaml
-excalmermaid paint solved.yaml --format excalidraw --output diagram.excalidraw
-excalmermaid render logical.yaml --target a4 --format excalidraw --output diagram.excalidraw
-excalmermaid build diagram.tsx --format svg --output diagram.svg
+kvisl check diagram.tsx
+kvisl normalize diagram.tsx --output logical.yaml
+kvisl materialize logical.yaml --target a4 --output projection.yaml
+kvisl solve projection.yaml --output solved.yaml
+kvisl paint solved.yaml --format excalidraw --output diagram.excalidraw
+kvisl render logical.yaml --target a4 --format excalidraw --output diagram.excalidraw
+kvisl build diagram.tsx --format svg --output diagram.svg
 ```
 
 Commands must support machine-readable diagnostics, stdin/stdout where meaningful, explicit schema and feature selection, cancellation, and reproducible-output modes.
@@ -425,7 +425,7 @@ rust/
   solver/
   renderer/
 cmd/
-  excalmermaid/
+  kvisl/
 examples/
 ```
 

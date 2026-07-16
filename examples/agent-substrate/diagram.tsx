@@ -16,7 +16,7 @@ import {
   Title,
   gap,
   padding,
-} from "@excalmermaid/core";
+} from "@kvisl/core";
 
 const colors = {
   ink: "ink",

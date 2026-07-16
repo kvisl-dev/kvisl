@@ -1,7 +1,7 @@
 // Pre-implementation UML grammar example. A composite state owns its nested
 // state machine while transitions may cross that boundary.
 
-import { Diagram, Grid, Title } from "@excalmermaid/core";
+import { Diagram, Grid, Title } from "@kvisl/core";
 import { UmlPseudostate, UmlRelation, UmlState } from "./uml";
 
 export default (

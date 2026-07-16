@@ -1,6 +1,6 @@
-# Excalmermaid
+# Kvísl Script
 
-Excalmermaid is a composable modelling language for design diagrams. It aims to scale from a small sketch to an effectively unbounded system canvas while keeping logical structure — not pixel coordinates — as the source of truth.
+Kvísl Script, or Kvísl for short, is a composable modelling language for design diagrams. It aims to scale from a small sketch to an effectively unbounded system canvas while keeping logical structure — not pixel coordinates — as the source of truth.
 
 The long-term target is a model detailed enough to describe an entire Kubernetes landscape or an entire Linux system, from the highest architectural boundaries down to the lowest useful implementation level. A DIN A0 poster is a normal output size, not the limit of the model.
 
@@ -8,7 +8,7 @@ The long-term target is a model detailed enough to describe an entire Kubernetes
 
 Large technical drawings usually fail in one of two ways: a diagram language supports only a narrow family of charts, or a drawing tool leaves authors maintaining positions and routes manually. Both approaches become fragile as a system grows.
 
-Excalmermaid instead treats a drawing as a composable logical model:
+Kvísl instead treats a drawing as a composable logical model:
 
 - components expose public ports while retaining optional deep hierarchical addressing;
 - every ordinary structural container has a local ID and contributes to its containment path;
@@ -129,10 +129,10 @@ A normal deep line target stops at the deepest object instantiated by the select
 
 ## Documentation
 
-- [Overview](docs/overview.md) explains the model and where Excalmermaid fits.
+- [Overview](docs/overview.md) explains the model and where Kvísl fits.
 - [Getting started](docs/getting-started.md) creates and renders a TSX model as an editable Excalidraw document.
 - [Routing, corridors, and ports](docs/routing-and-ports.md) illustrates hierarchy-crossing routes, sharing modes, port groups, and docks.
-- [UML with Excalmermaid](docs/uml.md) covers the UML library and its normalization to the core model.
+- [UML with Kvísl Script](docs/uml.md) covers the UML library and its normalization to the core model.
 - [Documentation index](docs/README.md) links the complete guide set.
 
 The language and implementation contracts are documented separately:
@@ -163,7 +163,7 @@ The UML vocabulary is expressed as an ordinary TSX component library over the co
 
 ## Non-goals
 
-Excalmermaid is not:
+Kvísl is not:
 
 - a new general-purpose programming language;
 - a fixed collection of diagram types;

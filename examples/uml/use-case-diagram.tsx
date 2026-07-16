@@ -1,7 +1,7 @@
 // Pre-implementation UML grammar example. Actors and the system boundary are
 // ordinary components; include and extend are styled dependencies.
 
-import { Column, Diagram, Grid, Scope, Title } from "@excalmermaid/core";
+import { Column, Diagram, Grid, Scope, Title } from "@kvisl/core";
 import { UmlActor, UmlRelation, UmlUseCase } from "./uml";
 
 export default (
