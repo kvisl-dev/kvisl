@@ -289,6 +289,8 @@ Within one layer, later rules win; across layers, the higher layer wins. There i
 
 The authoring surface uses typed helpers (`rule(...)`, `role(...)`, `cls(...)`, `within(...)`) or an equivalent string selector form; both normalize to the same `SelectorIR`. Whether a standalone stylesheet file format ships is an open decision — the IR contract is the typed rule, not a text syntax.
 
+**Deliberate CSS exclusions.** Specificity arithmetic, `!important`, structural pseudo-classes and sibling combinators, `display: none`, pseudo-elements, state selectors, animations, and untyped properties are excluded on purpose — the rationale for each is recorded in [REQUIREMENTS.md](REQUIREMENTS.md) section 12.6. Layers replace specificity; views and `When` own structure; rules never create entities or react to interaction or time.
+
 ## 13. Logical IR
 
 ### 13.1 Invariants

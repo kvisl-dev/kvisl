@@ -688,6 +688,21 @@ Dock rendering MUST use the cascade defined in section 8.1 as its innermost step
 
 Logical IR MUST NOT contain Excalidraw-specific object classes. All properties MUST be typed in one shared namespace with documented applicability per entity kind; renderer or library extensions MUST have a namespace.
 
+### 12.6 Deliberate CSS exclusions
+
+Excalmermaid adopts CSS mechanisms selectively. The following CSS features MUST NOT exist, each for a stated reason rather than as an omission:
+
+- **specificity arithmetic** — the five fixed cascade layers replace it (section 12.1); rule precedence stays explainable without selector-weight puzzles;
+- **`!important`** — an escalation hatch that fights layering; the document and inline layers are the sanctioned override paths;
+- **structural pseudo-classes and sibling combinators** (`nth-child` and friends) — the solver may reorder layout members, so order-dependent selectors would be unstable (section 12.2);
+- **`display: none` and any structure-changing property** — entity existence belongs to views and `When`, never to styling (section 12.5);
+- **pseudo-elements** (`::before`-alikes) — generated content is a component or library concern, not a styling side effect; rules never create entities;
+- **state selectors** (`:hover`-alikes) — Logical IR has no interaction model; an interactive renderer MAY layer target-local states without core changes;
+- **animations and transitions** — presentation timing is renderer territory outside the core contract;
+- **untyped or ad-hoc properties** — only the typed shared namespace plus namespaced extensions (section 12.5).
+
+Reintroducing one of these MUST be treated as a model change with its own requirements, not as a styling convenience.
+
 ## 13. Illustrative TSX draft
 
 The following example demonstrates the current grammar direction. Property details may still evolve, but symmetric ports, canonical named-port joins, and segment pinning are normative at the conceptual level:
