@@ -1,0 +1,45 @@
+// Pre-implementation UML grammar example. Actors and the system boundary are
+// ordinary components; include and extend are styled dependencies.
+
+import { Column, Diagram, Grid, Scope, Title } from "@excalmermaid/core";
+import { UmlActor, UmlRelation, UmlUseCase } from "./uml";
+
+export default (
+  <Diagram id="uml-use-case-example" theme="uml">
+    <Title>Online store — use-case diagram</Title>
+
+    <Grid id="scene" columns={3} gap="large" order="fixed">
+      <Column id="primary-actors" gap="large">
+        <UmlActor id="customer" name="Customer" />
+        <UmlActor id="support" name="Support Agent" />
+      </Column>
+
+      <Scope id="store" role="uml-system-boundary" label="Online Store">
+        <Grid id="cases" columns={2} gap="large">
+          <UmlUseCase id="browse" name="Browse catalog" />
+          <UmlUseCase id="checkout" name="Checkout" />
+          <UmlUseCase id="authenticate" name="Authenticate customer" />
+          <UmlUseCase id="pay" name="Process payment" />
+          <UmlUseCase id="refund" name="Refund order" />
+          <UmlUseCase id="notify" name="Send notification" />
+        </Grid>
+
+        <UmlRelation id="checkout-auth" kind="include" from="cases/checkout" to="cases/authenticate" name="«include»" />
+        <UmlRelation id="checkout-pay" kind="include" from="cases/checkout" to="cases/pay" name="«include»" />
+        <UmlRelation id="refund-notify" kind="include" from="cases/refund" to="cases/notify" name="«include»" />
+        <UmlRelation id="refund-checkout" kind="extend" from="cases/refund" to="cases/checkout" name="«extend» [paid]" />
+      </Scope>
+
+      <Column id="secondary-actors" gap="large">
+        <UmlActor id="payment-provider" name="Payment Provider" />
+        <UmlActor id="mail-service" name="Mail Service" />
+      </Column>
+    </Grid>
+
+    <UmlRelation id="customer-browse" kind="association" from="scene/primary-actors/customer" to="scene/store/cases/browse" />
+    <UmlRelation id="customer-checkout" kind="association" from="scene/primary-actors/customer" to="scene/store/cases/checkout" />
+    <UmlRelation id="support-refund" kind="association" from="scene/primary-actors/support" to="scene/store/cases/refund" />
+    <UmlRelation id="provider-pay" kind="association" from="scene/secondary-actors/payment-provider" to="scene/store/cases/pay" />
+    <UmlRelation id="mail-notify" kind="association" from="scene/secondary-actors/mail-service" to="scene/store/cases/notify" />
+  </Diagram>
+);

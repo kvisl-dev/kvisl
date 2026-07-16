@@ -12,8 +12,9 @@ This document defines the conceptual data model and the Logical IR. [REQUIREMENT
 4. **Whitespace is the routing plane.** Corridors are not free-floating entities. They are the gaps and padding bands that layout produces anyway — implicit, addressable, and space-reserving, like margin and padding in CSS. A `Corridor` declaration refines such a region; it never invents one detached from the structure.
 5. **Lines are symmetric and segmented.** A line has two interchangeable ends. It consists of an ordered list of segments; most are implicit and inferred, some are explicitly pinned to a region or waypoint and can carry labels there.
 6. **Named ports create joins.** Every port is identified by its owner and local ID. All line ends at that canonical port form one topological join; the port's sharing policy determines whether their adjacent paths merge, bundle, separate, or remain router-selected.
-7. **Containers are addressable.** Every author-declared structural container has a local ID and contributes one segment to its canonical containment path. Reusable components therefore create nested namespaces without requiring global IDs.
-8. **Views are renderer-instantiated meta branches.** View templates are invisible to ordinary paths. A renderer creates context, scores the alternatives, and materializes one branch without changing the component's semantic identity or canonical ports.
+7. **Entity-only endpoints own their docks.** A line end that names no port receives a distinct dock identity derived from that line and end. Coincident automatic docks do not imply a join.
+8. **Containers are addressable.** Every author-declared structural container has a local ID and contributes one segment to its canonical containment path. Reusable components therefore create nested namespaces without requiring global IDs.
+9. **Views are renderer-instantiated meta branches.** View templates are invisible to ordinary paths. A renderer creates context, scores the alternatives, and materializes one branch without changing the component's semantic identity or canonical ports.
 
 ## 2. Frames and orientation
 
@@ -123,7 +124,9 @@ A **port** is a named attachment point on an element or scope. Ports are symmetr
 
 The canonical identity of a named port is `(owner entity, local port ID)`. An endpoint such as `api.request` creates that port implicitly when no declaration exists. A nested `<Port id="request" .../>`, a post-hoc `<Port ref="api.request" .../>`, and a TSX handle bound there all refine or alias that same identity. The normalizer collects these forms before merging properties, so source order is irrelevant. Conflicting explicit property values are diagnostics.
 
-An endpoint naming only `api` uses an anonymous automatic attachment point chosen by the router. It does not synthesize the stable named port `request` or any other author-visible ID.
+Every line end has a dock identity. An endpoint naming only `api` receives a line-owned dock whose identity is derived from `(line key, end index)` and whose position is chosen by the router. It does not synthesize the stable named port `request` or any other author-visible ID. Two lines targeting `api` without a port own distinct docks and do not join even if solving places those docks at the same coordinate.
+
+A dock carries a base presentation style. Its line contributes an overlay to the rendered dock: non-conflicting properties from both are retained, and the line wins property conflicts. Named-port docks and line-owned docks use the same cascade. Dock-only properties such as marker shape or fill therefore compose with line properties such as stroke or width.
 
 **Component boundaries.** Components are ordinary TSX functions. To let callers attach lines without knowing internals, the runtime provides opaque port handles:
 
@@ -145,7 +148,7 @@ A handle is created by the caller, passed as a prop, and bound exactly once insi
 A **line** is the semantic connection unit.
 
 - **Two symmetric ends.** `from` and `to` are positional labels for `ends[0]` and `ends[1]`, nothing more. Arrowheads are properties: `heads = "forward" | "backward" | "both" | "none"` (default `forward`, meaning a head at `to`), with per-end head shapes available in style.
-- **Endpoints** reference a port, an element, or a scope. Without a port, the router selects an attachment point; an optional local `side` hint constrains it.
+- **Endpoints** reference a port, an element, or a scope. A named port supplies the dock identity. Without a port, the endpoint owns a distinct automatic dock and the router selects its position; an optional local `side` hint constrains it.
 - **A line is an ordered list of segments** from end to end. Segments are:
   - `implicit` — inferred by the normalizer: hierarchy climbs and descents toward the least common ancestor, and connective runs through implicit corridors. Authors never enumerate crossed boundaries.
   - `explicit` — authored pins. An explicit segment either passes `through` a region (a named corridor, `gap(...)`, or `padding(...)`) or `via` a waypoint entity. Explicit segments are where labels live: "this line goes out into the whitespace between the boxes, and the label sits there."
@@ -186,6 +189,7 @@ Paint order is an independent relation of `before`/`after` pairs.
 - Every entity has a compiler-internal `EntityKey`: deterministic for identical input, unique per document, not authored, not stable across arbitrary edits.
 - Author IDs remain containment-local bindings; every structural container has one, and the normalizer resolves hierarchical paths to keys.
 - A port's canonical identity is its resolved owner plus local port ID, regardless of whether it was implicit, explicitly declared, configured post-hoc, or reached through a handle.
+- Every entity-only endpoint has a line-owned dock identity derived deterministically from its line key and end index. Such a dock is not an entity in the ordinary address space and never creates an implicit join.
 - Port handles are resolved before emission; provenance may record the component property and port involved.
 - View templates remain present in the meta domain of Logical IR and are invisible to ordinary references. Renderer materialization creates separate instance keys in Projection IR.
 - No functions, symbols, cycles, renderer objects, or absolute positions.
@@ -523,7 +527,7 @@ interface PortIR extends EntityBase<"port"> {
   capacity?: number;
   minSpacing?: Length;
   contentType?: string; // runtime tag from port<T>() when available
-  marker?: PortMarkerSpec;
+  dockStyle?: DockStyleSpec;
   sharing: { mode: PortSharingMode; branch?: BranchPolicy };
 }
 
@@ -533,6 +537,17 @@ type PortMarkerSpec =
   | "square"
   | "diamond"
   | { kind: "extension"; namespace: string; name: string };
+
+interface DockStyleSpec {
+  marker?: PortMarkerSpec;
+  fill?: string;
+  stroke?: string;
+  width?: number;
+  size?: Length;
+  opacity?: number;
+  roughness?: number;
+  extensions?: Readonly<Record<string, unknown>>;
+}
 
 interface PortGroupIR extends EntityBase<"port-group"> {
   id: LocalId;
@@ -580,8 +595,21 @@ type HeadSpec =
 
 interface EndpointIR {
   target: EndpointTargetIR;
+  dock: EndpointDockIR;
   side?: Side;       // local hint when target is not a port
 }
+
+type EndpointDockIR =
+  | {
+      kind: "port";
+      port: EntityKey;
+    }
+  | {
+      kind: "line-owned";
+      line: EntityKey;
+      end: 0 | 1;
+      style?: DockStyleSpec;
+    };
 
 type EndpointTargetIR =
   | {
@@ -637,11 +665,17 @@ interface LineStyleSpec {
   width?: number;
   dash?: "solid" | "dashed" | "dotted" | readonly number[];
   opacity?: number;
+  roughness?: number;
   heads?: readonly [HeadSpec, HeadSpec];
+  dock?: DockStyleSpec; // marker-specific additions or overrides at both ends
 }
 ```
 
+An authoring-level `labels` collection on a line is normalization sugar, not another IR location for labels. `start` entries attach to the first suitable inferred or explicit segment, `end` entries to the last, and `center` or `auto` entries to a suitable prominent segment. Multiple entries remain distinct `LabelIR` values in source order. This supports relation names, endpoint roles, multiplicities, guards, and sequence numbers without encoding several semantics into one string.
+
 `traversal` segments are the normalizer's record of inferred hierarchy crossings toward the least common ancestor. They are always `origin: "implicit"`; concrete portals, tracks, and bends first appear in Solved IR.
+
+For a port endpoint, the dock base style is `PortIR.dockStyle`; for a line-owned endpoint, it is `EndpointDockIR.style`. The compatible properties of `LineStyleSpec`, including its optional `dock` block, overlay that base property by property. A line value wins a conflict, while every non-conflicting base value survives. The resolved dock style is computed before any marker geometry that consumes routing or layout space.
 
 ### 12.9 Notes
 
@@ -689,6 +723,11 @@ type ConstraintIR =
       dimension: "width" | "height" | "both";
     })
   | (ConstraintBase<"near"> & { first: EntityKey; second: EntityKey })
+  | (ConstraintBase<"inside"> & {
+      members: readonly EntityKey[];
+      container: EntityKey;
+      padding?: Length;
+    })
   | (ConstraintBase<"below"> & { item: EntityKey; reference: EntityKey })
   | (ConstraintBase<"between"> & { item: EntityKey; first: EntityKey; second: EntityKey })
   | (ConstraintBase<"avoid-overlap"> & { members: readonly EntityKey[] });
@@ -729,10 +768,12 @@ How authoring constructs normalize (details and phases in [REQUIREMENTS.md](REQU
 - Physical direction words in the source are stored as local directions; only the per-scope `orientation` carries rotation.
 - `gap()`/`padding()` calls become `RegionRef` values; a bare corridor id becomes `{ kind: "corridor" }`.
 - A named endpoint whose port has not been declared synthesizes a `PortIR` with `origin: "implicit"`. Nested and post-hoc `Port` declarations refine that same owner-and-ID identity, and TSX handles resolve to it.
+- An entity-only endpoint emits a `line-owned` `EndpointDockIR` derived from its line key and end index. It never synthesizes a `PortIR`, and equal target entities do not merge these dock identities.
 - A `Line` without explicit segments emits only implicit segments. Explicit `<Segment>` children are kept in order; the normalizer weaves implicit traversal segments between them.
-- A line-level `label` becomes a `LabelIR` with `placement: "auto"` attached to the line's most prominent segment at solve time.
+- A line-level `label` becomes a `LabelIR` with `placement: "auto"`; an authoring-level `labels` collection becomes several ordered `LabelIR` values distributed onto suitable start, center, end, or automatic segments.
 - `heads="both"` and friends resolve to the per-end `heads` tuple.
 - Lines sharing one canonical named port receive a port-derived `ShareSpec`; its mode and branch policy come from `PortIR.sharing`. Port-group affinity and explicit line groups apply only when they add a relation across distinct ports.
+- Dock style resolution overlays compatible line-style properties onto the port or line-owned dock style. The line wins conflicts and non-conflicting properties from both inputs survive.
 - `View` declarations emit hidden `ViewIR` alternatives with score expressions and template children. Normalization does not select or instantiate them.
 - Ordinary reference resolution skips the meta domain. Endpoint-alternative syntax emits an `alternatives` target whose exact-view and default cases are validated separately. Renderer materialization chooses a case, then truncates at the deepest instantiated object if necessary.
 - `PortPlacement` emits a meta mapping from one canonical ordinary port to one anchor in the containing view template.

@@ -164,6 +164,7 @@ The precise component names and property forms remain subject to design. Normali
 - `Layout`: arrangement of a set of objects;
 - `View`: named alternative representation of one component or scope;
 - `Port`: symmetric attachment point on an element or scope;
+- `Dock`: the attachment identity of one line end; either a shared named port or a line-owned automatic dock;
 - `PortPlacement`: view-template mapping from a stable owner port to one rendered anchor;
 - `PortGroup`: adjacency, ordering, and affinity rules for ports;
 - `Corridor`: named refinement of an implicit whitespace routing region;
@@ -381,7 +382,7 @@ CSS media queries and container queries are design precedents, not required sour
 
 ## 8. Ports and components
 
-### 8.1 Ports
+### 8.1 Ports and line-owned docks
 
 A port is a symmetric attachment point — direction belongs to lines, not ports. A port MUST express at least:
 
@@ -393,9 +394,25 @@ A port is a symmetric attachment point — direction belongs to lines, not ports
 - optional visible marker such as a circle;
 - a sharing policy for lines joined at the port.
 
-A line endpoint MUST be able to reference an element or scope without an explicit port; the router then selects a compatible attachment point, optionally constrained by a side hint.
+Every line end MUST resolve to a dock identity. A named port is a reusable dock identity owned by an element or scope. A line endpoint MUST also be able to reference an element or scope without naming a port. Such an endpoint creates an exclusive line-owned dock whose stable logical identity is derived from the line and end index; the router selects its concrete attachment position, optionally constrained by a side hint.
+
+Two different entity-only line ends on the same object MUST receive different line-owned docks. They MUST NOT form a join merely because the router places them at the same coordinate. A line-owned dock MUST NOT synthesize an author-visible port, participate in a named-port join, or consume named-port cardinality. Explicit line share groups MAY still coordinate the adjacent paths without changing the distinct dock identities.
 
 A named endpoint reference such as `api.request` MUST resolve to the canonical port identity `(api, request)`. If no explicit declaration exists, the normalizer MUST create that named port implicitly with default properties. Referencing only `api` requests an anonymous automatic attachment point and MUST NOT create a stable named port.
+
+Both a dock and its line MUST be able to contribute presentation properties to the rendered attachment. The effective dock style MUST be a property-wise cascade: first the dock's own style, then the compatible line style as an overlay. Properties supplied only by the dock remain; properties supplied only by the line are added; when both supply the same property, the line value wins. This rule applies to named-port docks and line-owned docks alike. Marker shape, fill, size, and other dock-only properties remain available even when stroke, width, opacity, roughness, or an explicit dock override comes from the line.
+
+The exact TSX object syntax remains open. The semantic distinction MUST nevertheless be expressible along these lines:
+
+```tsx
+<Line
+  from={{ target: "client", dock: { marker: "circle", fill: "white" } }}
+  to="server"
+  style={{ stroke: "blue", width: 2 }}
+/>
+```
+
+Here the `from` dock contributes its circle and fill, while the line contributes the blue stroke and width. If the dock also declared a stroke or width, the line values would override them.
 
 An explicit nested declaration and a post-hoc refinement both address the same canonical port:
 
@@ -492,6 +509,8 @@ A label belongs to a segment. Pinning a segment into a whitespace region and lab
 
 Labels MUST support placement along their segment (`start`, `center`, `end`, `auto`) and orientation (`upright` or `along` the segment). Rich structured label content MAY be added later, but plain text MUST be supported.
 
+A line MUST also accept an ordered collection of label specifications as authoring sugar for labels on inferred segments. This is required for notations such as UML associations, where one semantic relation can carry a name near its center plus roles and multiplicities near both ends. A `start` label normalizes onto the first suitable segment, an `end` label onto the last suitable segment, and `center` or `auto` onto a suitable prominent segment. Several labels at the same placement MUST remain distinct and be orderable; they MUST NOT be concatenated into one opaque string.
+
 ### 9.4 Port joins and shared geometry
 
 All line ends attached to the same canonical named port MUST form one topological join group at that port. This is true whether the port was implicit, explicitly nested, configured post-hoc, or reached through a TSX handle. Repeating the port name is therefore sufficient to join the line ends; a separate `PortGroup` declaration is neither necessary nor appropriate for that case.
@@ -565,6 +584,8 @@ Semantics and presentation MUST remain separate. An element SHOULD carry roles a
 Themes or CSS-like rules MAY derive shape, color, typography, padding, roughness, and other presentation properties from them.
 
 Inline styles MAY be supported. Properties that influence intrinsic size or routing space MUST be resolved before layout. Purely painterly properties MAY be applied later.
+
+Dock rendering MUST use the cascade defined in section 8.1. The resolved style MUST retain non-conflicting contributions from both the dock and the line, with line style taking precedence for conflicting properties. Geometry-affecting dock properties such as marker size or stroke width MUST be resolved before layout and routing reserve space for the attachment.
 
 Logical IR MUST NOT contain Excalidraw-specific object classes. Standard styles MUST be typed; renderer or library extensions MUST have a namespace.
 
@@ -650,11 +671,11 @@ Normalization MUST include at least these phases:
 5. Build the hierarchical address tree and local bindings from containment.
 6. Collect TSX port allocations, nested port declarations, post-hoc refinements, endpoint-derived implicit ports, and forwarded bindings.
 7. Merge all declarations for each canonical `(owner, local port ID)` and diagnose conflicting explicit properties.
-8. Resolve every required port handle and relative endpoint to a canonical port.
+8. Resolve every required port handle and named-port endpoint to a canonical port; assign every entity-only endpoint a distinct line-owned dock identity derived from its line and end index.
 9. Resolve ordinary entity and region references without entering meta branches; normalize endpoint alternatives into common prefixes, selected-view cases, branch-local suffixes, defaults, and truncation policy.
 10. Canonicalize defaults and shorthand forms (line-level labels, `heads` sugar, layout components versus properties).
 11. Weave implicit segments around explicit ones; infer least common ancestors and traversals.
-12. Derive join groups from common canonical ports, then apply port sharing policies, explicit share groups, and port-group affinity.
+12. Derive join groups from common canonical ports without joining distinct line-owned docks, then apply port sharing policies, explicit share groups, and port-group affinity.
 13. Preserve every component view template, port-placement mapping, and normalized condition tree for renderer materialization.
 14. Assign `EntityKey` values deterministically.
 15. Perform structural and semantic validation.
@@ -670,6 +691,7 @@ At least these errors MUST be detected before solving:
 - conflicting explicit refinements of one canonical port;
 - required port handles that are unbound, bound twice, or unattached;
 - ports attached more often than their cardinality permits;
+- duplicate or unstable line-owned dock identities, or a line-owned dock accidentally participating in a named-port join;
 - statically or dynamically incompatible port payload types;
 - port handles or component functions remaining after lowering;
 - `gap()` between entities that are not layout siblings, or region references that do not resolve;
@@ -722,9 +744,9 @@ Projection IR MUST be versioned and serializable for debugging, caching, cross-l
 
 Different projections of one model — infinite canvas, single poster, tiled pages, and focused subsystem views — MUST preserve semantic identity and connectivity. Presentation clipping, pagination, collapsing, and filtering MUST NOT silently delete or reinterpret the underlying model.
 
-## 17. Reference fixtures before implementation
+## 17. Reference fixtures and grammar examples before implementation
 
-The reference drawings under [`examples/`](examples/) are requirements fixtures, not post-implementation demos. Each fixture MUST contain:
+The supplied reference drawings under [`examples/`](examples/) are visual requirements fixtures, not post-implementation demos. Each visual fixture MUST contain:
 
 - `original.png`: the visual reference provided before implementation;
 - `diagram.tsx`: a complete logical formulation in the proposed authoring language.
@@ -738,11 +760,13 @@ The initial fixtures are:
 | Fixture | Primary coverage |
 | --- | --- |
 | [`vegvisir-voice-agents`](examples/vegvisir-voice-agents/) | nested scopes, image content, ellipse and diamond shapes, a waypoint element inside a corridor, two-headed lines, a labeled segment pinned into the gap between containers, and a merged fan-out in a padding band |
-| [`modelplane-fleet-inference`](examples/modelplane-fleet-inference/) | anchored page furniture, repeated cluster components with hidden renderer-scored view templates, stable ports mapped by `PortPlacement`, a context-conditional detail and path, an implicitly created and post-hoc refined port, two ordered corridors subdividing one gap, external nodes, and a footer |
+| [`modelplane-fleet-inference`](examples/modelplane-fleet-inference/) | anchored page furniture, repeated cluster components with hidden renderer-scored view templates, stable ports mapped by `PortPlacement`, a context-conditional detail and path, an implicitly created and post-hoc refined port, an entity-only endpoint with a line-owned dock, two ordered corridors subdividing one gap, external nodes, and a footer |
 | [`agent-substrate`](examples/agent-substrate/) | deep containment, lines pinned through padding bands and sibling gaps, dashed control paths, a boundary-spanning request route arriving deep inside nested scopes, and corner-anchored annotations |
 | [`machine-thought-os`](examples/machine-thought-os/) | a labeled divider on a gap, many-cardinality ports, fan-out and fan-in share groups, a dashed branch leaving a solid merged trunk, bundled data feeds, deferred work, and a hierarchy-crossing return path |
 
-A grammar change MUST update all affected fixture files. A future executable fixture lifecycle SHOULD produce:
+The TSX-only examples under [`examples/uml/`](examples/uml/) are grammar-coverage fixtures rather than visual-reproduction fixtures and therefore do not require an `original.png`. They MUST express class, object, component, deployment, package, use-case, sequence, activity, and state-machine diagrams as ordinary composable TSX components over the core vocabulary. UML-specific notation MAY be a namespaced library extension, but the resulting model MUST normalize into the same core entities, relations, styles, and constraints; it MUST NOT require a privileged `UmlDiagramIR` branch.
+
+A grammar change MUST update every affected visual fixture and grammar example. A future executable visual-fixture lifecycle SHOULD produce:
 
 - `logical.yaml`, the canonical normalized IR;
 - `projection.yaml`, the renderer-materialized instance tree for a named target and policy;
@@ -798,6 +822,13 @@ The first grammar and IR version MUST cover at least these golden scenarios:
 41. A conditional line or segment appears only when its condition holds, and a required connection removed by the condition produces a diagnostic.
 42. Cyclic or non-converging size-dependent view fallback is detected and diagnosed deterministically.
 43. A deep ordinary endpoint truncates to its deepest instantiated object when the selected rendering hides its suffix; `api.{foo#view:abc, foo:bar}` selects `abc` for view `view`, otherwise selects `bar`, and still truncates if the chosen suffix is only partly instantiated.
+44. Two lines target the same entity without naming a port and receive distinct line-owned docks; they do not join even if the router chooses the same physical attachment position.
+45. A dock supplies a marker and fill while its line supplies stroke and width; all four properties appear in the effective dock style, and a conflicting line property overrides the corresponding dock property.
+46. A UML class association carries a center name plus independent roles and multiplicities near both ends; all labels remain separate `LabelIR` values on inferred segments.
+47. Generalization, realization, aggregation, composition, dependency, include, extend, transition, and message components normalize to ordinary lines with typed or namespaced endpoint heads, dash styles, and labels.
+48. A sequence diagram aligns corresponding occurrences across independently contained lifelines and orders messages without authoring absolute coordinates; activation bars and a combined fragment remain logical line, scope, and constraint structures.
+49. Activity and state-machine control flows cross partition and composite-state boundaries through ordinary hierarchy traversal, including guards, decisions, forks, joins, history, and final pseudostates.
+50. Every UML grammar example expands to the core Logical IR vocabulary without a diagram-type-specific IR root.
 
 ## 19. Open grammar decisions
 
@@ -816,6 +847,10 @@ The following details must be decided next by comparing the concrete TSX fixture
 - whether an `Arrow` compatibility shorthand exists in the public API;
 - automatic IDs for non-container entities and their stability guarantees;
 - inline styles versus a CSS-like cascade;
+- the final TSX object syntax for configuring a line-owned dock and line-level dock-style overrides;
+- the final authoring sugar and collision policy for several ordered labels at the start, center, or end of one line;
+- which UML endpoint adornments, compartments, stereotypes, and tagged values are standardized library vocabulary versus namespaced extensions;
+- the reusable constraint vocabulary for lifeline occurrence alignment, activation spans, and combined interaction fragments;
 - exact units for size, spacing, margin, padding, pressure, and weights;
 - how corridors subdividing one gap are ordered and addressed;
 - whether a share group can carry its trunk pinning once instead of per line;

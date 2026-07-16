@@ -129,6 +129,8 @@ The component caller knows only the public port handle. The normalizer resolves 
 
 A named endpoint such as `services/client/ui.health` implicitly defines `health` on the ordinary `ui` object if necessary. A nested `<Port id="health">` or later `<Port ref="services/client/ui.health" marker="circle">` configures that same canonical port rather than creating another one. Lines attached to the same named port form one join and follow the sharing policy declared there.
 
+An endpoint that names only an object, such as `services/client/ui`, creates a distinct dock owned by that line end. It does not create a port or join with another object-only endpoint. Dock and line styles both contribute to the rendered attachment: non-conflicting properties compose, while the line style overrides any property also supplied by the dock.
+
 A normal deep line target stops at the deepest object instantiated by the selected views. If a line truly needs a different target for one rendered view, endpoint alternatives provide the explicit escape hatch: `api.{foo#view:abc, foo:bar}` chooses `abc` when `foo` renders view `view`, otherwise `bar`. The `#view` selector is local to this endpoint expression; normal paths never expose the meta tree.
 
 ## Documents
@@ -136,7 +138,7 @@ A normal deep line target stops at the deepest object instantiated by the select
 - [DESIGN.md](DESIGN.md) describes implementation architecture and plumbing only.
 - [REQUIREMENTS.md](REQUIREMENTS.md) states the normative language and system requirements.
 - [MODEL.md](MODEL.md) defines the conceptual data model and draft Logical IR.
-- [`examples/`](examples/) contains visual references and pre-implementation TSX fixtures.
+- [`examples/`](examples/) contains visual reference fixtures and pre-implementation grammar examples.
 
 The documents and fixtures are written before implementation on purpose. A grammar change must update every affected fixture so the language is continuously tested against real design drawings rather than toy flowcharts.
 
@@ -150,6 +152,12 @@ Each fixture contains the original drawing and the TSX model intended to reprodu
 - [Machine thought operating system](examples/machine-thought-os/diagram.tsx)
 
 The references exercise nested containment, repeated components, long hierarchy-crossing routes, shared trunks, fan-out and fan-in, routing corridors, annotations, boundaries, and mixed levels of detail.
+
+## UML grammar examples
+
+[`examples/uml/`](examples/uml/) contains complete TSX formulations for class, object, component, deployment, package, use-case, sequence, activity, and state-machine diagrams. These examples have no `original.png`; they test the breadth and composability of the language rather than reproduction of one supplied drawing.
+
+The UML vocabulary is expressed as an ordinary TSX component library over the core model. UML diagram types therefore do not become privileged syntax or renderer-specific IR variants.
 
 ## Non-goals
 
