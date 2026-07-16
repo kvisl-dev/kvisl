@@ -70,6 +70,8 @@ Rows, columns, grids, overlays, layered layouts, and constraints express relativ
 
 Every container has a local frame that can be rotated by `0`, `90`, `180`, or `270` degrees. A component can therefore be embedded in another flow direction without rewriting its internals.
 
+![The same pipeline component rendered upright and rotated 90 degrees](assets/orientation-rotation.svg)
+
 ### Lines made of logical segments
 
 A line has two symmetric ends and an ordered sequence of segments. Most segments are implicit. The normalizer infers hierarchy exits, entries, and connective runs. An author adds an explicit segment only to state something meaningful, such as:
@@ -85,6 +87,8 @@ Lines may cross any number of containment boundaries. They do not have to enumer
 
 The gaps between layout siblings and the padding inside containers form the routing plane. A line routed through that whitespace reserves space, and layout reacts to the route. A named corridor refines an existing gap or padding band with capacity, track spacing, ordering, packing pressure, or a visible divider.
 
+![Gaps and padding bands are routable regions](assets/whitespace-routing.svg)
+
 This makes a route such as “leave this subsystem vertically, travel across the higher-level gap, and enter that subsystem from below” a structural request rather than a list of bends.
 
 ### Presentation through rules
@@ -95,13 +99,17 @@ Objects and lines carry semantic roles and classes. Typed rules provide presenta
 renderer default < theme < library < document < inline style
 ```
 
-This lets a UML library define notation, a theme define a visual language, and a document override either without copying styles into every component. Rules may affect presentation and metric defaults, but never topology or object existence.
+This lets a UML library define notation, a theme define a visual language, and a document override either without copying styles into every component. Rules may affect presentation and metric defaults, but never topology or object existence. Named tokens — the custom-property analog — resolve through the same layers, so a document can swap a theme's palette or spacing scale without touching any rule.
+
+![Five cascade layers and the resolved style of one object](assets/rule-cascade.svg)
 
 ### Views and adaptive detail
 
 A component may own several hidden render views. Views preserve the component's identity and canonical ports while providing different internal templates.
 
 View selection uses media-query-like first-fit semantics. The renderer evaluates views in declaration order and materializes the first one whose condition, footprint, and active policy are viable. An outside-in `maximum-that-fits` policy can therefore choose a detailed view on a large canvas and a compact view on a constrained page.
+
+![First-fit view selection at a wide and a narrow allocation](assets/view-selection.svg)
 
 Unselected view branches are not visible to ordinary paths. Stable component ports remain the normal way to connect across changing views.
 
@@ -143,6 +151,24 @@ It is especially useful for agents working on behalf of:
 - teams that want editable Excalidraw output and deterministic SVG from the same source.
 
 It is probably unnecessary for a disposable sketch, a small flowchart, or a drawing whose exact hand-placed composition is the primary artifact.
+
+## Does the world need this?
+
+That is the question this documentation exists to answer, before a solver and renderers are built. The design bets on three things no existing tool combines:
+
+1. **Components with ports instead of global IDs** — reusable, nestable, rotatable subsystems whose callers never see internal names;
+2. **Whitespace routing** — corridors, shared trunks, and hierarchy-crossing routes as logical structure instead of hand-maintained polylines;
+3. **Editable output with stable identity** — regenerate into an existing Excalidraw document and it updates instead of clobbering manual adjustments.
+
+If you draw or generate technical diagrams, we would like to know:
+
+- Which of the three bets matters to you — and which is solved well enough today by Mermaid, D2, Structurizr, PlantUML, or a hand-drawn canvas?
+- Have you abandoned a large diagram because maintaining it became too expensive? What exactly broke?
+- Would you author in TSX, or is a non-code surface a requirement?
+- Is the adaptive-views idea (one model, A4 summary to A0 detail) valuable or over-engineering?
+- Would agents generating diagrams on your behalf change what you need from the format?
+
+Feedback is most useful against a concrete artifact: read one [reference model](../examples/README.md) next to [its target drawing](../examples/modelplane-fleet-inference/original.png) and judge whether the source earns its keep.
 
 ## Continue
 

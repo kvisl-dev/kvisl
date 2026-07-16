@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="560" viewBox="0 0 1200 560" role="img" aria-labelledby="title desc">
+  <title id="title">One gap, two ordered corridors, one decorated divider</title>
+  <desc id="desc">Two horizontal bands with the whitespace between them subdivided into a placement corridor and a request corridor, each carrying tracks, plus a labeled dashed divider line — the boundary is the decorated gap, not an element.</desc>
+  <defs>
+    <marker id="cdOrange" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#e8833a"/>
+    </marker>
+    <marker id="cdPurple" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#6d4aff"/>
+    </marker>
+    <style>
+      text { font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #172033; }
+      .small { font-size: 15px; }
+      .label { font-size: 17px; font-weight: 600; }
+      .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 14px; }
+      .muted { fill: #5f6b7c; }
+      .scope { fill: #ffffff; stroke: #344054; stroke-width: 2.5; }
+      .node { fill: #eef5ff; stroke: #2878c8; stroke-width: 2.5; }
+      .corridor { fill: #eaf7f5; stroke: #18a999; stroke-width: 2; stroke-dasharray: 8 6; }
+      .orange { fill: none; stroke: #e8833a; stroke-width: 3.5; stroke-linecap: round; stroke-linejoin: round; }
+      .purple { fill: none; stroke: #6d4aff; stroke-width: 3.5; stroke-linecap: round; stroke-linejoin: round; }
+    </style>
+  </defs>
+
+  <rect x="1" y="1" width="1198" height="558" rx="22" fill="#f8fafc" stroke="#d8dee8" stroke-width="2"/>
+  <text x="40" y="42" class="label">Corridors refine the gap they already have</text>
+
+  <!-- upper band -->
+  <rect x="40" y="70" width="1120" height="130" rx="18" class="scope"/>
+  <text x="64" y="100" class="label">control plane</text>
+  <rect x="330" y="112" width="180" height="60" rx="14" class="node"/>
+  <text x="420" y="148" text-anchor="middle" class="label">scheduler</text>
+  <rect x="760" y="112" width="180" height="60" rx="14" class="node"/>
+  <text x="850" y="148" text-anchor="middle" class="label">gateway</text>
+
+  <!-- the gap between the bands, subdivided -->
+  <rect x="60" y="216" width="1080" height="52" rx="10" class="corridor"/>
+  <text x="80" y="238" class="mono">Corridor "placement-bus"  ·  rank 1</text>
+  <rect x="60" y="276" width="1080" height="52" rx="10" class="corridor"/>
+  <text x="80" y="298" class="mono">Corridor "request-bus"  ·  rank 2</text>
+
+  <!-- divider decoration on the same gap -->
+  <line x1="60" y1="344" x2="1140" y2="344" stroke="#e8833a" stroke-width="3" stroke-dasharray="12 8"/>
+  <text x="1140" y="336" text-anchor="end" class="small" fill="#e8833a">SYSTEM BOUNDARY</text>
+
+  <!-- lower band -->
+  <rect x="40" y="368" width="1120" height="130" rx="18" class="scope"/>
+  <text x="64" y="398" class="label">fleet</text>
+  <rect x="150" y="412" width="180" height="60" rx="14" class="node"/>
+  <text x="240" y="448" text-anchor="middle" class="label">cluster a</text>
+  <rect x="560" y="412" width="180" height="60" rx="14" class="node"/>
+  <text x="650" y="448" text-anchor="middle" class="label">cluster b</text>
+  <rect x="960" y="412" width="180" height="60" rx="14" class="node"/>
+  <text x="1050" y="448" text-anchor="middle" class="label">external</text>
+
+  <!-- placement trunk: scheduler fans out through corridor 1 -->
+  <path d="M 420 172 L 420 242 L 240 242 L 240 412" class="orange" marker-end="url(#cdOrange)"/>
+  <path d="M 420 242 L 650 242 L 650 412" class="orange" marker-end="url(#cdOrange)"/>
+
+  <!-- request fan-out through corridor 2 -->
+  <path d="M 850 172 L 850 302 L 262 302 L 262 412" class="purple" marker-end="url(#cdPurple)"/>
+  <path d="M 672 302 L 672 412" class="purple" marker-end="url(#cdPurple)"/>
+  <path d="M 850 302 L 1050 302 L 1050 412" class="purple" marker-end="url(#cdPurple)"/>
+
+  <text x="600" y="530" text-anchor="middle" class="small muted">gap(control-plane, fleet) exists implicitly. The two Corridor declarations subdivide it in declaration order; the divider is decoration on the same gap — no fake boundary element.</text>
+</svg>

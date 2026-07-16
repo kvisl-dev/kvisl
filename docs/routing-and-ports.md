@@ -43,6 +43,10 @@ Whitespace created by layout is routable structure:
 
 Several corridor refinements may occupy the same structural region. Their rank supplies the order within it. A normalized corridor carries the region, axis, minimum and preferred track spacing, pressure, capacity, divider, track-order constraints, and allowed sharing modes.
 
+![One gap subdivided into two ordered corridors with a labeled divider](assets/corridor-divider.svg)
+
+A divider is decoration on the gap itself — a visible boundary line between two bands never requires a fake boundary element.
+
 Pressure is a packing preference, not permission to violate spacing. A high-pressure corridor encourages narrow track packing and permitted sharing while preserving hard minimums.
 
 ## Named ports create joins

@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="480" viewBox="0 0 1200 480" role="img" aria-labelledby="title desc">
+  <title id="title">A shared generalization trunk from a named-port join</title>
+  <desc id="desc">Two subclasses connect to the same named port on the superclass. The port join with merge sharing draws one trunk that ends in a single hollow triangle; the branch happens late.</desc>
+  <defs>
+    <style>
+      text { font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #172033; }
+      .small { font-size: 15px; }
+      .label { font-size: 17px; font-weight: 600; }
+      .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 14px; }
+      .muted { fill: #5f6b7c; }
+      .cls { fill: #ffffff; stroke: #344054; stroke-width: 2.5; }
+      .line { fill: none; stroke: #344054; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+    </style>
+  </defs>
+
+  <rect x="1" y="1" width="1198" height="478" rx="22" fill="#f8fafc" stroke="#d8dee8" stroke-width="2"/>
+  <text x="40" y="42" class="label">Generalization trunks are ordinary port joins</text>
+
+  <!-- superclass -->
+  <rect x="440" y="80" width="320" height="86" rx="6" class="cls"/>
+  <line x1="440" y1="126" x2="760" y2="126" stroke="#344054" stroke-width="2"/>
+  <text x="600" y="112" text-anchor="middle" class="label" font-style="italic">PaymentMethod</text>
+  <text x="600" y="150" text-anchor="middle" class="small muted">{abstract}</text>
+
+  <!-- the named port -->
+  <circle cx="600" cy="166" r="8" fill="#ffffff" stroke="#6d4aff" stroke-width="3"/>
+  <text x="622" y="184" class="mono">payment-method.generalizations</text>
+
+  <!-- hollow triangle at the trunk -->
+  <path d="M 600 174 L 578 214 L 622 214 Z" fill="#ffffff" stroke="#344054" stroke-width="3"/>
+
+  <!-- shared trunk, late branch -->
+  <path d="M 600 214 L 600 300" class="line"/>
+  <path d="M 600 300 L 330 300 L 330 356" class="line"/>
+  <path d="M 600 300 L 870 300 L 870 356" class="line"/>
+  <rect x="636" y="238" width="150" height="34" rx="17" fill="#f1edff"/>
+  <text x="711" y="260" text-anchor="middle" class="small">one merged trunk</text>
+  <rect x="430" y="312" width="120" height="34" rx="17" fill="#dff5f1"/>
+  <text x="490" y="334" text-anchor="middle" class="small">late branch</text>
+
+  <!-- subclasses -->
+  <rect x="180" y="356" width="300" height="70" rx="6" class="cls"/>
+  <line x1="180" y1="396" x2="480" y2="396" stroke="#344054" stroke-width="2"/>
+  <text x="330" y="384" text-anchor="middle" class="label">CreditCardPayment</text>
+
+  <rect x="720" y="356" width="300" height="70" rx="6" class="cls"/>
+  <line x1="720" y1="396" x2="1020" y2="396" stroke="#344054" stroke-width="2"/>
+  <text x="870" y="384" text-anchor="middle" class="label">PaypalPayment</text>
+
+  <text x="600" y="456" text-anchor="middle" class="small muted">Both relations name the same canonical port; its sharing policy (merge, branch late) produces the classic single-triangle trunk. No special inheritance routing exists.</text>
+</svg>

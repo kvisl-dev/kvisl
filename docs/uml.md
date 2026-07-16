@@ -103,6 +103,8 @@ Several generalizations can attach to the same named port on a superclass. The c
 
 This is not special inheritance routing. It is the same named-port join and merged path used elsewhere in Excalmermaid, with a UML head supplied by the library.
 
+![Two generalizations joining into one hollow-triangle trunk at a named port](assets/uml-generalization-trunk.svg)
+
 ## Sequence diagrams
 
 ![Place an order sequence diagram](assets/uml-sequence-diagram.svg)
@@ -149,6 +151,8 @@ Sequence diagrams need a higher-level component because time is an authoring con
 - hard spatial-order constraints preserve temporal source order;
 - an activation becomes an object under an `extent` constraint between two occurrences;
 - a combined fragment becomes a frame object plus an `inside` constraint over its occurrences.
+
+![Interaction declarations expanding into core objects, lines, and constraints](assets/interaction-expansion.svg)
 
 There is no `SequenceDiagramIR`, time coordinate, activation primitive, or fragment primitive in the core.
 

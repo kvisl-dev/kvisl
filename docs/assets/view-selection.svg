@@ -1,0 +1,76 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="560" viewBox="0 0 1200 560" role="img" aria-labelledby="title desc">
+  <title id="title">First-fit view selection, media-query style</title>
+  <desc id="desc">A component declares two views in preference order. A wide allocation satisfies the first view's condition and renders internals; a narrow allocation fails it and renders the summary card. Identity and ports stay the same.</desc>
+  <defs>
+    <style>
+      text { font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #172033; }
+      .small { font-size: 15px; }
+      .label { font-size: 17px; font-weight: 600; }
+      .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 14px; }
+      .muted { fill: #5f6b7c; }
+      .scope { fill: #ffffff; stroke: #7b8798; stroke-width: 2; }
+      .node { fill: #eef5ff; stroke: #2878c8; stroke-width: 2.5; }
+      .view { fill: #fff8ec; stroke: #e8833a; stroke-width: 2; }
+      .ok { fill: #2f9e44; font-weight: 700; font-size: 17px; }
+      .no { fill: #c0392b; font-weight: 700; font-size: 17px; }
+    </style>
+  </defs>
+
+  <rect x="1" y="1" width="1198" height="558" rx="22" fill="#f8fafc" stroke="#d8dee8" stroke-width="2"/>
+  <text x="40" y="42" class="label">Views: declaration order is preference order, the first viable view wins</text>
+
+  <!-- declared views -->
+  <text x="40" y="92" class="label">declared on the component</text>
+  <rect x="40" y="108" width="330" height="92" rx="14" class="view"/>
+  <text x="62" y="138" class="mono">1  View "internals"</text>
+  <text x="62" y="162" class="mono">   requires inlineSize ≥ 70</text>
+  <text x="62" y="186" class="mono">   footprint 100 × 70</text>
+
+  <rect x="40" y="216" width="330" height="68" rx="14" class="view"/>
+  <text x="62" y="246" class="mono">2  View "summary"</text>
+  <text x="62" y="270" class="mono">   (unconditional tail)</text>
+
+  <rect x="40" y="320" width="330" height="180" rx="14" fill="#ffffff" stroke="#d8dee8" stroke-width="2"/>
+  <text x="62" y="350" class="small muted">Like a media query: the renderer walks</text>
+  <text x="62" y="374" class="small muted">the list in order and materializes the</text>
+  <text x="62" y="398" class="small muted">first view whose condition holds and</text>
+  <text x="62" y="422" class="small muted">whose footprint fits the allocation.</text>
+  <text x="62" y="446" class="small muted">No scores, no tie-breaking —</text>
+  <text x="62" y="470" class="small muted">order decides. Fallback = next in order.</text>
+
+  <!-- wide allocation -->
+  <text x="430" y="92" class="label">wide allocation</text>
+  <text x="700" y="92" class="ok">1 ✓</text>
+  <rect x="430" y="108" width="330" height="200" rx="18" class="scope"/>
+  <text x="454" y="138" class="label">cluster</text>
+  <circle cx="430" cy="200" r="8" fill="#ffffff" stroke="#6d4aff" stroke-width="3"/>
+  <rect x="470" y="160" width="120" height="52" rx="12" class="node"/>
+  <text x="530" y="192" text-anchor="middle" class="small">gateway</text>
+  <rect x="610" y="160" width="120" height="52" rx="12" class="node"/>
+  <text x="670" y="192" text-anchor="middle" class="small">replica</text>
+  <rect x="470" y="232" width="120" height="52" rx="12" class="node"/>
+  <text x="530" y="264" text-anchor="middle" class="small">cache</text>
+  <rect x="610" y="232" width="120" height="52" rx="12" class="node"/>
+  <text x="670" y="264" text-anchor="middle" class="small">edge</text>
+  <text x="595" y="340" text-anchor="middle" class="small muted">inlineSize 330 ≥ 70 → "internals" is the first viable view</text>
+
+  <!-- narrow allocation -->
+  <text x="850" y="92" class="label">narrow allocation</text>
+  <text x="1030" y="92"><tspan class="no">1 ✗</tspan>  <tspan class="ok">2 ✓</tspan></text>
+  <rect x="850" y="108" width="160" height="90" rx="18" class="scope"/>
+  <rect x="872" y="130" width="116" height="46" rx="12" class="node"/>
+  <text x="930" y="159" text-anchor="middle" class="small">Cluster</text>
+  <circle cx="850" cy="153" r="8" fill="#ffffff" stroke="#6d4aff" stroke-width="3"/>
+  <text x="930" y="230" text-anchor="middle" class="small muted">condition fails →</text>
+  <text x="930" y="254" text-anchor="middle" class="small muted">"summary" renders</text>
+
+  <rect x="850" y="300" width="310" height="200" rx="14" fill="#ffffff" stroke="#d8dee8" stroke-width="2"/>
+  <text x="872" y="330" class="small muted">Both renderings are the same identity:</text>
+  <text x="872" y="354" class="small muted">the canonical address, semantic children,</text>
+  <text x="872" y="378" class="small muted">and the purple port stay stable, so lines</text>
+  <text x="872" y="402" class="small muted">attached to the component never move</text>
+  <text x="872" y="426" class="small muted">to a different endpoint when the</text>
+  <text x="872" y="450" class="small muted">renderer switches views.</text>
+
+  <text x="600" y="536" text-anchor="middle" class="small muted">An outside-in maximum-that-fits policy applies this per component instance: detailed views on an A0 poster, compact views on an A4 page — same model.</text>
+</svg>

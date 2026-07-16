@@ -2,6 +2,8 @@
 
 Excalmermaid is a composable modelling language for technical design diagrams. These guides cover authoring TSX models, routing and ports, adaptive views, rendering, and domain libraries such as UML.
 
+**These guides are a reality check.** The language and data model are designed; a first normalizer slice runs; solver and renderers do not exist yet. Before building them, we want an honest answer to one question: *does the world need this?* Read the [overview](overview.md), skim one [complete example](../examples/README.md), and tell us — see [the questions we are asking](overview.md#does-the-world-need-this).
+
 ## Start here
 
 1. [Overview](overview.md) — the problem, the model, and when Excalmermaid is useful.
