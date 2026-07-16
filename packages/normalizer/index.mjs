@@ -83,18 +83,26 @@ function buildObject(node, parent, diagnostics) {
     style: p.style,
   };
 
-  // layout: component kind default, or an explicit layout prop
+  // layout facet: component kind default, or an explicit layout prop
   const strategy = p.layout?.kind ?? DEFAULT_LAYOUT[node.core];
   if (strategy) {
     rec.layout = {
       strategy,
       order: p.order ?? p.layout?.order ?? "prefer-source",
-      gap: p.gap ?? p.layout?.gap,
       align: p.align ?? p.layout?.align,
       distribute: p.distribute ?? p.layout?.distribute,
       columns: p.columns ?? p.layout?.columns,
     };
   }
+
+  // metric props are sugar for inline-layer style declarations
+  const gapValue = p.gap ?? p.layout?.gap;
+  const metrics = {
+    ...(gapValue != null ? { gap: gapValue } : {}),
+    ...(p.padding != null ? { padding: p.padding } : {}),
+    ...(p.margin != null ? { margin: p.margin } : {}),
+  };
+  if (Object.keys(metrics).length) rec.style = { ...rec.style, ...metrics };
 
   if (rec.id == null && node.core !== "text")
     diagnostics.push(error("missing-id", `structural container of kind ${node.core} has no id`));
@@ -166,6 +174,13 @@ function buildChild(child, rec, diagnostics) {
       diagnostics.push(error("unsupported-kind", `kind ${child.core} is outside the normalizer slice`));
     }
   }
+}
+
+// bare names select core primitives; "namespace:name" selects an extension
+function parseShape(shape) {
+  const colon = shape.indexOf(":");
+  if (colon < 0) return { kind: shape };
+  return { kind: "extension", namespace: shape.slice(0, colon), name: shape.slice(colon + 1), data: {} };
 }
 
 function makePort(props, origin) {
@@ -275,10 +290,20 @@ export function normalize(rootExpr) {
       roles: rec.roles,
       classes: rec.classes,
       orientation: rec.orientation,
-      ...(rec.shape ? { primitive: { kind: rec.shape } } : {}),
+      ...(rec.shape ? { primitive: parseShape(rec.shape) } : {}),
       content: rec.content,
       children: [],
       ports: [],
+      ...(rec.layout
+        ? {
+            layout: {
+              strategy: { kind: rec.layout.strategy, ...(rec.layout.columns ? { columns: rec.layout.columns } : {}) },
+              order: { kind: rec.layout.order },
+              ...(rec.layout.align ? { align: rec.layout.align } : {}),
+              ...(rec.layout.distribute ? { distribute: rec.layout.distribute } : {}),
+            },
+          }
+        : {}),
       ...(rec.strictPorts ? { strictPorts: true } : {}),
       ...(rec.style ? { style: rec.style } : {}),
     };
@@ -319,25 +344,6 @@ export function normalize(rootExpr) {
     }
     for (const child of rec.children) {
       entity.children.push(walk(child));
-    }
-    if (rec.layout) {
-      const layout = {
-        key: 0,
-        kind: "layout",
-        id: null,
-        domain: "ordinary",
-        parent: entity.key,
-        roles: [],
-        classes: [],
-        container: entity.key,
-        members: rec.children.map((c) => keyOf.get(c)),
-        strategy: { kind: rec.layout.strategy, ...(rec.layout.columns ? { columns: rec.layout.columns } : {}) },
-        order: { kind: rec.layout.order },
-        ...(rec.layout.align ? { align: rec.layout.align } : {}),
-        ...(rec.layout.distribute ? { distribute: rec.layout.distribute } : {}),
-        ...(rec.layout.gap != null ? { gap: rec.layout.gap } : {}),
-      };
-      entity.defaultLayout = assign(layout);
     }
     return entity.key;
   })(root);
@@ -441,7 +447,7 @@ export function normalize(rootExpr) {
       // exits from the source up to (excluding) the LCA
       for (let r = from.rec; r && r !== lca; r = r.parent)
         if (r !== from.rec || r.children.length)
-          entity.segments.push(segment({ kind: "traversal", scope: keyOf.get(r), role: "exit" }, "implicit"));
+          entity.segments.push(segment({ kind: "traversal", container: keyOf.get(r), role: "exit" }, "implicit"));
       // explicit pins in authored order
       for (const seg of line.segments) {
         const sp = seg.props;
@@ -470,7 +476,7 @@ export function normalize(rootExpr) {
       for (let r = to.rec; r && r !== lca; r = r.parent)
         if (r !== to.rec || r.children.length) entries.push(r);
       for (const r of entries.reverse())
-        entity.segments.push(segment({ kind: "traversal", scope: keyOf.get(r), role: "enter" }, "implicit"));
+        entity.segments.push(segment({ kind: "traversal", container: keyOf.get(r), role: "enter" }, "implicit"));
     }
     for (const child of rec.children) emitLines(child);
   })(root);

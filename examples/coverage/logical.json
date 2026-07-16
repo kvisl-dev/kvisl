@@ -17,7 +17,14 @@
         2
       ],
       "ports": [],
-      "defaultLayout": 32
+      "layout": {
+        "strategy": {
+          "kind": "column"
+        },
+        "order": {
+          "kind": "prefer-source"
+        }
+      }
     },
     {
       "key": 2,
@@ -31,11 +38,22 @@
       "content": [],
       "children": [
         3,
-        14,
-        27
+        13,
+        24
       ],
       "ports": [],
-      "defaultLayout": 31
+      "layout": {
+        "strategy": {
+          "kind": "row"
+        },
+        "order": {
+          "kind": "prefer-source"
+        },
+        "align": "center"
+      },
+      "style": {
+        "gap": "xlarge"
+      }
     },
     {
       "key": 3,
@@ -61,8 +79,18 @@
         10
       ],
       "ports": [],
+      "layout": {
+        "strategy": {
+          "kind": "row"
+        },
+        "order": {
+          "kind": "prefer-source"
+        }
+      },
       "strictPorts": true,
-      "defaultLayout": 13
+      "style": {
+        "gap": "medium"
+      }
     },
     {
       "key": 4,
@@ -234,28 +262,6 @@
     },
     {
       "key": 13,
-      "kind": "layout",
-      "id": null,
-      "domain": "ordinary",
-      "parent": 3,
-      "roles": [],
-      "classes": [],
-      "container": 3,
-      "members": [
-        4,
-        7,
-        10
-      ],
-      "strategy": {
-        "kind": "row"
-      },
-      "order": {
-        "kind": "prefer-source"
-      },
-      "gap": "medium"
-    },
-    {
-      "key": 14,
       "kind": "object",
       "id": "rotated",
       "domain": "ordinary",
@@ -265,17 +271,24 @@
       "orientation": 90,
       "content": [],
       "children": [
-        15
+        14
       ],
       "ports": [],
-      "defaultLayout": 26
+      "layout": {
+        "strategy": {
+          "kind": "column"
+        },
+        "order": {
+          "kind": "prefer-source"
+        }
+      }
     },
     {
-      "key": 15,
+      "key": 14,
       "kind": "object",
       "id": "pipeline",
       "domain": "ordinary",
-      "parent": 14,
+      "parent": 13,
       "roles": [
         "pipeline"
       ],
@@ -289,20 +302,30 @@
         }
       ],
       "children": [
-        16,
-        19,
-        22
+        15,
+        18,
+        21
       ],
       "ports": [],
+      "layout": {
+        "strategy": {
+          "kind": "row"
+        },
+        "order": {
+          "kind": "prefer-source"
+        }
+      },
       "strictPorts": true,
-      "defaultLayout": 25
+      "style": {
+        "gap": "medium"
+      }
     },
     {
-      "key": 16,
+      "key": 15,
       "kind": "object",
       "id": "ingest",
       "domain": "ordinary",
-      "parent": 15,
+      "parent": 14,
       "roles": [
         "stage"
       ],
@@ -317,19 +340,19 @@
       ],
       "children": [],
       "ports": [
-        17,
-        18
+        16,
+        17
       ]
     },
     {
-      "key": 17,
+      "key": 16,
       "kind": "port",
       "id": "in",
       "domain": "ordinary",
-      "parent": 16,
+      "parent": 15,
       "roles": [],
       "classes": [],
-      "owner": 16,
+      "owner": 15,
       "origin": "explicit",
       "side": "left",
       "cardinality": "many",
@@ -338,14 +361,14 @@
       }
     },
     {
-      "key": 18,
+      "key": 17,
       "kind": "port",
       "id": "out",
       "domain": "ordinary",
-      "parent": 16,
+      "parent": 15,
       "roles": [],
       "classes": [],
-      "owner": 16,
+      "owner": 15,
       "origin": "explicit",
       "side": "right",
       "cardinality": "many",
@@ -354,11 +377,11 @@
       }
     },
     {
-      "key": 19,
+      "key": 18,
       "kind": "object",
       "id": "transform",
       "domain": "ordinary",
-      "parent": 15,
+      "parent": 14,
       "roles": [
         "stage"
       ],
@@ -373,19 +396,19 @@
       ],
       "children": [],
       "ports": [
-        20,
-        21
+        19,
+        20
       ]
     },
     {
-      "key": 20,
+      "key": 19,
       "kind": "port",
       "id": "in",
       "domain": "ordinary",
-      "parent": 19,
+      "parent": 18,
       "roles": [],
       "classes": [],
-      "owner": 19,
+      "owner": 18,
       "origin": "explicit",
       "side": "left",
       "cardinality": "many",
@@ -394,14 +417,14 @@
       }
     },
     {
-      "key": 21,
+      "key": 20,
       "kind": "port",
       "id": "out",
       "domain": "ordinary",
-      "parent": 19,
+      "parent": 18,
       "roles": [],
       "classes": [],
-      "owner": 19,
+      "owner": 18,
       "origin": "explicit",
       "side": "right",
       "cardinality": "many",
@@ -410,11 +433,11 @@
       }
     },
     {
-      "key": 22,
+      "key": 21,
       "kind": "object",
       "id": "publish",
       "domain": "ordinary",
-      "parent": 15,
+      "parent": 14,
       "roles": [
         "stage"
       ],
@@ -429,19 +452,19 @@
       ],
       "children": [],
       "ports": [
-        23,
-        24
+        22,
+        23
       ]
     },
     {
-      "key": 23,
+      "key": 22,
       "kind": "port",
       "id": "in",
       "domain": "ordinary",
-      "parent": 22,
+      "parent": 21,
       "roles": [],
       "classes": [],
-      "owner": 22,
+      "owner": 21,
       "origin": "explicit",
       "side": "left",
       "cardinality": "many",
@@ -450,14 +473,14 @@
       }
     },
     {
-      "key": 24,
+      "key": 23,
       "kind": "port",
       "id": "out",
       "domain": "ordinary",
-      "parent": 22,
+      "parent": 21,
       "roles": [],
       "classes": [],
-      "owner": 22,
+      "owner": 21,
       "origin": "explicit",
       "side": "right",
       "cardinality": "many",
@@ -466,48 +489,7 @@
       }
     },
     {
-      "key": 25,
-      "kind": "layout",
-      "id": null,
-      "domain": "ordinary",
-      "parent": 15,
-      "roles": [],
-      "classes": [],
-      "container": 15,
-      "members": [
-        16,
-        19,
-        22
-      ],
-      "strategy": {
-        "kind": "row"
-      },
-      "order": {
-        "kind": "prefer-source"
-      },
-      "gap": "medium"
-    },
-    {
-      "key": 26,
-      "kind": "layout",
-      "id": null,
-      "domain": "ordinary",
-      "parent": 14,
-      "roles": [],
-      "classes": [],
-      "container": 14,
-      "members": [
-        15
-      ],
-      "strategy": {
-        "kind": "column"
-      },
-      "order": {
-        "kind": "prefer-source"
-      }
-    },
-    {
-      "key": 27,
+      "key": 24,
       "kind": "object",
       "id": "monitor",
       "domain": "ordinary",
@@ -526,19 +508,19 @@
       ],
       "children": [],
       "ports": [
-        28,
-        29
+        25,
+        26
       ]
     },
     {
-      "key": 28,
+      "key": 25,
       "kind": "port",
       "id": "upright-probe",
       "domain": "ordinary",
-      "parent": 27,
+      "parent": 24,
       "roles": [],
       "classes": [],
-      "owner": 27,
+      "owner": 24,
       "origin": "explicit",
       "side": "left",
       "cardinality": "many",
@@ -547,14 +529,14 @@
       }
     },
     {
-      "key": 29,
+      "key": 26,
       "kind": "port",
       "id": "rotated-probe",
       "domain": "ordinary",
-      "parent": 27,
+      "parent": 24,
       "roles": [],
       "classes": [],
-      "owner": 27,
+      "owner": 24,
       "origin": "explicit",
       "side": "left",
       "cardinality": "many",
@@ -563,65 +545,23 @@
       }
     },
     {
-      "key": 30,
+      "key": 27,
       "kind": "port-group",
       "id": "probes",
       "domain": "ordinary",
-      "parent": 27,
+      "parent": 24,
       "roles": [],
       "classes": [],
-      "owner": 27,
+      "owner": 24,
       "members": [
-        28,
-        29
+        25,
+        26
       ],
       "order": "prefer-source",
       "affinity": "separate"
     },
     {
-      "key": 31,
-      "kind": "layout",
-      "id": null,
-      "domain": "ordinary",
-      "parent": 2,
-      "roles": [],
-      "classes": [],
-      "container": 2,
-      "members": [
-        3,
-        14,
-        27
-      ],
-      "strategy": {
-        "kind": "row"
-      },
-      "order": {
-        "kind": "prefer-source"
-      },
-      "align": "center",
-      "gap": "xlarge"
-    },
-    {
-      "key": 32,
-      "kind": "layout",
-      "id": null,
-      "domain": "ordinary",
-      "parent": 1,
-      "roles": [],
-      "classes": [],
-      "container": 1,
-      "members": [
-        2
-      ],
-      "strategy": {
-        "kind": "column"
-      },
-      "order": {
-        "kind": "prefer-source"
-      }
-    },
-    {
-      "key": 33,
+      "key": 28,
       "kind": "line",
       "id": "probe-upright",
       "domain": "ordinary",
@@ -636,13 +576,13 @@
             "kind": "path",
             "path": [
               2,
-              27
+              24
             ],
             "onUnmaterialized": "truncate"
           },
           "dock": {
             "kind": "port",
-            "port": 28
+            "port": 25
           },
           "labels": []
         },
@@ -658,7 +598,7 @@
           },
           "dock": {
             "kind": "line-owned",
-            "line": 33,
+            "line": 28,
             "end": 1
           },
           "labels": []
@@ -669,7 +609,7 @@
         "arrow"
       ],
       "segments": [
-        34
+        29
       ],
       "space": "reserve",
       "avoid": [
@@ -677,30 +617,30 @@
           "kind": "gap",
           "between": [
             3,
-            14
+            13
           ]
         }
       ]
     },
     {
-      "key": 34,
+      "key": 29,
       "kind": "segment",
       "id": null,
       "domain": "ordinary",
-      "parent": 33,
+      "parent": 28,
       "roles": [],
       "classes": [],
-      "line": 33,
+      "line": 28,
       "origin": "implicit",
       "form": {
         "kind": "traversal",
-        "scope": 3,
+        "container": 3,
         "role": "enter"
       },
       "labels": []
     },
     {
-      "key": 35,
+      "key": 30,
       "kind": "line",
       "id": "probe-rotated",
       "domain": "ordinary",
@@ -715,13 +655,13 @@
             "kind": "path",
             "path": [
               2,
-              27
+              24
             ],
             "onUnmaterialized": "truncate"
           },
           "dock": {
             "kind": "port",
-            "port": 29
+            "port": 26
           },
           "labels": []
         },
@@ -730,15 +670,15 @@
             "kind": "path",
             "path": [
               2,
+              13,
               14,
-              15,
-              19
+              18
             ],
             "onUnmaterialized": "truncate"
           },
           "dock": {
             "kind": "line-owned",
-            "line": 35,
+            "line": 30,
             "end": 1
           },
           "labels": []
@@ -749,48 +689,48 @@
         "arrow"
       ],
       "segments": [
-        36,
-        37
+        31,
+        32
       ],
       "space": "reserve",
       "avoid": []
     },
     {
-      "key": 36,
+      "key": 31,
       "kind": "segment",
       "id": null,
       "domain": "ordinary",
-      "parent": 35,
+      "parent": 30,
       "roles": [],
       "classes": [],
-      "line": 35,
+      "line": 30,
       "origin": "implicit",
       "form": {
         "kind": "traversal",
-        "scope": 14,
+        "container": 13,
         "role": "enter"
       },
       "labels": []
     },
     {
-      "key": 37,
+      "key": 32,
       "kind": "segment",
       "id": null,
       "domain": "ordinary",
-      "parent": 35,
+      "parent": 30,
       "roles": [],
       "classes": [],
-      "line": 35,
+      "line": 30,
       "origin": "implicit",
       "form": {
         "kind": "traversal",
-        "scope": 15,
+        "container": 14,
         "role": "enter"
       },
       "labels": []
     },
     {
-      "key": 38,
+      "key": 33,
       "kind": "line",
       "id": "audit-upright",
       "domain": "ordinary",
@@ -821,13 +761,13 @@
             "kind": "path",
             "path": [
               2,
-              27
+              24
             ],
             "onUnmaterialized": "truncate"
           },
           "dock": {
             "kind": "line-owned",
-            "line": 38,
+            "line": 33,
             "end": 1
           },
           "labels": []
@@ -838,8 +778,8 @@
         "arrow"
       ],
       "segments": [
-        39,
-        40
+        34,
+        35
       ],
       "space": "reserve",
       "avoid": [],
@@ -853,46 +793,46 @@
       }
     },
     {
-      "key": 39,
+      "key": 34,
       "kind": "segment",
       "id": null,
       "domain": "ordinary",
-      "parent": 38,
+      "parent": 33,
       "roles": [],
       "classes": [],
-      "line": 38,
+      "line": 33,
       "origin": "implicit",
       "form": {
         "kind": "traversal",
-        "scope": 3,
+        "container": 3,
         "role": "exit"
       },
       "labels": []
     },
     {
-      "key": 40,
+      "key": 35,
       "kind": "segment",
       "id": null,
       "domain": "ordinary",
-      "parent": 38,
+      "parent": 33,
       "roles": [],
       "classes": [],
-      "line": 38,
+      "line": 33,
       "origin": "explicit",
       "form": {
         "kind": "through",
         "region": {
           "kind": "gap",
           "between": [
-            14,
-            27
+            13,
+            24
           ]
         }
       },
       "labels": []
     },
     {
-      "key": 41,
+      "key": 36,
       "kind": "line",
       "id": "audit-rotated",
       "domain": "ordinary",
@@ -907,15 +847,15 @@
             "kind": "path",
             "path": [
               2,
+              13,
               14,
-              15,
-              22
+              21
             ],
             "onUnmaterialized": "truncate"
           },
           "dock": {
             "kind": "port",
-            "port": 24
+            "port": 23
           },
           "labels": []
         },
@@ -924,13 +864,13 @@
             "kind": "path",
             "path": [
               2,
-              27
+              24
             ],
             "onUnmaterialized": "truncate"
           },
           "dock": {
             "kind": "line-owned",
-            "line": 41,
+            "line": 36,
             "end": 1
           },
           "labels": []
@@ -941,9 +881,9 @@
         "arrow"
       ],
       "segments": [
-        42,
-        43,
-        44
+        37,
+        38,
+        39
       ],
       "space": "reserve",
       "avoid": [],
@@ -957,63 +897,63 @@
       }
     },
     {
-      "key": 42,
+      "key": 37,
       "kind": "segment",
       "id": null,
       "domain": "ordinary",
-      "parent": 41,
+      "parent": 36,
       "roles": [],
       "classes": [],
-      "line": 41,
+      "line": 36,
       "origin": "implicit",
       "form": {
         "kind": "traversal",
-        "scope": 15,
+        "container": 14,
         "role": "exit"
       },
       "labels": []
     },
     {
-      "key": 43,
+      "key": 38,
       "kind": "segment",
       "id": null,
       "domain": "ordinary",
-      "parent": 41,
+      "parent": 36,
       "roles": [],
       "classes": [],
-      "line": 41,
+      "line": 36,
       "origin": "implicit",
       "form": {
         "kind": "traversal",
-        "scope": 14,
+        "container": 13,
         "role": "exit"
       },
       "labels": []
     },
     {
-      "key": 44,
+      "key": 39,
       "kind": "segment",
       "id": null,
       "domain": "ordinary",
-      "parent": 41,
+      "parent": 36,
       "roles": [],
       "classes": [],
-      "line": 41,
+      "line": 36,
       "origin": "explicit",
       "form": {
         "kind": "through",
         "region": {
           "kind": "gap",
           "between": [
-            14,
-            27
+            13,
+            24
           ]
         }
       },
       "labels": []
     },
     {
-      "key": 45,
+      "key": 40,
       "kind": "line",
       "id": null,
       "domain": "ordinary",
@@ -1065,7 +1005,7 @@
       "avoid": []
     },
     {
-      "key": 46,
+      "key": 41,
       "kind": "line",
       "id": null,
       "domain": "ordinary",
@@ -1117,11 +1057,11 @@
       "avoid": []
     },
     {
-      "key": 47,
+      "key": 42,
       "kind": "line",
       "id": null,
       "domain": "ordinary",
-      "parent": 15,
+      "parent": 14,
       "roles": [],
       "classes": [
         "data"
@@ -1132,15 +1072,15 @@
             "kind": "path",
             "path": [
               2,
+              13,
               14,
-              15,
-              16
+              15
             ],
             "onUnmaterialized": "truncate"
           },
           "dock": {
             "kind": "port",
-            "port": 18
+            "port": 17
           },
           "labels": []
         },
@@ -1149,9 +1089,46 @@
             "kind": "path",
             "path": [
               2,
+              13,
               14,
-              15,
-              19
+              18
+            ],
+            "onUnmaterialized": "truncate"
+          },
+          "dock": {
+            "kind": "port",
+            "port": 19
+          },
+          "labels": []
+        }
+      ],
+      "heads": [
+        "none",
+        "arrow"
+      ],
+      "segments": [],
+      "space": "reserve",
+      "avoid": []
+    },
+    {
+      "key": 43,
+      "kind": "line",
+      "id": null,
+      "domain": "ordinary",
+      "parent": 14,
+      "roles": [],
+      "classes": [
+        "data"
+      ],
+      "ends": [
+        {
+          "target": {
+            "kind": "path",
+            "path": [
+              2,
+              13,
+              14,
+              18
             ],
             "onUnmaterialized": "truncate"
           },
@@ -1160,58 +1137,21 @@
             "port": 20
           },
           "labels": []
-        }
-      ],
-      "heads": [
-        "none",
-        "arrow"
-      ],
-      "segments": [],
-      "space": "reserve",
-      "avoid": []
-    },
-    {
-      "key": 48,
-      "kind": "line",
-      "id": null,
-      "domain": "ordinary",
-      "parent": 15,
-      "roles": [],
-      "classes": [
-        "data"
-      ],
-      "ends": [
-        {
-          "target": {
-            "kind": "path",
-            "path": [
-              2,
-              14,
-              15,
-              19
-            ],
-            "onUnmaterialized": "truncate"
-          },
-          "dock": {
-            "kind": "port",
-            "port": 21
-          },
-          "labels": []
         },
         {
           "target": {
             "kind": "path",
             "path": [
               2,
+              13,
               14,
-              15,
-              22
+              21
             ],
             "onUnmaterialized": "truncate"
           },
           "dock": {
             "kind": "port",
-            "port": 23
+            "port": 22
           },
           "labels": []
         }
@@ -1225,7 +1165,7 @@
       "avoid": []
     },
     {
-      "key": 49,
+      "key": 44,
       "kind": "token-set",
       "id": null,
       "domain": "ordinary",
@@ -1239,7 +1179,7 @@
       }
     },
     {
-      "key": 50,
+      "key": 45,
       "kind": "rule",
       "id": null,
       "domain": "ordinary",
@@ -1262,7 +1202,7 @@
       }
     },
     {
-      "key": 51,
+      "key": 46,
       "kind": "rule",
       "id": null,
       "domain": "ordinary",
@@ -1285,7 +1225,7 @@
       }
     },
     {
-      "key": 52,
+      "key": 47,
       "kind": "rule",
       "id": null,
       "domain": "ordinary",
