@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 import process from "node:process";
 import { renderFile } from "./src/pipeline.mjs";
-import { analyzeScene } from "./src/quality.mjs";
+import { analyzeScene, perceptionMetrics } from "./src/quality.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repo = path.dirname(path.dirname(here));
@@ -29,6 +29,7 @@ function card(result) {
     ? `<details><summary>${result.scene.diagnostics.length} diagnostics</summary><pre>${escape(result.scene.diagnostics.map((item) => `${item.severity}: ${item.code}: ${item.message}`).join("\n"))}</pre></details>`
     : "<p class=ok>preview emitted without diagnostics</p>";
   const quality = result.quality;
+  const perception = result.perception;
   return `<article>
     <h2>${escape(result.name)}</h2>
     <p>${result.scene.objects.length} objects · ${result.scene.lines.length} lines · ${result.scene.width}×${result.scene.height}</p>
@@ -39,6 +40,15 @@ function card(result) {
       ${quality.labelLabelOverlaps.length} label–label overlaps ·
       ${quality.unexpectedRouteOverlaps.length} unexpected shared runs ·
       ${quality.routeCrossings.length} crossings
+    </p>
+    <p class="perception">
+      ${perception.bendsPerLine.toFixed(2)} bends/line (max ${perception.maxBends}) ·
+      detour ×${perception.detourFactor.toFixed(2)} ·
+      backtrack ${(perception.backtrackRatio * 100).toFixed(0)}% ·
+      ${perception.guidesX}/${perception.guidesY} x/y guides for ${perception.boxCount} boxes ·
+      peer-size CV ${perception.peerSizeCV.toFixed(2)} ·
+      gap CV ${perception.gapCV.toFixed(2)} ·
+      label offset ${perception.labelDisplacement.toFixed(1)}px
     </p>
     <div class="comparison">
       ${hasOriginal ? `<figure><figcaption>Original</figcaption><img src="${escape(originalRelative)}" alt="Original ${escape(result.name)}"></figure>` : ""}
@@ -60,8 +70,9 @@ for (const entry of await entries()) {
   const destination = path.join(output, `${name}.svg`);
   const { scene } = await renderFile(entry, destination);
   const quality = analyzeScene(scene);
-  results.push({ entry, name, scene, quality });
-  console.log(`${name}: ${scene.width}x${scene.height}, ${scene.diagnostics.length} diagnostics, ${quality.unexpectedObjectOverlaps.length}/${quality.routeObjectIntersections.length}/${quality.labelObjectOverlaps.length}/${quality.labelLabelOverlaps.length}/${quality.unexpectedRouteOverlaps.length} object/route/object-label/label-label/shared-run conflicts, ${quality.routeCrossings.length} crossings`);
+  const perception = perceptionMetrics(scene);
+  results.push({ entry, name, scene, quality, perception });
+  console.log(`${name}: ${scene.width}x${scene.height}, ${scene.diagnostics.length} diagnostics, ${quality.unexpectedObjectOverlaps.length}/${quality.routeObjectIntersections.length}/${quality.labelObjectOverlaps.length}/${quality.labelLabelOverlaps.length}/${quality.unexpectedRouteOverlaps.length} object/route/object-label/label-label/shared-run conflicts, ${quality.routeCrossings.length} crossings, ${perception.bendsPerLine.toFixed(2)} bends/line, detour x${perception.detourFactor.toFixed(2)}, backtrack ${(perception.backtrackRatio * 100).toFixed(0)}%, guides ${perception.guidesX}/${perception.guidesY}, peer-size CV ${perception.peerSizeCV.toFixed(2)}, label offset ${perception.labelDisplacement.toFixed(1)}px`);
 }
 
 const html = `<!doctype html>
@@ -77,6 +88,7 @@ const html = `<!doctype html>
   figure { margin: 0; } figcaption { margin: 0 0 8px; font-weight: 700; }
   img { display: block; box-sizing: border-box; width: 100%; max-height: 82vh; object-fit: contain; object-position: top; background: white; border: 1px solid color-mix(in srgb, CanvasText 20%, transparent); }
   pre { overflow: auto; } .ok { color: #16803a; } .bad { color: #c62d2d; }
+  .perception { color: color-mix(in srgb, CanvasText 62%, transparent); font-size: 0.92em; }
 </style>
 <h1>Kvísl layouter comparison gallery</h1>
 <p>Generated from the repository TSX fixtures. Original images are references, not pixel targets.</p>

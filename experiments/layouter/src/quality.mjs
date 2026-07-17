@@ -210,6 +210,125 @@ function routeRouteInteractions(scene) {
   return { crossings, unexpectedOverlaps };
 }
 
+function clusterCount(values, tolerance = 2.5) {
+  const sorted = [...values].sort((first, second) => first - second);
+  let count = 0;
+  let previous = Number.NEGATIVE_INFINITY;
+  for (const value of sorted) {
+    if (value - previous > tolerance) count += 1;
+    previous = value;
+  }
+  return count;
+}
+
+function coefficientOfVariation(values) {
+  if (values.length < 2) return null;
+  const mean = values.reduce((sum, value) => sum + value, 0) / values.length;
+  if (mean <= 0) return null;
+  const variance = values.reduce((sum, value) => sum + (value - mean) ** 2, 0) / values.length;
+  return Math.sqrt(variance) / mean;
+}
+
+function pointSegmentDistance(point, first, second) {
+  const dx = second.x - first.x;
+  const dy = second.y - first.y;
+  const lengthSquared = dx * dx + dy * dy;
+  const t = lengthSquared ? Math.max(0, Math.min(1, ((point.x - first.x) * dx + (point.y - first.y) * dy) / lengthSquared)) : 0;
+  return Math.hypot(point.x - (first.x + t * dx), point.y - (first.y + t * dy));
+}
+
+function flowMembers(object) {
+  return object.children.filter((child) => !child.anchor && !child.frame);
+}
+
+// Soft drawing-quality measures a human perceives at a glance. They are
+// reported alongside the hard conflict gate and guide the aesthetics passes.
+export function perceptionMetrics(scene) {
+  let bendTotal = 0;
+  let maxBends = 0;
+  let routeLength = 0;
+  let manhattan = 0;
+  let backtrack = 0;
+  let routedLines = 0;
+  for (const line of scene.lines) {
+    if (line.route.length < 2) continue;
+    routedLines += 1;
+    bendTotal += line.route.length - 2;
+    maxBends = Math.max(maxBends, line.route.length - 2);
+    const start = line.route[0];
+    const end = line.route.at(-1);
+    const spanX = end.x - start.x;
+    const spanY = end.y - start.y;
+    manhattan += Math.abs(spanX) + Math.abs(spanY);
+    for (let index = 1; index < line.route.length; index += 1) {
+      const dx = line.route[index].x - line.route[index - 1].x;
+      const dy = line.route[index].y - line.route[index - 1].y;
+      const length = Math.abs(dx) + Math.abs(dy);
+      routeLength += length;
+      if (dx !== 0 && spanX !== 0 && Math.sign(dx) !== Math.sign(spanX)) backtrack += Math.abs(dx);
+      if (dy !== 0 && spanY !== 0 && Math.sign(dy) !== Math.sign(spanY)) backtrack += Math.abs(dy);
+    }
+  }
+
+  const boxes = obstacleObjects(scene).map((object) => object.box);
+  const xs = boxes.flatMap((box) => [box.x, box.x + box.width / 2, box.x + box.width]);
+  const ys = boxes.flatMap((box) => [box.y, box.y + box.height / 2, box.y + box.height]);
+
+  const peerCVs = [];
+  const gapCVs = [];
+  for (const container of scene.objects) {
+    const members = flowMembers(container).filter((child) => child.visible);
+    if (members.length >= 2) {
+      const leafPeers = members.filter((child) => child.children.length === 0);
+      const widthCV = coefficientOfVariation(leafPeers.map((child) => child.box.width));
+      const heightCV = coefficientOfVariation(leafPeers.map((child) => child.box.height));
+      if (widthCV != null) peerCVs.push(widthCV);
+      if (heightCV != null) peerCVs.push(heightCV);
+    }
+    if (members.length >= 3) {
+      const layout = container.layout?.kind;
+      const horizontal = layout === "row";
+      if (layout === "row" || layout === "column") {
+        const gaps = [];
+        for (let index = 1; index < members.length; index += 1) {
+          const previous = members[index - 1].box;
+          const current = members[index].box;
+          gaps.push(horizontal ? current.x - (previous.x + previous.width) : current.y - (previous.y + previous.height));
+        }
+        const gapCV = coefficientOfVariation(gaps.filter((value) => value >= 0));
+        if (gapCV != null) gapCVs.push(gapCV);
+      }
+    }
+  }
+
+  const displacements = [];
+  for (const line of scene.lines) {
+    for (const label of line.routeLabels) {
+      let nearest = Number.POSITIVE_INFINITY;
+      for (let index = 1; index < line.route.length; index += 1) {
+        nearest = Math.min(nearest, pointSegmentDistance({ x: label.x, y: label.y }, line.route[index - 1], line.route[index]));
+      }
+      if (Number.isFinite(nearest)) displacements.push(nearest);
+    }
+  }
+
+  const average = (values) => values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0;
+  return {
+    routedLines,
+    bendTotal,
+    bendsPerLine: routedLines ? bendTotal / routedLines : 0,
+    maxBends,
+    detourFactor: manhattan > 0 ? routeLength / manhattan : 1,
+    backtrackRatio: routeLength > 0 ? backtrack / routeLength : 0,
+    guidesX: clusterCount(xs),
+    guidesY: clusterCount(ys),
+    boxCount: boxes.length,
+    peerSizeCV: average(peerCVs),
+    gapCV: average(gapCVs),
+    labelDisplacement: average(displacements),
+  };
+}
+
 export function analyzeScene(scene) {
   const objects = obstacleObjects(scene);
   const routeInteractions = routeRouteInteractions(scene);
