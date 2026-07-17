@@ -116,6 +116,14 @@ test("a named bundle port keeps separate adjacent strokes after the dock", async
   assert.equal(new Set(lines.map((line) => `${line.route[1].x},${line.route[1].y}`)).size, 3);
 });
 
+test("an explicit same-size constraint equalizes the referenced boxes", async () => {
+  const entry = path.join(repo, "examples", "coverage", "diagram.tsx");
+  const { scene } = await solveFile(entry);
+  const upright = scene.objectByPath.get("system/upright");
+  const monitor = scene.objectByPath.get("system/monitor");
+  assert.equal(Math.round(monitor.box.height), Math.round(upright.box.height));
+});
+
 function primitive(core, props = {}, children = []) {
   return { core, props, children };
 }

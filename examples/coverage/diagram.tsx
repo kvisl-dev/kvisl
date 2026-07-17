@@ -1,9 +1,10 @@
 // Grammar-coverage fixture. Like examples/uml/, this file has no
 // original.png: it exercises features the visual fixtures do not —
 // orientation, strict ports, anti-affinity, avoid regions, an explicit
-// share group, and theme tokens.
+// share group, an explicit size equality, and theme tokens.
 
 import {
+  Constraint,
   Diagram,
   Line,
   Node,
@@ -85,6 +86,11 @@ export default (
       from="system/monitor.rotated-probe"
       to="system/rotated/pipeline/transform"
     />
+
+    {/* explicit size equality across kinds: the monitor spans the full
+        pipeline height — a gap the near-miss harmonization default never
+        bridges on its own */}
+    <Constraint kind="same-size" dimension="height" members={["system/upright", "system/monitor"]} />
 
     {/* explicit share group: no common named port, but both audit lines
         bundle through the same whitespace toward the monitor */}
