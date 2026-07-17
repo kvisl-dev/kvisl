@@ -110,3 +110,9 @@ Rationale: object avoidance alone can produce visually ambiguous coincident path
 Every preview is checked for unrelated object overlaps, route/object intersections, line-label/object overlaps, line-label/line-label overlaps, and unrelated shared runs. UML occurrences inside activation bars are an explicit object-overlap exception. Crossings are counted but are not a hard failure because some legal drawings require them.
 
 The repository examples are a regression gate: every example must render, remain orthogonal, and report zero structural conflicts in those five categories.
+
+## D15. Size harmonization is renderer policy with a near-miss cap
+
+Row and column members, and grid cells, equalize their cross-axis sizes by default — the `align-items: stretch` analog — and peers with the same kind/shape/role signature quantize onto shared widths and heights. Both apply only within a near-miss tolerance (stretch: 1.5× + 40 units; quantization: 28 units or 28 % group spread) so a small member is never inflated to several times its size. An explicit `same-size` constraint equalizes without a cap. Objects sized by an `extent` constraint are exempt.
+
+Rationale: hand-drawn references equalize sibling boxes pervasively, and requiring an annotation for every equality would contradict the implicit-first model. Harmonization is expressed as monotone size floors, so it can only widen reservations, never shrink them.
