@@ -69,8 +69,11 @@ function drawShape(object, scene) {
   if (shape.includes("occurrence")) return `<circle cx="${box.x + box.width / 2}" cy="${box.y + box.height / 2}" r="3" fill="#172033"/>`;
   if (shape.includes("history")) return `<g>${roundedRect(object, scene, box.width / 2)}<text x="${box.x + box.width / 2}" y="${box.y + box.height / 2 + 5}" text-anchor="middle" font-size="14">H</text></g>`;
   if (shape.includes("package")) {
-    const tab = Math.min(72, box.width * 0.35);
-    return `<path d="M ${box.x} ${box.y + 14} V ${box.y + box.height} H ${box.x + box.width} V ${box.y + 14} H ${box.x + tab} L ${box.x + tab - 10} ${box.y} H ${box.x} Z" ${objectPaint(object, scene)}/>`;
+    // the tab grows with the package name so the label lives inside it
+    const label = String(object.label ?? "");
+    const tab = Math.min(box.width * 0.7, Math.max(64, label.length * (object.fontSize ?? 15) * 0.62 + 30));
+    const tabHeight = 24;
+    return `<path d="M ${box.x} ${box.y + tabHeight} V ${box.y + box.height} H ${box.x + box.width} V ${box.y + tabHeight} H ${box.x + tab} L ${box.x + tab - 10} ${box.y} H ${box.x} Z" ${objectPaint(object, scene)}/>`;
   }
   if (shape.includes("node-3d")) {
     return `<g>${roundedRect(object, scene, 6)}<path d="M ${box.x + 8} ${box.y + 8} L ${box.x + 18} ${box.y - 2} H ${box.x + box.width + 8} V ${box.y + box.height - 10} L ${box.x + box.width} ${box.y + box.height}" fill="none" stroke="${escape(color(object.style.stroke, scene, "#26364a"))}" stroke-width="2"/></g>`;
@@ -97,7 +100,8 @@ function drawObjectText(object, scene) {
   const anchor = leftAligned ? "start" : "middle";
   const visibleLines = object.renderLines.filter((line) => !line.divider);
   const totalHeight = visibleLines.length * fontSize * 1.35;
-  let y = isBoundaryLabel ? box.y + fontSize + 7 : isTitle || isSubtitle ? box.y + fontSize : box.y + (box.height - totalHeight) / 2 + fontSize;
+  const inPackageTab = isBoundaryLabel && object.shape?.includes("package");
+  let y = inPackageTab ? box.y + fontSize + 2 : isBoundaryLabel ? box.y + fontSize + 7 : isTitle || isSubtitle ? box.y + fontSize : box.y + (box.height - totalHeight) / 2 + fontSize;
   const result = [];
   let previousWasDivider = false;
   for (const line of object.renderLines) {
