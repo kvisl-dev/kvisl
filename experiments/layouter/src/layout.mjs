@@ -71,6 +71,23 @@ function lineLabelTexts(line) {
   return texts.map(String);
 }
 
+// lines that join at a named merge/auto port or share an explicit merge/auto
+// group travel on ONE track per region — sharing their run at full length
+// instead of riding adjacent tracks
+function lineShareKey(line) {
+  if (line.share?.group != null) {
+    const mode = line.share.mode ?? "auto";
+    if (mode === "merge" || mode === "auto") return `group:${line.share.group}`;
+  }
+  for (const endpoint of [line.from, line.to]) {
+    const port = endpoint?.port;
+    if (!port) continue;
+    const mode = port.sharing?.mode ?? "auto";
+    if (mode === "merge" || mode === "auto") return `port:${(port.anchor ?? port.owner)?.path ?? ""}:${port.id}`;
+  }
+  return null;
+}
+
 function lineLabelDemand(line, axis) {
   const texts = lineLabelTexts(line);
   if (!texts.length) return 0;
@@ -214,9 +231,17 @@ export function reserveRoutingSpace(scene) {
     const labelDemand = Math.max(0, ...region.entries
       .filter((entry) => entry.line.labelRegionKey === region.key)
       .map((entry) => lineLabelDemand(entry.line, labelAxis)));
-    region.thickness = Math.max(region.entries.length ? 12 + region.entries.length * region.spacing : 0, labelDemand);
-    region.entries.forEach((entry, index) => {
-      entry.line.regionTracks.set(region.key, { region, index, total: region.entries.length });
+    // share-eligible lines occupy one track, so demand counts distinct tracks
+    const trackIndexByKey = new Map();
+    for (const entry of region.entries) {
+      const key = lineShareKey(entry.line) ?? `line:${entry.line.id}`;
+      if (!trackIndexByKey.has(key)) trackIndexByKey.set(key, trackIndexByKey.size);
+      entry.trackKey = key;
+    }
+    const trackCount = trackIndexByKey.size;
+    region.thickness = Math.max(trackCount ? 12 + trackCount * region.spacing : 0, labelDemand);
+    region.entries.forEach((entry) => {
+      entry.line.regionTracks.set(region.key, { region, index: trackIndexByKey.get(entry.trackKey), total: trackCount });
     });
 
     for (const corridor of region.corridors) {
