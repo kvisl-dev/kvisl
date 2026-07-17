@@ -44,7 +44,7 @@ function regionKey(type, owner, slot) {
   return `${type}:${owner.path || "$root"}:${slot}`;
 }
 
-function effectiveLayout(object) {
+export function effectiveLayout(object) {
   return object.layout?.kind ?? (object.kind === "scope" || object.kind === "diagram" ? "column" : null);
 }
 
@@ -88,7 +88,7 @@ function lineShareKey(line) {
   return null;
 }
 
-function lineLabelDemand(line, axis) {
+export function lineLabelDemand(line, axis) {
   const texts = lineLabelTexts(line);
   if (!texts.length) return 0;
   if (axis === "horizontal") return Math.max(...texts.map((text) => Math.max(...text.split("\n").map((part) => part.length)) * 7.4 + 34));
@@ -150,6 +150,9 @@ function nestedExitReservations(endpoint, lca, side, line, regions) {
 
 export function reserveRoutingSpace(scene) {
   const regions = new Map();
+  // corridors start at bare track width; labels only widen a corridor after
+  // a solve proved they find no free spot (escalated by the pipeline)
+  const reservations = scene.labelReservations ?? new Map();
   for (const object of scene.objects) {
     object.reserved = {
       gaps: [],
@@ -184,23 +187,25 @@ export function reserveRoutingSpace(scene) {
         const toRow = Math.floor(toIndex / columns);
         if (fromRow === toRow && fromColumn !== toColumn) {
           const gapIndex = Math.floor((fromColumn + toColumn - 1) / 2);
-          lca.reserved.gridColumnGaps[gapIndex] = Math.max(
-            lca.reserved.gridColumnGaps[gapIndex] ?? 0,
-            lineLabelDemand(line, "horizontal"),
-          );
+          const key = `gridcol:${lca.path}:${gapIndex}`;
+          line.labelReservation = { key, axis: "horizontal" };
+          lca.reserved.gridColumnGaps[gapIndex] = Math.max(lca.reserved.gridColumnGaps[gapIndex] ?? 0, reservations.get(key) ?? 0);
         } else if (fromColumn === toColumn && fromRow !== toRow) {
           const gapIndex = Math.floor((fromRow + toRow - 1) / 2);
-          lca.reserved.gridRowGaps[gapIndex] = Math.max(
-            lca.reserved.gridRowGaps[gapIndex] ?? 0,
-            lineLabelDemand(line, "vertical"),
-          );
+          const key = `gridrow:${lca.path}:${gapIndex}`;
+          line.labelReservation = { key, axis: "vertical" };
+          lca.reserved.gridRowGaps[gapIndex] = Math.max(lca.reserved.gridRowGaps[gapIndex] ?? 0, reservations.get(key) ?? 0);
         }
       }
       const implicitRegions = physicalGapRegions(fromBranch, toBranch, regions, { implicit: true });
       for (const region of implicitRegions) addUniqueLine(region, line);
       if (implicitRegions.length) line.labelRegionKey = implicitRegions[Math.floor(implicitRegions.length / 2)].key;
-      const fromSide = directionToward(lca, fromBranch, toBranch);
-      const toSide = directionToward(lca, toBranch, fromBranch);
+      // an author-declared port side wins over the topological direction —
+      // the line leaves where the port sits, so that band needs the room
+      const exitSide = (endpoint, fallback) =>
+        SIDES.includes(endpoint.port?.side) ? endpoint.port.side : fallback;
+      const fromSide = exitSide(line.from, directionToward(lca, fromBranch, toBranch));
+      const toSide = exitSide(line.to, directionToward(lca, toBranch, fromBranch));
       nestedExitReservations(line.from.object, lca, fromSide, line, regions);
       nestedExitReservations(line.to.object, lca, toSide, line, regions);
     }
@@ -240,9 +245,10 @@ export function reserveRoutingSpace(scene) {
     const labelAxis = region.kind === "padding"
       ? region.side === "left" || region.side === "right" ? "horizontal" : "vertical"
       : gapRunsVertically(region) ? "horizontal" : "vertical";
-    const labelDemand = Math.max(0, ...region.entries
-      .filter((entry) => entry.line.labelRegionKey === region.key)
-      .map((entry) => lineLabelDemand(entry.line, labelAxis)));
+    for (const entry of region.entries) {
+      if (entry.line.labelRegionKey === region.key) entry.line.labelReservation = { key: region.key, axis: labelAxis };
+    }
+    const labelDemand = reservations.get(region.key) ?? 0;
     // share-eligible lines occupy one track, so demand counts distinct tracks
     const trackIndexByKey = new Map();
     for (const entry of region.entries) {
@@ -292,6 +298,17 @@ export function reserveRoutingSpace(scene) {
       region.owner.reserved.padding[region.side] = Math.max(region.owner.reserved.padding[region.side], region.thickness);
     }
   }
+  // escalated reservations may target pockets no line registered in (a label
+  // squeezed between two siblings it does not connect) — apply them directly
+  for (const [key, value] of reservations) {
+    if (regions.has(key)) continue;
+    const parts = key.split(":");
+    if (parts[0] !== "gap") continue;
+    const owner = scene.objectByPath.get(parts.slice(1, -1).join(":"));
+    const index = Number(parts.at(-1));
+    if (owner && Number.isInteger(index)) owner.reserved.gaps[index] = Math.max(owner.reserved.gaps[index] ?? 0, value);
+  }
+
   scene.regions = regions;
   return regions;
 }
@@ -332,16 +349,19 @@ function wrapText(text, limit) {
   return result;
 }
 
-function measureContent(object) {
+function measureContent(object, childMax = 0) {
   const fontSize = object.kind === "title" ? 32 : object.kind === "subtitle" ? 18 : object.style.fontSize ?? 15;
   const charWidth = fontSize * 0.55;
   const wrap = object.roles.includes("implementation-status") ? 120
     : object.kind === "note" || object.kind === "legend-item" ? 44
     : 72;
+  // a container title wraps toward its children's width — the box must not
+  // grow wide only to keep its title on one line
+  const labelWrap = object.children.length ? Math.max(24, Math.floor(childMax / charWidth)) : wrap;
   const expanded = [];
   for (const line of contentLines(object)) {
     if (line.divider) expanded.push(line);
-    else for (const text of wrapText(line.text, wrap)) expanded.push({ ...line, text });
+    else for (const text of wrapText(line.text, line.role === "label" ? labelWrap : wrap)) expanded.push({ ...line, text });
   }
   const width = Math.max(0, ...expanded.filter((line) => !line.divider).map((line) => line.text.length * charWidth));
   const height = expanded.reduce((sum, line) => sum + (line.divider ? 8 : fontSize * 1.35), 0);
@@ -367,7 +387,7 @@ function flowChildren(object) {
 function measureObject(object, scene) {
   for (const child of object.children) measureObject(child, scene);
   const tokens = scene.tokens;
-  const content = measureContent(object);
+  const content = measureContent(object, Math.max(0, ...flowChildren(object).map((child) => child.measured.width)));
   const padding = defaultPadding(object, tokens);
   for (const side of SIDES) padding[side] += object.reserved.padding[side] ?? 0;
   for (const child of object.children) {

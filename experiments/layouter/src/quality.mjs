@@ -1,3 +1,4 @@
+import { effectiveLayout, lineLabelDemand } from "./layout.mjs";
 import { boundaryLabelStrips, containerBorderRings } from "./route.mjs";
 
 const CELL = 160;
@@ -329,6 +330,51 @@ export function perceptionMetrics(scene) {
     gapCV: average(gapCVs),
     labelDisplacement: average(displacements),
   };
+}
+
+// Labels that provably found no free spot escalate their line's corridor
+// reservation; the pipeline re-solves with the wider corridor. Bumps are
+// incremental (overlap depth, capped at the full label demand) so corridors
+// end as narrow as the labels allow. Returns true when a reservation grew.
+export function escalateLabelReservations(scene, reservations) {
+  const quality = analyzeScene(scene);
+  let changed = false;
+  const raise = (key, value) => {
+    const current = reservations.get(key) ?? 0;
+    if (value > current + 0.5) {
+      reservations.set(key, value);
+      changed = true;
+    }
+  };
+  for (const item of [...quality.labelObjectOverlaps, ...quality.labelDecorOverlaps, ...quality.labelLabelOverlaps]) {
+    // a label pressed against container decor is squeezed in a pocket next
+    // to that container — widening the adjacent sibling gaps is the targeted
+    // fix, so it replaces the corridor bump for these offenders
+    const owner = item.object?.owner;
+    const parent = owner?.parent;
+    const layout = parent ? effectiveLayout(parent) : null;
+    if (owner && (layout === "row" || layout === "column")) {
+      const extent = layout === "column" ? "height" : "width";
+      const need = item.label.box[extent] + 16;
+      for (const index of [owner.siblingIndex - 1, owner.siblingIndex]) {
+        if (index < 0) continue;
+        const key = `gap:${parent.path || "$root"}:${index}`;
+        raise(key, Math.max(need, (reservations.get(key) ?? 0) + 16));
+      }
+      continue;
+    }
+    const target = item.line.labelReservation;
+    if (!target) continue;
+    const current = reservations.get(target.key) ?? 0;
+    const cap = lineLabelDemand(item.line, target.axis);
+    const other = item.object?.box ?? item.otherLabel.box;
+    const overlap = target.axis === "horizontal"
+      ? Math.min(item.label.box.x + item.label.box.width, other.x + other.width) - Math.max(item.label.box.x, other.x)
+      : Math.min(item.label.box.y + item.label.box.height, other.y + other.height) - Math.max(item.label.box.y, other.y);
+    // thin decor rings understate the shortfall, so steps have a floor
+    raise(target.key, Math.min(cap, current + Math.max(32, overlap + 8)));
+  }
+  return changed;
 }
 
 export function analyzeScene(scene) {

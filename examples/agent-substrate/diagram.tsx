@@ -3,6 +3,7 @@
 
 import {
   Column,
+  Constraint,
   Diagram,
   Grid,
   Line,
@@ -35,7 +36,7 @@ function Ingress() {
       id="ingress"
       label="Ingress / request path"
       role="request-path"
-      layout={{ kind: "row", align: "center", gap: "large" }}
+      layout={{ kind: "row", align: "center", gap: "large", distribute: "space-between" }}
       style={{ fill: "pale-green", stroke: colors.green }}
     >
       <Node id="client" role="client" style={{ stroke: colors.green }}>
@@ -174,7 +175,7 @@ function RuntimeLayer() {
         id="worker-pod"
         label="Persistent Worker Pod — label: ate.dev/worker-pool"
         role="worker-pod"
-        layout={{ kind: "column", gap: "medium" }}
+        layout={{ kind: "column", align: "center", gap: "medium" }}
         style={{ fill: "pale-orange", stroke: colors.orange }}
       >
         <Node id="ateom-visor" role="runtime-helper" style={{ stroke: colors.orange }}>
@@ -305,6 +306,24 @@ export default (
         />
       </Line>
     </Scope>
+
+    {/* the hand-drawn original aligns these edges: the ingress band spans
+        the cluster's width, snapshot storage mirrors the control plane,
+        and the warm-pod pool mirrors the worker pod */}
+    <Constraint kind="same-size" dimension="width" members={["ingress", "cluster"]} />
+    <Constraint
+      kind="same-size"
+      dimension="width"
+      members={[
+        "cluster/layers/control-and-storage/substrate-control",
+        "cluster/layers/control-and-storage/snapshot-storage",
+      ]}
+    />
+    <Constraint
+      kind="same-size"
+      dimension="width"
+      members={["cluster/layers/runtime/worker-pod", "cluster/layers/runtime/warm-pods"]}
+    />
 
     {/* the controller path runs along the cluster's top padding band */}
     <Line
