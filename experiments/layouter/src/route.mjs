@@ -39,7 +39,7 @@ function remoteCenter(line, endpoint) {
   return center((endpoint === line.from ? portTarget(line.to) : portTarget(line.from)).box);
 }
 
-function placePorts(scene) {
+function placePorts(scene, objectIndex = null) {
   const buckets = new Map();
   for (const object of scene.objects) {
     for (const port of object.ports.values()) port.attachments = [];
@@ -81,9 +81,32 @@ function placePorts(scene) {
 
   for (const entries of buckets.values()) {
     entries.sort((first, second) => first.sort - second.sort);
+    const placed = [];
     entries.forEach((entry, index) => {
+      const side = entry.kind === "port" ? entry.port.physicalSide : entry.endpoint.physicalSide;
       const fraction = (index + 1) / (entries.length + 1);
-      const point = pointOnSide(entry.target.box, entry.kind === "port" ? entry.port.physicalSide : entry.endpoint.physicalSide, fraction);
+      let point = pointOnSide(entry.target.box, side, fraction);
+      // a dock with a blocked departure slides along its side to open track;
+      // an off-center dock beats routing around the blocking box
+      if (objectIndex) {
+        const lateralAxis = side === "top" || side === "bottom" ? "x" : "y";
+        const measure = (candidate) => Math.min(rayClearanceAt(scene, candidate, side, entry.target, objectIndex), 300);
+        if (measure(point) < 160) {
+          let best = point;
+          let bestScore = [measure(point), 0];
+          for (let step = 1; step <= 16; step += 1) {
+            const candidate = pointOnSide(entry.target.box, side, (step + 0.5) / 17.5);
+            if (placed.some((other) => Math.abs(other[lateralAxis] - candidate[lateralAxis]) < 12)) continue;
+            const score = [measure(candidate), -Math.abs(candidate[lateralAxis] - point[lateralAxis])];
+            if (score[0] > bestScore[0] + 0.5 || (Math.abs(score[0] - bestScore[0]) <= 0.5 && score[1] > bestScore[1])) {
+              best = candidate;
+              bestScore = score;
+            }
+          }
+          point = best;
+        }
+      }
+      placed.push(point);
       if (entry.kind === "port") entry.port.point = point;
       else {
         entry.endpoint.point = point;
@@ -416,10 +439,7 @@ function aroundCandidates(first, second, box, detour) {
   ];
 }
 
-function rayClearance(scene, port, objectIndex) {
-  const start = port.point;
-  const side = port.physicalSide;
-  const owner = port.anchor ?? port.owner;
+function rayClearanceAt(scene, start, side, owner, objectIndex) {
   let clearance = Number.POSITIVE_INFINITY;
   const end = {
     x: side === "left" ? 0 : side === "right" ? scene.width : start.x,
@@ -434,6 +454,10 @@ function rayClearance(scene, port, objectIndex) {
     if (side === "top" && box.y + box.height <= start.y && start.x >= box.x && start.x <= box.x + box.width) clearance = Math.min(clearance, start.y - (box.y + box.height));
   }
   return clearance;
+}
+
+function rayClearance(scene, port, objectIndex) {
+  return rayClearanceAt(scene, port.point, port.physicalSide, port.anchor ?? port.owner, objectIndex);
 }
 
 function sharedPins(scene, objectIndex) {
@@ -513,10 +537,14 @@ function orderedPins(line, start, end) {
     }
     if ([...explicitPadding].some((region) => region.owner === track.region.owner && track.region.kind === "gap")) continue;
     // an implicit exit/entry band that contradicts the chosen dock side would
-    // drag the route around the object; the reservation stays, the pin goes
+    // drag the route around the object; the reservation stays, the pin goes.
+    // matching bands are pass-through: the route crosses them, but lateral
+    // travel belongs to the gap corridors, not to a container's exit band
     if (track.region.kind === "padding") {
       const endpoint = [line.from, line.to].find((item) => item && hasAncestor(item.object, track.region.owner));
       if (endpoint?.physicalSide && endpoint.physicalSide !== track.region.side) continue;
+      pins.push({ ...trackPoint(track, start, end), passThrough: true });
+      continue;
     }
     pins.push(trackPoint(track, start, end));
   }
@@ -571,19 +599,32 @@ function routeLine(line, index, routeIndex) {
   const toStub = endpointStub(line.to);
   const start = fromStub.at(-1);
   const end = toStub.at(-1);
-  const pins = orderedPins(line, start, end);
-  // a gap track pin is hard across its region but soft along it: chain the
-  // soft coordinate to the incoming path so entering a track adds no jog —
-  // the line runs straight into the track, along it, and bends toward the
-  // target only once
+  // a track pin is hard across its region but soft along it: expand it into
+  // an entry point at the incoming coordinate and an exit point toward the
+  // next target, so the lateral travel happens inside the reserved region —
+  // that is what the corridor's space was reserved for
+  const rawPins = orderedPins(line, start, end);
+  const pins = [];
   let cursor = start;
-  for (const pin of pins) {
+  for (let index = 0; index < rawPins.length; index += 1) {
+    const pin = rawPins[index];
     const geometry = pin.region?.geometry;
     if (pin.soft && geometry) {
-      if (geometry.axis === "vertical") pin.y = Math.max(geometry.y, Math.min(geometry.y + geometry.height, cursor.y));
-      else pin.x = Math.max(geometry.x, Math.min(geometry.x + geometry.width, cursor.x));
+      const next = rawPins[index + 1] ?? end;
+      if (geometry.axis === "vertical") {
+        const clamp = (value) => Math.max(geometry.y, Math.min(geometry.y + geometry.height, value));
+        if (pin.passThrough) pins.push({ x: pin.x, y: clamp(cursor.y) });
+        else pins.push({ x: pin.x, y: clamp(cursor.y) }, { x: pin.x, y: clamp(next.y) });
+      } else {
+        const clamp = (value) => Math.max(geometry.x, Math.min(geometry.x + geometry.width, value));
+        if (pin.passThrough) pins.push({ x: clamp(cursor.x), y: pin.y });
+        else pins.push({ x: clamp(cursor.x), y: pin.y }, { x: clamp(next.x), y: pin.y });
+      }
+      cursor = pins.at(-1);
+    } else {
+      pins.push(pin);
+      cursor = pin;
     }
-    cursor = pin;
   }
   // escape stubs count as pins so collapse keeps the perpendicular departure
   line.pinPoints = [...pins, ...fromStub.slice(1), ...toStub.slice(1)].map((pin) => ({ x: pin.x, y: pin.y }));
@@ -682,6 +723,63 @@ function collapseJogs(line, index, routeIndex) {
     }
   }
   return improved;
+}
+
+// Docks follow the route: a lateral jog right after the escape stub slides
+// the dock along its side instead — an off-center dock beats a staircase.
+// Named ports with several attachments keep their join identity untouched.
+function slideDocks(scene, index) {
+  const sideDocks = new Map();
+  const register = (target, side, point) => {
+    const key = `${target.path}:${side}`;
+    if (!sideDocks.has(key)) sideDocks.set(key, []);
+    sideDocks.get(key).push(point);
+  };
+  for (const object of scene.objects) {
+    for (const port of object.ports.values()) if (port.point) register(port.anchor ?? object, port.physicalSide, port.point);
+  }
+  for (const line of scene.lines) {
+    for (const endpoint of [line.from, line.to]) {
+      if (endpoint && !endpoint.port && endpoint.point) register(endpoint.object, endpoint.physicalSide, endpoint.point);
+    }
+  }
+
+  for (const line of scene.lines) {
+    if (line.route.length < 3) continue;
+    for (const end of ["from", "to"]) {
+      const endpoint = line[end];
+      if (!endpoint?.point || (endpoint.port?.attachments.length ?? 1) > 1) continue;
+      const side = endpoint.physicalSide;
+      if (!side) continue;
+      const fromEnd = end === "from";
+      const route = line.route;
+      const dock = fromEnd ? route[0] : route.at(-1);
+      const escape = fromEnd ? route[1] : route.at(-2);
+      const beyond = fromEnd ? route[2] : route.at(-3);
+      if (!beyond) continue;
+      const lateralAxis = side === "top" || side === "bottom" ? "x" : "y";
+      const normalAxis = lateralAxis === "x" ? "y" : "x";
+      // the stub must be normal to the side and the next run purely lateral
+      if (escape[lateralAxis] !== dock[lateralAxis] || beyond[normalAxis] !== escape[normalAxis]) continue;
+      const target = beyond[lateralAxis];
+      const box = dockTarget(endpoint).box;
+      const low = (lateralAxis === "x" ? box.x : box.y) + 10;
+      const high = (lateralAxis === "x" ? box.x + box.width : box.y + box.height) - 10;
+      if (target < low || target > high) continue;
+      const siblings = sideDocks.get(`${dockTarget(endpoint).path}:${side}`) ?? [];
+      if (!siblings.every((point) => point === endpoint.point || Math.abs(point[lateralAxis] - target) >= 12)) continue;
+      // the new stub column must not clip an obstacle
+      const movedDock = { ...dock, [lateralAxis]: target };
+      const movedEscape = { ...escape, [lateralAxis]: target };
+      const blocked = [...index.querySegment(movedDock, movedEscape)]
+        .some((object) => segmentHitsBox(movedDock, movedEscape, object.box));
+      if (blocked) continue;
+      dock[lateralAxis] = target;
+      escape[lateralAxis] = target;
+      endpoint.point[lateralAxis] = target;
+      line.route = simplifyKeepingPins(line, route);
+    }
+  }
 }
 
 // Bounded aesthetics sweeps after every line is routed. The route index is
@@ -827,17 +925,19 @@ function placeAllLabels(scene, objectIndex) {
 }
 
 export function route(scene) {
-  placePorts(scene);
-  alignFacingDocks(scene);
-  for (const region of scene.regions.values()) region.geometry = regionGeometry(region);
   const obstacles = scene.objects.filter((object) => object.visible && object.children.length === 0 && !object.frame && !["title", "subtitle", "legend-item"].includes(object.kind));
   const index = new SpatialIndex(obstacles);
+  placePorts(scene, index);
+  alignFacingDocks(scene);
+  for (const region of scene.regions.values()) region.geometry = regionGeometry(region);
   sharedPins(scene, index);
   const routeIndex = new SpatialIndex([]);
   for (const line of scene.lines) {
     routeLine(line, index, routeIndex);
     indexRoute(routeIndex, line);
   }
+  improveRoutes(scene, index);
+  slideDocks(scene, index);
   improveRoutes(scene, index);
   placeAllLabels(scene, index);
   return scene;
