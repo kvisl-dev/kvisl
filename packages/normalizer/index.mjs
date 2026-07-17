@@ -79,6 +79,7 @@ function buildObject(node, parent, diagnostics) {
     ports: [],
     portGroups: [],
     lines: [],
+    constraints: [],
     layout: null,
     style: p.style,
   };
@@ -165,6 +166,9 @@ function buildChild(child, rec, diagnostics) {
     }
     case "line":
       rec.lines.push({ props: child.props, segments: child.children.filter((c) => c.core === "segment") });
+      return;
+    case "constraint":
+      rec.constraints.push(child.props);
       return;
     default: {
       if (OBJECT_KINDS.has(child.core)) {
@@ -479,6 +483,66 @@ export function normalize(rootExpr) {
         entity.segments.push(segment({ kind: "traversal", container: keyOf.get(r), role: "enter" }, "implicit"));
     }
     for (const child of rec.children) emitLines(child);
+  })(root);
+
+  // constraints: resolve entity references and lower spatial sugar to order
+  (function emitConstraints(rec) {
+    const resolve = (ref) => {
+      if (ref == null) return null;
+      const resolved = resolvePath(rec, ref, diagnostics);
+      return resolved ? keyOf.get(resolved.rec) : null;
+    };
+    for (const p of rec.constraints) {
+      const base = {
+        key: 0,
+        kind: "constraint",
+        id: p.id ?? null,
+        domain: "ordinary",
+        parent: keyOf.get(rec),
+        roles: [],
+        classes: [],
+        strength: p.strength ?? { kind: "required" },
+      };
+      const members = asList(p.members).map(resolve).filter((key) => key != null);
+      switch (p.kind) {
+        case "same-size":
+          assign({ ...base, type: "same-size", members, dimension: p.dimension ?? "both" });
+          break;
+        case "align":
+          assign({ ...base, type: "align", members, edge: p.edge ?? "center-vertical" });
+          break;
+        case "adjacent":
+          assign({ ...base, type: "adjacent", members, ...(p.within != null ? { within: resolve(p.within) } : {}) });
+          break;
+        case "order":
+          assign({ ...base, type: "order", before: resolve(p.before), after: resolve(p.after), basis: p.basis ?? { kind: "layout" } });
+          break;
+        case "below":
+          assign({ ...base, type: "order", before: resolve(p.reference), after: resolve(p.item), basis: { kind: "spatial", axis: "vertical" } });
+          break;
+        case "above":
+          assign({ ...base, type: "order", before: resolve(p.item), after: resolve(p.reference), basis: { kind: "spatial", axis: "vertical" } });
+          break;
+        case "near":
+          assign({ ...base, type: "near", first: resolve(p.first ?? p.item), second: resolve(p.second ?? p.reference) });
+          break;
+        case "inside":
+          assign({ ...base, type: "inside", members, container: resolve(p.container), ...(p.padding != null ? { padding: p.padding } : {}) });
+          break;
+        case "extent":
+          assign({ ...base, type: "extent", item: resolve(p.item), axis: p.axis ?? "vertical", from: resolve(p.from), to: resolve(p.to) });
+          break;
+        case "avoid-crossing":
+          assign({ ...base, type: "avoid-crossing", members });
+          break;
+        case "avoid-overlap":
+          assign({ ...base, type: "avoid-overlap", members });
+          break;
+        default:
+          diagnostics.push(error("constraint-kind", `unknown constraint kind '${p.kind}'`));
+      }
+    }
+    for (const child of rec.children) emitConstraints(child);
   })(root);
 
   // document-layer rules and tokens from the Diagram styles prop
