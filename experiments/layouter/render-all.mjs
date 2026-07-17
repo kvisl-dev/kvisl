@@ -30,6 +30,9 @@ function card(result) {
     : "<p class=ok>preview emitted without diagnostics</p>";
   const quality = result.quality;
   const perception = result.perception;
+  const originalFigure = hasOriginal
+    ? `\n      <figure><figcaption>Original</figcaption><img src="${escape(originalRelative)}" alt="Original ${escape(result.name)}"></figure>`
+    : "";
   return `<article>
     <h2>${escape(result.name)}</h2>
     <p>${result.scene.objects.length} objects · ${result.scene.lines.length} lines · ${result.scene.width}×${result.scene.height}</p>
@@ -50,8 +53,7 @@ function card(result) {
       gap CV ${perception.gapCV.toFixed(2)} ·
       label offset ${perception.labelDisplacement.toFixed(1)}px
     </p>
-    <div class="comparison">
-      ${hasOriginal ? `<figure><figcaption>Original</figcaption><img src="${escape(originalRelative)}" alt="Original ${escape(result.name)}"></figure>` : ""}
+    <div class="comparison">${originalFigure}
       <figure><figcaption>Prototype SVG</figcaption><img src="${escape(result.name)}.svg" alt="Prototype ${escape(result.name)}"></figure>
     </div>
     ${diagnostics}

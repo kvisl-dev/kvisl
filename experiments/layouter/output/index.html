@@ -1,0 +1,372 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kvísl layouter comparison gallery</title>
+<style>
+  :root { color-scheme: light dark; font-family: system-ui, sans-serif; }
+  body { margin: 0 auto; max-width: 1800px; padding: 28px; background: Canvas; color: CanvasText; }
+  h1 { margin-bottom: 4px; } article { margin: 40px 0 72px; }
+  .comparison { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 24px; align-items: start; }
+  figure { margin: 0; } figcaption { margin: 0 0 8px; font-weight: 700; }
+  img { display: block; box-sizing: border-box; width: 100%; max-height: 82vh; object-fit: contain; object-position: top; background: white; border: 1px solid color-mix(in srgb, CanvasText 20%, transparent); }
+  pre { overflow: auto; } .ok { color: #16803a; } .bad { color: #c62d2d; }
+  .perception { color: color-mix(in srgb, CanvasText 62%, transparent); font-size: 0.92em; }
+</style>
+<h1>Kvísl layouter comparison gallery</h1>
+<p>Generated from the repository TSX fixtures. Original images are references, not pixel targets.</p>
+<article>
+    <h2>agent-substrate</h2>
+    <p>31 objects · 13 lines · 1950×1421</p>
+    <p class="ok">
+      0 object overlaps ·
+      0 route–object intersections ·
+      0 label–object overlaps ·
+      0 label–label overlaps ·
+      0 unexpected shared runs ·
+      3 crossings
+    </p>
+    <p class="perception">
+      1.54 bends/line (max 6) ·
+      detour ×1.24 ·
+      backtrack 10% ·
+      45/33 x/y guides for 17 boxes ·
+      peer-size CV 0.08 ·
+      gap CV 0.26 ·
+      label offset 51.8px
+    </p>
+    <div class="comparison">
+      <figure><figcaption>Original</figcaption><img src="../../../examples/agent-substrate/original.png" alt="Original agent-substrate"></figure>
+      <figure><figcaption>Prototype SVG</figcaption><img src="agent-substrate.svg" alt="Prototype agent-substrate"></figure>
+    </div>
+    <p class=ok>preview emitted without diagnostics</p>
+  </article>
+<article>
+    <h2>coverage</h2>
+    <p>12 objects · 8 lines · 1038×659</p>
+    <p class="ok">
+      0 object overlaps ·
+      0 route–object intersections ·
+      0 label–object overlaps ·
+      0 label–label overlaps ·
+      0 unexpected shared runs ·
+      1 crossings
+    </p>
+    <p class="perception">
+      1.38 bends/line (max 8) ·
+      detour ×1.31 ·
+      backtrack 12% ·
+      15/13 x/y guides for 7 boxes ·
+      peer-size CV 0.00 ·
+      gap CV 0.06 ·
+      label offset 0.0px
+    </p>
+    <div class="comparison">
+      <figure><figcaption>Prototype SVG</figcaption><img src="coverage.svg" alt="Prototype coverage"></figure>
+    </div>
+    <p class=ok>preview emitted without diagnostics</p>
+  </article>
+<article>
+    <h2>machine-thought-os</h2>
+    <p>20 objects · 13 lines · 1092×1100</p>
+    <p class="ok">
+      0 object overlaps ·
+      0 route–object intersections ·
+      0 label–object overlaps ·
+      0 label–label overlaps ·
+      0 unexpected shared runs ·
+      3 crossings
+    </p>
+    <p class="perception">
+      2.08 bends/line (max 4) ·
+      detour ×1.03 ·
+      backtrack 1% ·
+      26/26 x/y guides for 12 boxes ·
+      peer-size CV 0.06 ·
+      gap CV 0.43 ·
+      label offset 0.0px
+    </p>
+    <div class="comparison">
+      <figure><figcaption>Original</figcaption><img src="../../../examples/machine-thought-os/original.png" alt="Original machine-thought-os"></figure>
+      <figure><figcaption>Prototype SVG</figcaption><img src="machine-thought-os.svg" alt="Prototype machine-thought-os"></figure>
+    </div>
+    <p class=ok>preview emitted without diagnostics</p>
+  </article>
+<article>
+    <h2>modelplane-fleet-inference</h2>
+    <p>38 objects · 19 lines · 1503×1517</p>
+    <p class="ok">
+      0 object overlaps ·
+      0 route–object intersections ·
+      0 label–object overlaps ·
+      0 label–label overlaps ·
+      0 unexpected shared runs ·
+      3 crossings
+    </p>
+    <p class="perception">
+      2.00 bends/line (max 5) ·
+      detour ×1.02 ·
+      backtrack 1% ·
+      44/27 x/y guides for 21 boxes ·
+      peer-size CV 0.09 ·
+      gap CV 0.20 ·
+      label offset 42.8px
+    </p>
+    <div class="comparison">
+      <figure><figcaption>Original</figcaption><img src="../../../examples/modelplane-fleet-inference/original.png" alt="Original modelplane-fleet-inference"></figure>
+      <figure><figcaption>Prototype SVG</figcaption><img src="modelplane-fleet-inference.svg" alt="Prototype modelplane-fleet-inference"></figure>
+    </div>
+    <p class=ok>preview emitted without diagnostics</p>
+  </article>
+<article>
+    <h2>uml-activity</h2>
+    <p>19 objects · 15 lines · 1195×807</p>
+    <p class="ok">
+      0 object overlaps ·
+      0 route–object intersections ·
+      0 label–object overlaps ·
+      0 label–label overlaps ·
+      0 unexpected shared runs ·
+      3 crossings
+    </p>
+    <p class="perception">
+      1.67 bends/line (max 4) ·
+      detour ×1.07 ·
+      backtrack 2% ·
+      15/32 x/y guides for 13 boxes ·
+      peer-size CV 0.17 ·
+      gap CV 0.30 ·
+      label offset 30.7px
+    </p>
+    <div class="comparison">
+      <figure><figcaption>Prototype SVG</figcaption><img src="uml-activity.svg" alt="Prototype uml-activity"></figure>
+    </div>
+    <p class=ok>preview emitted without diagnostics</p>
+  </article>
+<article>
+    <h2>uml-class</h2>
+    <p>13 objects · 8 lines · 1115×624</p>
+    <p class="ok">
+      0 object overlaps ·
+      0 route–object intersections ·
+      0 label–object overlaps ·
+      0 label–label overlaps ·
+      0 unexpected shared runs ·
+      2 crossings
+    </p>
+    <p class="perception">
+      2.00 bends/line (max 4) ·
+      detour ×1.12 ·
+      backtrack 6% ·
+      13/9 x/y guides for 9 boxes ·
+      peer-size CV 0.30 ·
+      gap CV 0.00 ·
+      label offset 21.4px
+    </p>
+    <div class="comparison">
+      <figure><figcaption>Prototype SVG</figcaption><img src="uml-class.svg" alt="Prototype uml-class"></figure>
+    </div>
+    <p class=ok>preview emitted without diagnostics</p>
+  </article>
+<article>
+    <h2>uml-component</h2>
+    <p>9 objects · 4 lines · 952×433</p>
+    <p class="ok">
+      0 object overlaps ·
+      0 route–object intersections ·
+      0 label–object overlaps ·
+      0 label–label overlaps ·
+      0 unexpected shared runs ·
+      1 crossings
+    </p>
+    <p class="perception">
+      2.25 bends/line (max 5) ·
+      detour ×1.16 ·
+      backtrack 7% ·
+      14/6 x/y guides for 5 boxes ·
+      peer-size CV 0.07 ·
+      gap CV 0.09 ·
+      label offset 18.0px
+    </p>
+    <div class="comparison">
+      <figure><figcaption>Prototype SVG</figcaption><img src="uml-component.svg" alt="Prototype uml-component"></figure>
+    </div>
+    <p class=ok>preview emitted without diagnostics</p>
+  </article>
+<article>
+    <h2>uml-deployment</h2>
+    <p>13 objects · 4 lines · 1100×703</p>
+    <p class="ok">
+      0 object overlaps ·
+      0 route–object intersections ·
+      0 label–object overlaps ·
+      0 label–label overlaps ·
+      0 unexpected shared runs ·
+      1 crossings
+    </p>
+    <p class="perception">
+      3.25 bends/line (max 7) ·
+      detour ×1.26 ·
+      backtrack 10% ·
+      12/12 x/y guides for 5 boxes ·
+      peer-size CV 0.09 ·
+      gap CV 0.13 ·
+      label offset 24.3px
+    </p>
+    <div class="comparison">
+      <figure><figcaption>Prototype SVG</figcaption><img src="uml-deployment.svg" alt="Prototype uml-deployment"></figure>
+    </div>
+    <p class=ok>preview emitted without diagnostics</p>
+  </article>
+<article>
+    <h2>uml-object</h2>
+    <p>7 objects · 3 lines · 1439×270</p>
+    <p class="ok">
+      0 object overlaps ·
+      0 route–object intersections ·
+      0 label–object overlaps ·
+      0 label–label overlaps ·
+      0 unexpected shared runs ·
+      0 crossings
+    </p>
+    <p class="perception">
+      1.33 bends/line (max 4) ·
+      detour ×1.19 ·
+      backtrack 0% ·
+      12/3 x/y guides for 4 boxes ·
+      peer-size CV 0.00 ·
+      gap CV 0.05 ·
+      label offset 18.0px
+    </p>
+    <div class="comparison">
+      <figure><figcaption>Prototype SVG</figcaption><img src="uml-object.svg" alt="Prototype uml-object"></figure>
+    </div>
+    <p class=ok>preview emitted without diagnostics</p>
+  </article>
+<article>
+    <h2>uml-package</h2>
+    <p>13 objects · 4 lines · 707×698</p>
+    <p class="ok">
+      0 object overlaps ·
+      0 route–object intersections ·
+      0 label–object overlaps ·
+      0 label–label overlaps ·
+      0 unexpected shared runs ·
+      0 crossings
+    </p>
+    <p class="perception">
+      0.50 bends/line (max 2) ·
+      detour ×1.00 ·
+      backtrack 0% ·
+      13/9 x/y guides for 5 boxes ·
+      peer-size CV 0.00 ·
+      gap CV 0.00 ·
+      label offset 26.1px
+    </p>
+    <div class="comparison">
+      <figure><figcaption>Prototype SVG</figcaption><img src="uml-package.svg" alt="Prototype uml-package"></figure>
+    </div>
+    <p class=ok>preview emitted without diagnostics</p>
+  </article>
+<article>
+    <h2>uml-sequence</h2>
+    <p>36 objects · 12 lines · 2021×1000</p>
+    <p class="ok">
+      0 object overlaps ·
+      0 route–object intersections ·
+      0 label–object overlaps ·
+      0 label–label overlaps ·
+      0 unexpected shared runs ·
+      0 crossings
+    </p>
+    <p class="perception">
+      0.67 bends/line (max 4) ·
+      detour ×1.09 ·
+      backtrack 0% ·
+      20/33 x/y guides for 27 boxes ·
+      peer-size CV 0.66 ·
+      gap CV 0.67 ·
+      label offset 20.3px
+    </p>
+    <div class="comparison">
+      <figure><figcaption>Prototype SVG</figcaption><img src="uml-sequence.svg" alt="Prototype uml-sequence"></figure>
+    </div>
+    <p class=ok>preview emitted without diagnostics</p>
+  </article>
+<article>
+    <h2>uml-state-machine</h2>
+    <p>14 objects · 11 lines · 1386×880</p>
+    <p class="ok">
+      0 object overlaps ·
+      0 route–object intersections ·
+      0 label–object overlaps ·
+      0 label–label overlaps ·
+      0 unexpected shared runs ·
+      3 crossings
+    </p>
+    <p class="perception">
+      1.09 bends/line (max 3) ·
+      detour ×1.01 ·
+      backtrack 0% ·
+      14/23 x/y guides for 10 boxes ·
+      peer-size CV 0.39 ·
+      gap CV 0.04 ·
+      label offset 35.8px
+    </p>
+    <div class="comparison">
+      <figure><figcaption>Prototype SVG</figcaption><img src="uml-state-machine.svg" alt="Prototype uml-state-machine"></figure>
+    </div>
+    <p class=ok>preview emitted without diagnostics</p>
+  </article>
+<article>
+    <h2>uml-use-case</h2>
+    <p>17 objects · 9 lines · 1080×455</p>
+    <p class="ok">
+      0 object overlaps ·
+      0 route–object intersections ·
+      0 label–object overlaps ·
+      0 label–label overlaps ·
+      0 unexpected shared runs ·
+      2 crossings
+    </p>
+    <p class="perception">
+      0.89 bends/line (max 4) ·
+      detour ×1.17 ·
+      backtrack 7% ·
+      16/9 x/y guides for 10 boxes ·
+      peer-size CV 0.05 ·
+      gap CV 0.00 ·
+      label offset 29.2px
+    </p>
+    <div class="comparison">
+      <figure><figcaption>Prototype SVG</figcaption><img src="uml-use-case.svg" alt="Prototype uml-use-case"></figure>
+    </div>
+    <p class=ok>preview emitted without diagnostics</p>
+  </article>
+<article>
+    <h2>vegvisir-voice-agents</h2>
+    <p>21 objects · 10 lines · 1543×904</p>
+    <p class="ok">
+      0 object overlaps ·
+      0 route–object intersections ·
+      0 label–object overlaps ·
+      0 label–label overlaps ·
+      0 unexpected shared runs ·
+      0 crossings
+    </p>
+    <p class="perception">
+      1.80 bends/line (max 4) ·
+      detour ×1.08 ·
+      backtrack 4% ·
+      20/29 x/y guides for 13 boxes ·
+      peer-size CV 0.17 ·
+      gap CV 0.00 ·
+      label offset 53.5px
+    </p>
+    <div class="comparison">
+      <figure><figcaption>Original</figcaption><img src="../../../examples/vegvisir-voice-agents/original.png" alt="Original vegvisir-voice-agents"></figure>
+      <figure><figcaption>Prototype SVG</figcaption><img src="vegvisir-voice-agents.svg" alt="Prototype vegvisir-voice-agents"></figure>
+    </div>
+    <p class=ok>preview emitted without diagnostics</p>
+  </article>
+</html>
