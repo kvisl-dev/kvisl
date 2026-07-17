@@ -358,8 +358,42 @@ function orthogonal(first, second, index, ignored, routeIndex, line) {
     [first, { x: first.x, y: obstacleTop }, { x: second.x, y: obstacleTop }, second],
     [first, { x: first.x, y: obstacleBottom }, { x: second.x, y: obstacleBottom }, second],
   ].map(simplify);
-  candidates.sort((a, b) => candidateScore(a, index, ignored, routeIndex, line) - candidateScore(b, index, ignored, routeIndex, line));
-  return candidates[0];
+  const score = (candidate) => candidateScore(candidate, index, ignored, routeIndex, line);
+  candidates.sort((a, b) => score(a) - score(b));
+  let best = candidates[0];
+  // when the best route still hits something, try going around that specific
+  // obstacle; two bounded refinement levels, no open-ended search
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const obstacle = collidingObstacle(best, index, ignored);
+    if (!obstacle) break;
+    const around = aroundCandidates(first, second, obstacle.box, detour).map(simplify);
+    const challenger = around.sort((a, b) => score(a) - score(b))[0];
+    if (!challenger || score(challenger) >= score(best)) break;
+    best = challenger;
+  }
+  return best;
+}
+
+function collidingObstacle(points, index, ignored) {
+  for (let i = 1; i < points.length; i += 1) {
+    for (const object of index.querySegment(points[i - 1], points[i])) {
+      if (!ignored.has(object) && segmentHitsBox(points[i - 1], points[i], object.box)) return object;
+    }
+  }
+  return null;
+}
+
+function aroundCandidates(first, second, box, detour) {
+  const left = box.x - detour;
+  const right = box.x + box.width + detour;
+  const top = box.y - detour;
+  const bottom = box.y + box.height + detour;
+  return [
+    [first, { x: left, y: first.y }, { x: left, y: second.y }, second],
+    [first, { x: right, y: first.y }, { x: right, y: second.y }, second],
+    [first, { x: first.x, y: top }, { x: second.x, y: top }, second],
+    [first, { x: first.x, y: bottom }, { x: second.x, y: bottom }, second],
+  ];
 }
 
 function rayClearance(scene, port, objectIndex) {
@@ -438,6 +472,11 @@ function paddingTrackPins(track, start, end) {
   ];
 }
 
+function hasAncestor(object, ancestor) {
+  for (let current = object?.parent; current; current = current.parent) if (current === ancestor) return true;
+  return false;
+}
+
 function orderedPins(line, start, end) {
   const tracks = [...(line.regionTracks?.values() ?? [])];
   const explicitPadding = new Set();
@@ -453,6 +492,12 @@ function orderedPins(line, start, end) {
       continue;
     }
     if ([...explicitPadding].some((region) => region.owner === track.region.owner && track.region.kind === "gap")) continue;
+    // an implicit exit/entry band that contradicts the chosen dock side would
+    // drag the route around the object; the reservation stays, the pin goes
+    if (track.region.kind === "padding") {
+      const endpoint = [line.from, line.to].find((item) => item && hasAncestor(item.object, track.region.owner));
+      if (endpoint?.physicalSide && endpoint.physicalSide !== track.region.side) continue;
+    }
     pins.push(trackPoint(track, start, end));
   }
   for (const segment of line.segments) if (segment.waypoint) pins.push(center(segment.waypoint.box));
@@ -491,10 +536,13 @@ function endpointStub(endpoint) {
   ];
 }
 
+// Docks sit on the box edge and stubs leave outward, so the endpoint boxes
+// need no exemption: a route doubling back across its own source is a real
+// collision the score should see.
 function ignoredObjects(line, index) {
   return line.space === "overlay"
     ? new Set(index.objects)
-    : new Set([line.from.object, line.to.object, ...line.segments.map((segment) => segment.waypoint).filter(Boolean)]);
+    : new Set(line.segments.map((segment) => segment.waypoint).filter(Boolean));
 }
 
 function routeLine(line, index, routeIndex) {
@@ -504,7 +552,8 @@ function routeLine(line, index, routeIndex) {
   const start = fromStub.at(-1);
   const end = toStub.at(-1);
   const pins = orderedPins(line, start, end);
-  line.pinPoints = pins.map((pin) => ({ x: pin.x, y: pin.y }));
+  // escape stubs count as pins so collapse keeps the perpendicular departure
+  line.pinPoints = [...pins, ...fromStub.slice(1), ...toStub.slice(1)].map((pin) => ({ x: pin.x, y: pin.y }));
   const waypoints = [...fromStub, ...pins, ...toStub.reverse()];
   const route = [];
   for (let i = 1; i < waypoints.length; i += 1) {

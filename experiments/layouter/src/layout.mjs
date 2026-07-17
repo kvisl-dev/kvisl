@@ -410,6 +410,10 @@ function measureObject(object, scene) {
   object.frameWidth = Math.max(minimumWidth, innerWidth + padding.left + padding.right, length(object.style.minWidth, 0, tokens));
   object.frameHeight = Math.max(minimumHeight, innerHeight + padding.top + padding.bottom, length(object.style.minHeight, 0, tokens));
   const quarterTurn = object.orientation === 90 || object.orientation === 270;
+  // floors from stretch, quantization, and same-size act on the physical box
+  const floor = object.sizeFloor ?? { width: 0, height: 0 };
+  object.frameWidth = Math.max(object.frameWidth, quarterTurn ? floor.height : floor.width);
+  object.frameHeight = Math.max(object.frameHeight, quarterTurn ? floor.width : floor.height);
   object.measured = {
     width: quarterTurn ? object.frameHeight : object.frameWidth,
     height: quarterTurn ? object.frameWidth : object.frameHeight,
@@ -417,8 +421,9 @@ function measureObject(object, scene) {
 
   let cursor = 0;
   if (layout === "row") {
+    const extra = Math.max(0, object.frameWidth - padding.left - padding.right - bodyWidth);
     members.forEach((child, index) => {
-      child.localX = padding.left + cursor;
+      child.localX = padding.left + distributeOffset(object.distribute, extra, index, members.length) + cursor;
       child.localY = padding.top + object.contentHeight + alignOffset(object.align, bodyHeight, child.measured.height);
       cursor += child.measured.width + (gaps[index] ?? 0);
     });
@@ -443,9 +448,10 @@ function measureObject(object, scene) {
       child.localY = rowY[row];
     });
   } else {
+    const extra = layout === "column" ? Math.max(0, object.frameHeight - padding.top - padding.bottom - object.contentHeight - bodyHeight) : 0;
     members.forEach((child, index) => {
       child.localX = padding.left + alignOffset(object.align, bodyWidth, child.measured.width);
-      child.localY = padding.top + object.contentHeight + cursor;
+      child.localY = padding.top + object.contentHeight + distributeOffset(object.distribute, extra, index, members.length) + cursor;
       cursor += child.measured.height + (gaps[index] ?? 0);
     });
   }
@@ -455,6 +461,127 @@ function alignOffset(align, available, size) {
   if (align === "end") return available - size;
   if (align === "center") return (available - size) / 2;
   return 0;
+}
+
+function distributeOffset(distribute, extra, index, count) {
+  if (extra <= 0 || !count) return 0;
+  if (distribute === "space-between") return count > 1 ? index * extra / (count - 1) : extra / 2;
+  if (distribute === "space-around") return (index + 0.5) * extra / count;
+  if (distribute === "center") return extra / 2;
+  if (distribute === "end") return extra;
+  return 0;
+}
+
+const STRETCH_EXCLUDED_KINDS = new Set(["title", "subtitle", "note", "legend", "legend-item", "image"]);
+const FIXED_SHAPE_HINTS = ["initial", "final", "occurrence", "fork", "join", "actor", "choice", "diamond", "history"];
+
+function fixedShape(object) {
+  return object.shape != null && FIXED_SHAPE_HINTS.some((hint) => object.shape.includes(hint));
+}
+
+function harmonizable(object) {
+  return object.visible
+    && !STRETCH_EXCLUDED_KINDS.has(object.kind)
+    && !fixedShape(object)
+    && !object.id.startsWith("$text-")
+    && object.style.minWidth == null
+    && object.style.minHeight == null;
+}
+
+function raiseFloor(object, dimension, value) {
+  if (value > object.sizeFloor[dimension] + 0.5) {
+    object.sizeFloor[dimension] = value;
+    return true;
+  }
+  return false;
+}
+
+// Group values whose spread stays inside the tolerance and lift every group
+// member to the group maximum. Sizes may only grow, so the pass is monotone.
+function quantize(entries, dimension) {
+  const sorted = [...entries].sort((first, second) => first.measured[dimension] - second.measured[dimension]);
+  let raised = false;
+  let group = [];
+  const flush = () => {
+    if (group.length > 1) {
+      const target = Math.max(...group.map((object) => object.measured[dimension]));
+      for (const object of group) raised = raiseFloor(object, dimension, target) || raised;
+    }
+    group = [];
+  };
+  for (const object of sorted) {
+    const value = object.measured[dimension];
+    const anchor = group[0]?.measured[dimension];
+    if (group.length && value - anchor > Math.max(28, anchor * 0.28)) flush();
+    group.push(object);
+  }
+  flush();
+  return raised;
+}
+
+function peerSignature(object) {
+  return [object.kind, object.shape ?? "", [...object.roles].sort().join(","), [...object.classes].sort().join(",")].join("|");
+}
+
+// Stretch (the align-items: stretch analog), peer size quantization, and
+// explicit same-size constraints all become monotone size floors that the
+// next measurement pass applies.
+function computeSizeFloors(scene) {
+  let raised = false;
+  // an extent constraint dictates the item's geometry; harmonizing it would
+  // fight the constraint (a stretched activation bar spans its whole column)
+  const constraintSized = new Set(scene.constraints
+    .filter((constraint) => constraint.kind === "extent" && constraint.itemObject)
+    .map((constraint) => constraint.itemObject));
+  const eligible = (object) => harmonizable(object) && !constraintSized.has(object);
+
+  for (const container of scene.objects) {
+    const members = flowChildren(container).filter((child) => child.visible);
+    if (!members.length) continue;
+    const layout = effectiveLayout(container);
+    if (layout === "row") {
+      const target = Math.max(...members.map((child) => child.measured.height));
+      for (const child of members.filter(eligible)) raised = raiseFloor(child, "height", target) || raised;
+    } else if (layout === "column") {
+      const target = Math.max(...members.map((child) => child.measured.width));
+      for (const child of members.filter(eligible)) raised = raiseFloor(child, "width", target) || raised;
+    } else if (layout === "grid" && container.layoutData) {
+      const { columns, columnWidths, rowHeights } = container.layoutData;
+      members.filter(eligible).forEach((child) => {
+        const index = members.indexOf(child);
+        raised = raiseFloor(child, "width", columnWidths[index % columns] ?? 0) || raised;
+        raised = raiseFloor(child, "height", rowHeights[Math.floor(index / columns)] ?? 0) || raised;
+      });
+    }
+  }
+
+  const peers = new Map();
+  for (const object of scene.objects) {
+    if (!eligible(object) || object.children.length) continue;
+    const signature = peerSignature(object);
+    if (!peers.has(signature)) peers.set(signature, []);
+    peers.get(signature).push(object);
+  }
+  for (const group of peers.values()) {
+    if (group.length < 2) continue;
+    raised = quantize(group, "width") || raised;
+    raised = quantize(group, "height") || raised;
+  }
+
+  for (const constraint of scene.constraints) {
+    if (constraint.kind !== "same-size" || constraint.memberObjects.length < 2) continue;
+    const dimension = constraint.dimension ?? "both";
+    if (dimension !== "height") {
+      const target = Math.max(...constraint.memberObjects.map((object) => object.measured.width));
+      for (const object of constraint.memberObjects) raised = raiseFloor(object, "width", target) || raised;
+    }
+    if (dimension !== "width") {
+      const target = Math.max(...constraint.memberObjects.map((object) => object.measured.height));
+      for (const object of constraint.memberObjects) raised = raiseFloor(object, "height", target) || raised;
+    }
+  }
+
+  return raised;
 }
 
 function multiply(first, second) {
@@ -496,36 +623,70 @@ function assignGlobal(object, parentMatrix, parentOrientation = 0) {
   for (const child of flowChildren(object)) assignGlobal(child, matrix, object.physicalOrientation);
 }
 
-function anchoredPosition(object) {
+function anchoredPosition(object, variant = {}) {
   const anchor = object.anchor?.box;
   if (!anchor) return { x: object.parent?.box.x ?? 0, y: object.parent?.box.y ?? 0 };
   const placement = object.placement ?? { area: "outside", side: "bottom", align: "center" };
   const side = placement.side === "auto" ? "bottom" : placement.side;
   const inside = placement.area === "inside";
   const alongX = side === "top" || side === "bottom";
-  const align = placement.align ?? "center";
+  const align = variant.align ?? placement.align ?? "center";
+  const distance = variant.distance ?? 12;
   const aligned = (start, extent, size) => align === "start" ? start + 12 : align === "end" ? start + extent - size - 12 : start + (extent - size) / 2;
   if (alongX) {
     return {
       x: aligned(anchor.x, anchor.width, object.measured.width),
       y: side === "top"
-        ? inside ? anchor.y + 12 : anchor.y - object.measured.height - 12
-        : inside ? anchor.y + anchor.height - object.measured.height - 12 : anchor.y + anchor.height + 12,
+        ? inside ? anchor.y + distance : anchor.y - object.measured.height - distance
+        : inside ? anchor.y + anchor.height - object.measured.height - distance : anchor.y + anchor.height + distance,
     };
   }
   return {
     x: side === "left"
-      ? inside ? anchor.x + 12 : anchor.x - object.measured.width - 12
-      : inside ? anchor.x + anchor.width - object.measured.width - 12 : anchor.x + anchor.width + 12,
+      ? inside ? anchor.x + distance : anchor.x - object.measured.width - distance
+      : inside ? anchor.x + anchor.width - object.measured.width - distance : anchor.x + anchor.width + distance,
     y: aligned(anchor.y, anchor.height, object.measured.height),
   };
 }
 
-function assignAnchored(object) {
-  const position = anchoredPosition(object);
-  object.localX = position.x;
-  object.localY = position.y;
-  assignGlobal(object, { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 });
+function boxesIntersect(first, second, padding = 0) {
+  return first.x < second.x + second.width + padding
+    && first.x + first.width + padding > second.x
+    && first.y < second.y + second.height + padding
+    && first.y + first.height + padding > second.y;
+}
+
+// Anchored objects try their declared spot first and fall back through a
+// bounded set of align/distance variants instead of accepting an overlap.
+function assignAnchored(scene) {
+  const identity = { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 };
+  const obstacles = scene.objects.filter((object) => object.visible
+    && !object.anchor
+    && object.children.length === 0
+    && !object.frame
+    && !["title", "subtitle", "legend-item"].includes(object.kind));
+  const placed = [];
+  for (const object of scene.objects.filter((item) => item.anchor)) {
+    const variants = [{}];
+    for (const distance of [12, 28, 48, 72]) {
+      for (const align of ["center", "start", "end"]) variants.push({ distance, align });
+    }
+    let position = null;
+    for (const variant of variants) {
+      const candidate = anchoredPosition(object, variant);
+      const box = { x: candidate.x, y: candidate.y, width: object.measured.width, height: object.measured.height };
+      const hit = [...obstacles, ...placed].some((other) => other !== object && boxesIntersect(box, other.box, 4));
+      if (!hit) {
+        position = candidate;
+        break;
+      }
+    }
+    position ??= anchoredPosition(object);
+    object.localX = position.x;
+    object.localY = position.y;
+    assignGlobal(object, identity);
+    placed.push(object);
+  }
 }
 
 function shiftObject(object, dx, dy) {
@@ -598,11 +759,15 @@ function isDescendantOf(object, ancestor) {
 
 export function layout(scene) {
   reserveRoutingSpace(scene);
+  for (const object of scene.objects) object.sizeFloor = { width: 0, height: 0 };
   measureObject(scene.root, scene);
+  for (let pass = 0; pass < 2 && computeSizeFloors(scene); pass += 1) {
+    measureObject(scene.root, scene);
+  }
   scene.root.localX = 0;
   scene.root.localY = 0;
   assignGlobal(scene.root, { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 });
-  for (const object of scene.objects.filter((item) => item.anchor)) assignAnchored(object);
+  assignAnchored(scene);
   applyConstraints(scene);
   normalizeCanvas(scene);
   return scene;
