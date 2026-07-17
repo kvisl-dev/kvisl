@@ -192,11 +192,11 @@ function trackPoint(track, start, end) {
   if (geometry.axis === "vertical") {
     const x = geometry.x + geometry.width / 2 + offset;
     const y = Math.max(geometry.y, Math.min(geometry.y + geometry.height, (start.y + end.y) / 2));
-    return { x, y, region: track.region };
+    return { x, y, region: track.region, soft: true };
   }
   const x = Math.max(geometry.x, Math.min(geometry.x + geometry.width, (start.x + end.x) / 2));
   const y = geometry.y + geometry.height / 2 + offset;
-  return { x, y, region: track.region };
+  return { x, y, region: track.region, soft: true };
 }
 
 class SpatialIndex {
@@ -572,6 +572,19 @@ function routeLine(line, index, routeIndex) {
   const start = fromStub.at(-1);
   const end = toStub.at(-1);
   const pins = orderedPins(line, start, end);
+  // a gap track pin is hard across its region but soft along it: chain the
+  // soft coordinate to the incoming path so entering a track adds no jog —
+  // the line runs straight into the track, along it, and bends toward the
+  // target only once
+  let cursor = start;
+  for (const pin of pins) {
+    const geometry = pin.region?.geometry;
+    if (pin.soft && geometry) {
+      if (geometry.axis === "vertical") pin.y = Math.max(geometry.y, Math.min(geometry.y + geometry.height, cursor.y));
+      else pin.x = Math.max(geometry.x, Math.min(geometry.x + geometry.width, cursor.x));
+    }
+    cursor = pin;
+  }
   // escape stubs count as pins so collapse keeps the perpendicular departure
   line.pinPoints = [...pins, ...fromStub.slice(1), ...toStub.slice(1)].map((pin) => ({ x: pin.x, y: pin.y }));
   const waypoints = [...fromStub, ...pins, ...toStub.reverse()];
