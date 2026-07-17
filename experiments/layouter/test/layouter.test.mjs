@@ -69,6 +69,16 @@ test("every repository diagram produces a finite orthogonal SVG preview", async 
       [],
       `${path.relative(repo, file)} gives unrelated lines a shared run`,
     );
+    assert.deepEqual(
+      quality.routeTitleCrossings.map((item) => `${item.line.id}->${item.object.owner.path}`),
+      [],
+      `${path.relative(repo, file)} runs a line along a container title`,
+    );
+    assert.deepEqual(
+      quality.labelDecorOverlaps.map((item) => `${item.line.id}:${item.label.text}->${item.object.owner?.path ?? item.object.kind}`),
+      [],
+      `${path.relative(repo, file)} places line labels on container decor`,
+    );
   }
 });
 

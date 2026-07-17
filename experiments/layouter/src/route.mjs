@@ -348,7 +348,11 @@ function candidateScore(points, index, ignored, routeIndex, line) {
     const second = points[i];
     score += Math.abs(first.x - second.x) + Math.abs(first.y - second.y);
     for (const object of index.querySegment(first, second)) {
-      if (!ignored.has(object) && segmentHitsBox(first, second, object.box)) collisions += 1;
+      if (ignored.has(object) || !segmentHitsBox(first, second, object.box)) continue;
+      // a run parallel to a title strip cuts through the text line; a quick
+      // perpendicular crossing merely nicks it
+      if (object.kind === "boundary-label" && first.x === second.x) score += 800;
+      else collisions += 1;
     }
     const candidate = { first, second };
     for (const routed of routeIndex.querySegment(first, second)) {
@@ -808,7 +812,10 @@ function routeSegments(route) {
     const length = Math.abs(first.x - second.x) + Math.abs(first.y - second.y);
     if (length > 0) result.push({ first, second, length, index: index - 1 });
   }
-  return result.sort((first, second) => second.length - first.length || first.index - second.index);
+  // a horizontal run reads better under a label than a vertical one; prefer
+  // it whenever it offers meaningful room
+  const tier = (segment) => segment.first.y === segment.second.y && segment.length > 30 ? 0 : 1;
+  return result.sort((first, second) => tier(first) - tier(second) || second.length - first.length || first.index - second.index);
 }
 
 function labelSize(text) {
@@ -834,8 +841,8 @@ function segmentLabelCandidates(segment, label, size, rank) {
   const horizontal = segment.first.y === segment.second.y;
   const ratios = label.placement === "start" ? [0.2, 0.35]
     : label.placement === "end" ? [0.8, 0.65]
-    : [0.5, 0.25, 0.75];
-  const offsets = [7, 18, 32];
+    : [0.5, 0.35, 0.65, 0.25, 0.75, 0.15, 0.85];
+  const offsets = [7, 18, 32, 48];
   const angle = label.orientation === "along" && !horizontal ? 90 : 0;
   const visualWidth = angle ? size.height : size.width;
   const visualHeight = angle ? size.width : size.height;
@@ -889,16 +896,20 @@ function labelSpecs(line) {
   return specs;
 }
 
-function labelCandidateScore(candidate, scene, objectIndex, labelIndex) {
+function labelCandidateScore(candidate, scene, objectIndex, labelIndex, borderIndex) {
   let score = candidate.rank * 40;
   if (candidate.x < 4 || candidate.y < 4 || candidate.x + candidate.width > scene.width - 4 || candidate.y + candidate.height > scene.height - 4) score += 100000;
   for (const object of objectIndex.queryBox(candidate)) if (boxesOverlap(candidate, object.box, 2)) score += 100000;
   for (const label of labelIndex.queryBox(candidate)) if (boxesOverlap(candidate, label.box, 4)) score += 150000;
+  // sitting on a container border stroke is noise even where the interior is
+  // free; weighted below a real object overlap so it stays the lesser evil
+  for (const ring of borderIndex.queryBox(candidate)) if (boxesOverlap(candidate, ring.box, 2)) score += 60000;
   return score;
 }
 
 function placeAllLabels(scene, objectIndex) {
   const labelIndex = new SpatialIndex([]);
+  const borderIndex = new SpatialIndex(containerBorderRings(scene));
   for (const line of scene.lines) {
     line.routeLabels = [];
     const segments = routeSegments(line.route);
@@ -908,7 +919,7 @@ function placeAllLabels(scene, objectIndex) {
         ? endpointLabelCandidates(spec.endpoint, spec, size, 0)
         : segments.flatMap((segment, rank) => segmentLabelCandidates(segment, spec, size, rank));
       if (!candidates.length) continue;
-      candidates.sort((first, second) => labelCandidateScore(first, scene, objectIndex, labelIndex) - labelCandidateScore(second, scene, objectIndex, labelIndex));
+      candidates.sort((first, second) => labelCandidateScore(first, scene, objectIndex, labelIndex, borderIndex) - labelCandidateScore(second, scene, objectIndex, labelIndex, borderIndex));
       const chosen = candidates[0];
       const placed = {
         ...spec,
@@ -924,9 +935,49 @@ function placeAllLabels(scene, objectIndex) {
   scene.labelIndex = labelIndex;
 }
 
+// the top-left strip a container's boundary label occupies; routes and line
+// labels treat it as an obstacle so titles stay readable
+export function boundaryLabelStrips(scene) {
+  return scene.objects
+    .filter((object) => object.visible && object.children.length > 0 && object.label)
+    .map((object) => ({
+      kind: "boundary-label",
+      visible: true,
+      children: [],
+      roles: [],
+      classes: [],
+      owner: object,
+      box: {
+        x: object.box.x + 8,
+        y: object.box.y + 4,
+        width: Math.max(0, Math.min(object.box.width - 16, String(object.label).length * (object.fontSize ?? 15) * 0.62 + 16)),
+        height: (object.fontSize ?? 15) * 1.6,
+      },
+    }));
+}
+
+// thin strips along a drawn container boundary; a line label sitting on a
+// border stroke reads as noise even where the interior is free
+export function containerBorderRings(scene) {
+  const rings = [];
+  const thickness = 3;
+  for (const object of scene.objects) {
+    if (!object.visible || ["diagram", "row", "column", "grid", "legend"].includes(object.kind)) continue;
+    if (object.children.length === 0 && !object.frame) continue;
+    const box = object.box;
+    rings.push(
+      { kind: "container-border", owner: object, box: { x: box.x, y: box.y, width: box.width, height: thickness } },
+      { kind: "container-border", owner: object, box: { x: box.x, y: box.y + box.height - thickness, width: box.width, height: thickness } },
+      { kind: "container-border", owner: object, box: { x: box.x, y: box.y, width: thickness, height: box.height } },
+      { kind: "container-border", owner: object, box: { x: box.x + box.width - thickness, y: box.y, width: thickness, height: box.height } },
+    );
+  }
+  return rings;
+}
+
 export function route(scene) {
   const obstacles = scene.objects.filter((object) => object.visible && object.children.length === 0 && !object.frame && !["title", "subtitle", "legend-item"].includes(object.kind));
-  const index = new SpatialIndex(obstacles);
+  const index = new SpatialIndex([...obstacles, ...boundaryLabelStrips(scene)]);
   placePorts(scene, index);
   alignFacingDocks(scene);
   for (const region of scene.regions.values()) region.geometry = regionGeometry(region);

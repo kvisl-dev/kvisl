@@ -1,3 +1,5 @@
+import { boundaryLabelStrips, containerBorderRings } from "./route.mjs";
+
 const CELL = 160;
 
 function boxesOverlap(first, second, padding = 0) {
@@ -332,6 +334,7 @@ export function perceptionMetrics(scene) {
 export function analyzeScene(scene) {
   const objects = obstacleObjects(scene);
   const routeInteractions = routeRouteInteractions(scene);
+  const titleStrips = boundaryLabelStrips(scene);
   return {
     unexpectedObjectOverlaps: unexpectedObjectOverlaps(objects),
     routeObjectIntersections: routeObjectIntersections(scene, objects),
@@ -339,5 +342,11 @@ export function analyzeScene(scene) {
     labelLabelOverlaps: labelLabelOverlaps(scene),
     routeCrossings: routeInteractions.crossings,
     unexpectedRouteOverlaps: routeInteractions.unexpectedOverlaps,
+    // decor readability: runs parallel to a container title's text line,
+    // and labels on titles or border strokes; perpendicular crossings of a
+    // title strip are tolerated
+    routeTitleCrossings: routeObjectIntersections(scene, titleStrips).filter((hit) =>
+      hit.line.route[hit.segmentIndex].y === hit.line.route[hit.segmentIndex + 1].y),
+    labelDecorOverlaps: labelObjectOverlaps(scene, [...titleStrips, ...containerBorderRings(scene)]),
   };
 }
