@@ -101,6 +101,68 @@ function placePorts(scene) {
   }
 }
 
+const OPPOSITE_SIDE = { left: "right", right: "left", top: "bottom", bottom: "top" };
+
+// A dock and the box it sits on; endpoint.point and port.point stay the same
+// object identity, so mutating the point in place moves every reference.
+function dockTarget(endpoint) {
+  return endpoint.port?.anchor ?? endpoint.port?.owner ?? endpoint.object;
+}
+
+// Snap the two docks of a line onto one shared coordinate when their sides
+// face each other across free space. This is what turns the dominant
+// neighbor-to-neighbor connections into straight single-segment lines.
+function alignFacingDocks(scene) {
+  const docks = new Map();
+  const register = (target, side, point) => {
+    const key = `${target.path}:${side}`;
+    if (!docks.has(key)) docks.set(key, []);
+    docks.get(key).push(point);
+  };
+  for (const object of scene.objects) {
+    for (const port of object.ports.values()) {
+      if (port.point) register(port.anchor ?? object, port.physicalSide, port.point);
+    }
+  }
+  for (const line of scene.lines) {
+    for (const endpoint of [line.from, line.to]) {
+      if (endpoint && !endpoint.port && endpoint.point) register(endpoint.object, endpoint.physicalSide, endpoint.point);
+    }
+  }
+
+  for (const line of scene.lines) {
+    const from = line.from;
+    const to = line.to;
+    if (!from?.point || !to?.point) continue;
+    // named ports with several attachments are join identities; leave them
+    if ((from.port?.attachments.length ?? 1) > 1 || (to.port?.attachments.length ?? 1) > 1) continue;
+    const fromSide = from.physicalSide;
+    const toSide = to.physicalSide;
+    if (!fromSide || OPPOSITE_SIDE[fromSide] !== toSide) continue;
+    const fromBox = dockTarget(from).box;
+    const toBox = dockTarget(to).box;
+    const horizontal = fromSide === "left" || fromSide === "right";
+    const separation = horizontal
+      ? fromSide === "right" ? toBox.x - (fromBox.x + fromBox.width) : fromBox.x - (toBox.x + toBox.width)
+      : fromSide === "bottom" ? toBox.y - (fromBox.y + fromBox.height) : fromBox.y - (toBox.y + toBox.height);
+    if (separation < 0) continue;
+    const margin = 14;
+    const axis = horizontal ? "y" : "x";
+    const extent = horizontal ? "height" : "width";
+    const low = Math.max(fromBox[axis], toBox[axis]) + margin;
+    const high = Math.min(fromBox[axis] + fromBox[extent], toBox[axis] + toBox[extent]) - margin;
+    if (low > high) continue;
+    const target = Math.max(low, Math.min(high, (from.point[axis] + to.point[axis]) / 2));
+    const fits = (endpoint, side) => {
+      const siblings = docks.get(`${dockTarget(endpoint).path}:${side}`) ?? [];
+      return siblings.every((point) => point === endpoint.point || Math.abs(point[axis] - target) >= 12);
+    };
+    if (!fits(from, fromSide) || !fits(to, toSide)) continue;
+    from.point[axis] = target;
+    to.point[axis] = target;
+  }
+}
+
 function regionGeometry(region) {
   if (region.kind === "padding") {
     const box = region.owner.box;
@@ -267,6 +329,7 @@ function candidateScore(points, index, ignored, routeIndex, line) {
     }
     const candidate = { first, second };
     for (const routed of routeIndex.querySegment(first, second)) {
+      if (routed.line === line) continue;
       const interaction = segmentInteraction(candidate, routed);
       if (interaction === "overlap" && !linesMayShare(line, routed.line)) score += 50000;
       if (interaction === "crossing") score += 180;
@@ -286,6 +349,8 @@ function orthogonal(first, second, index, ignored, routeIndex, line) {
   const obstacleRight = nearby.length ? Math.max(...nearby.map((object) => object.box.x + object.box.width)) + detour : Math.max(first.x, second.x) + detour;
   const candidates = [
     ...(first.x === second.x || first.y === second.y ? [[first, second]] : []),
+    [first, { x: second.x, y: first.y }, second],
+    [first, { x: first.x, y: second.y }, second],
     [first, { x: middleX, y: first.y }, { x: middleX, y: second.y }, second],
     [first, { x: first.x, y: middleY }, { x: second.x, y: middleY }, second],
     [first, { x: obstacleLeft, y: first.y }, { x: obstacleLeft, y: second.y }, second],
@@ -426,18 +491,24 @@ function endpointStub(endpoint) {
   ];
 }
 
+function ignoredObjects(line, index) {
+  return line.space === "overlay"
+    ? new Set(index.objects)
+    : new Set([line.from.object, line.to.object, ...line.segments.map((segment) => segment.waypoint).filter(Boolean)]);
+}
+
 function routeLine(line, index, routeIndex) {
   if (!line.from || !line.to) return;
   const fromStub = endpointStub(line.from);
   const toStub = endpointStub(line.to);
   const start = fromStub.at(-1);
   const end = toStub.at(-1);
-  const waypoints = [...fromStub, ...orderedPins(line, start, end), ...toStub.reverse()];
+  const pins = orderedPins(line, start, end);
+  line.pinPoints = pins.map((pin) => ({ x: pin.x, y: pin.y }));
+  const waypoints = [...fromStub, ...pins, ...toStub.reverse()];
   const route = [];
   for (let i = 1; i < waypoints.length; i += 1) {
-    const ignored = line.space === "overlay"
-      ? new Set(index.objects)
-      : new Set([line.from.object, line.to.object, ...line.segments.map((segment) => segment.waypoint).filter(Boolean)]);
+    const ignored = ignoredObjects(line, index);
     const piece = orthogonal(waypoints[i - 1], waypoints[i], index, ignored, routeIndex, line);
     route.push(...(route.length ? piece.slice(1) : piece));
   }
@@ -473,6 +544,79 @@ function indexRoute(routeIndex, line) {
         height: Math.abs(first.y - second.y) + 4,
       },
     });
+  }
+}
+
+function isPinPoint(line, point) {
+  return (line.pinPoints ?? []).some((pin) => Math.abs(pin.x - point.x) < 0.5 && Math.abs(pin.y - point.y) < 0.5);
+}
+
+// Like simplify, but keeps collinear pin points: a shared branch point stays
+// an explicit route vertex even when the straightened route runs through it.
+function simplifyKeepingPins(line, points) {
+  const unique = points.filter((item, index) => index === 0 || item.x !== points[index - 1].x || item.y !== points[index - 1].y);
+  const result = [];
+  for (const item of unique) {
+    const previous = result.at(-1);
+    const before = result.at(-2);
+    const horizontalMiddle = before && previous && before.y === previous.y && previous.y === item.y
+      && previous.x >= Math.min(before.x, item.x) && previous.x <= Math.max(before.x, item.x);
+    const verticalMiddle = before && previous && before.x === previous.x && previous.x === item.x
+      && previous.y >= Math.min(before.y, item.y) && previous.y <= Math.max(before.y, item.y);
+    if ((horizontalMiddle || verticalMiddle) && !isPinPoint(line, previous)) result.pop();
+    result.push({ x: item.x, y: item.y });
+  }
+  return result;
+}
+
+// Replace zig-zag stretches with the best bounded candidate between the same
+// two route points. Pins and shared-branch points are never removed; a
+// replacement is accepted only when its full score strictly improves, so the
+// pass is monotone and cannot introduce new collisions or unrelated runs.
+function collapseJogs(line, index, routeIndex) {
+  if (!line.from || !line.to || line.route.length < 4) return false;
+  const ignored = ignoredObjects(line, index);
+  let improved = false;
+  for (let windowSize = Math.min(line.route.length - 1, 6); windowSize >= 2; windowSize -= 1) {
+    let start = 0;
+    while (start + windowSize < line.route.length) {
+      const end = start + windowSize;
+      const interior = line.route.slice(start + 1, end);
+      if (interior.some((point) => isPinPoint(line, point))) {
+        start += 1;
+        continue;
+      }
+      const current = line.route.slice(start, end + 1);
+      const replacement = orthogonal(line.route[start], line.route[end], index, ignored, routeIndex, line);
+      const currentScore = candidateScore(current, index, ignored, routeIndex, line);
+      const replacementScore = candidateScore(replacement, index, ignored, routeIndex, line);
+      if (replacementScore < currentScore - 0.5) {
+        line.route.splice(start, windowSize + 1, ...replacement);
+        line.route = simplifyKeepingPins(line, line.route);
+        improved = true;
+      } else {
+        start += 1;
+      }
+    }
+  }
+  return improved;
+}
+
+// Bounded aesthetics sweeps after every line is routed. The route index is
+// rebuilt per pass; accepted improvements are inserted immediately, and stale
+// entries of a changed line only over-penalize, never hide a conflict.
+function improveRoutes(scene, index) {
+  for (let pass = 0; pass < 2; pass += 1) {
+    const routeIndex = new SpatialIndex([]);
+    for (const line of scene.lines) indexRoute(routeIndex, line);
+    let improved = false;
+    for (const line of scene.lines) {
+      if (collapseJogs(line, index, routeIndex)) {
+        indexRoute(routeIndex, line);
+        improved = true;
+      }
+    }
+    if (!improved) break;
   }
 }
 
@@ -602,6 +746,7 @@ function placeAllLabels(scene, objectIndex) {
 
 export function route(scene) {
   placePorts(scene);
+  alignFacingDocks(scene);
   for (const region of scene.regions.values()) region.geometry = regionGeometry(region);
   const obstacles = scene.objects.filter((object) => object.visible && object.children.length === 0 && !object.frame && !["title", "subtitle", "legend-item"].includes(object.kind));
   const index = new SpatialIndex(obstacles);
@@ -611,6 +756,7 @@ export function route(scene) {
     routeLine(line, index, routeIndex);
     indexRoute(routeIndex, line);
   }
+  improveRoutes(scene, index);
   placeAllLabels(scene, index);
   return scene;
 }
