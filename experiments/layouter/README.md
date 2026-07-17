@@ -10,7 +10,7 @@ The experiment is deliberately separate from the normalizer slice in `packages/`
 npm run layout:examples
 ```
 
-Generated SVGs and a side-by-side comparison gallery are written to `experiments/layouter/output/`. Open `output/index.html` to compare the four visual fixtures with their `original.png` files and to inspect the UML and coverage previews. Every card reports object/object, route/object, label/object, label/label, unrelated-shared-run, and crossing counts.
+Generated SVGs and a GitHub-compatible side-by-side comparison gallery are written to `experiments/layouter/output/`. Open [`output/README.md`](output/README.md) to compare the four visual fixtures with their `original.png` files and to inspect the UML and coverage previews. GitHub renders this gallery automatically when visiting the output directory. Every section reports object/object, route/object, label/object, label/label, unrelated-shared-run, and crossing counts.
 
 Render one file:
 

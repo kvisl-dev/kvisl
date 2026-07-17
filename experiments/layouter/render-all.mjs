@@ -21,43 +21,39 @@ async function entries() {
   return files.filter((file) => file.endsWith("diagram.tsx")).sort().map((file) => path.join(examples, file));
 }
 
-function card(result) {
+function markdownCard(result) {
   const original = path.join(path.dirname(result.entry), "original.png");
-  const originalRelative = path.relative(output, original);
+  const originalRelative = path.relative(output, original).split(path.sep).join("/");
   const hasOriginal = result.entry.split(path.sep).at(-2) !== "uml" && !result.entry.includes(`${path.sep}coverage${path.sep}`);
-  const diagnostics = result.scene.diagnostics.length
-    ? `<details><summary>${result.scene.diagnostics.length} diagnostics</summary><pre>${escape(result.scene.diagnostics.map((item) => `${item.severity}: ${item.code}: ${item.message}`).join("\n"))}</pre></details>`
-    : "<p class=ok>preview emitted without diagnostics</p>";
   const quality = result.quality;
   const perception = result.perception;
-  const originalFigure = hasOriginal
-    ? `\n      <figure><figcaption>Original</figcaption><img src="${escape(originalRelative)}" alt="Original ${escape(result.name)}"></figure>`
-    : "";
-  return `<article>
-    <h2>${escape(result.name)}</h2>
-    <p>${result.scene.objects.length} objects · ${result.scene.lines.length} lines · ${result.scene.width}×${result.scene.height}</p>
-    <p class="${quality.routeObjectIntersections.length ? "bad" : "ok"}">
-      ${quality.unexpectedObjectOverlaps.length} object overlaps ·
-      ${quality.routeObjectIntersections.length} route–object intersections ·
-      ${quality.labelObjectOverlaps.length} label–object overlaps ·
-      ${quality.labelLabelOverlaps.length} label–label overlaps ·
-      ${quality.unexpectedRouteOverlaps.length} unexpected shared runs ·
-      ${quality.routeCrossings.length} crossings
-    </p>
-    <p class="perception">
-      ${perception.bendsPerLine.toFixed(2)} bends/line (max ${perception.maxBends}) ·
-      detour ×${perception.detourFactor.toFixed(2)} ·
-      backtrack ${(perception.backtrackRatio * 100).toFixed(0)}% ·
-      ${perception.guidesX}/${perception.guidesY} x/y guides for ${perception.boxCount} boxes ·
-      peer-size CV ${perception.peerSizeCV.toFixed(2)} ·
-      gap CV ${perception.gapCV.toFixed(2)} ·
-      label offset ${perception.labelDisplacement.toFixed(1)}px
-    </p>
-    <div class="comparison">${originalFigure}
-      <figure><figcaption>Prototype SVG</figcaption><img src="${escape(result.name)}.svg" alt="Prototype ${escape(result.name)}"></figure>
-    </div>
-    ${diagnostics}
-  </article>`;
+  const comparison = hasOriginal
+    ? `<table>
+  <tr><th>Original</th><th>Prototype SVG</th></tr>
+  <tr>
+    <td><img src="${escape(originalRelative)}" alt="Original ${escape(result.name)}" width="100%"></td>
+    <td><img src="./${escape(result.name)}.svg" alt="Prototype ${escape(result.name)}" width="100%"></td>
+  </tr>
+</table>`
+    : `<p align="center"><img src="./${escape(result.name)}.svg" alt="Prototype ${escape(result.name)}" width="90%"></p>`;
+  const diagnostics = result.scene.diagnostics.length
+    ? `<details>
+<summary>${result.scene.diagnostics.length} diagnostics</summary>
+
+<pre>${escape(result.scene.diagnostics.map((item) => `${item.severity}: ${item.code}: ${item.message}`).join("\n"))}</pre>
+</details>`
+    : "✅ Preview emitted without diagnostics.";
+  return `## ${result.name}
+
+${result.scene.objects.length} objects · ${result.scene.lines.length} lines · ${result.scene.width}×${result.scene.height}
+
+**Structural quality:** ${quality.unexpectedObjectOverlaps.length} object overlaps · ${quality.routeObjectIntersections.length} route–object intersections · ${quality.labelObjectOverlaps.length} label–object overlaps · ${quality.labelLabelOverlaps.length} label–label overlaps · ${quality.unexpectedRouteOverlaps.length} unexpected shared runs · ${quality.routeCrossings.length} crossings
+
+**Perception:** ${perception.bendsPerLine.toFixed(2)} bends/line (max ${perception.maxBends}) · detour ×${perception.detourFactor.toFixed(2)} · backtrack ${(perception.backtrackRatio * 100).toFixed(0)}% · ${perception.guidesX}/${perception.guidesY} x/y guides for ${perception.boxCount} boxes · peer-size CV ${perception.peerSizeCV.toFixed(2)} · gap CV ${perception.gapCV.toFixed(2)} · label offset ${perception.labelDisplacement.toFixed(1)}px
+
+${comparison}
+
+${diagnostics}`;
 }
 
 await mkdir(output, { recursive: true });
@@ -77,24 +73,13 @@ for (const entry of await entries()) {
   console.log(`${name}: ${scene.width}x${scene.height}, ${scene.diagnostics.length} diagnostics, ${quality.unexpectedObjectOverlaps.length}/${quality.routeObjectIntersections.length}/${quality.labelObjectOverlaps.length}/${quality.labelLabelOverlaps.length}/${quality.unexpectedRouteOverlaps.length} object/route/object-label/label-label/shared-run conflicts, ${quality.routeCrossings.length} crossings, ${perception.bendsPerLine.toFixed(2)} bends/line, detour x${perception.detourFactor.toFixed(2)}, backtrack ${(perception.backtrackRatio * 100).toFixed(0)}%, guides ${perception.guidesX}/${perception.guidesY}, peer-size CV ${perception.peerSizeCV.toFixed(2)}, label offset ${perception.labelDisplacement.toFixed(1)}px`);
 }
 
-const html = `<!doctype html>
-<html lang="en">
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Kvísl layouter comparison gallery</title>
-<style>
-  :root { color-scheme: light dark; font-family: system-ui, sans-serif; }
-  body { margin: 0 auto; max-width: 1800px; padding: 28px; background: Canvas; color: CanvasText; }
-  h1 { margin-bottom: 4px; } article { margin: 40px 0 72px; }
-  .comparison { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 24px; align-items: start; }
-  figure { margin: 0; } figcaption { margin: 0 0 8px; font-weight: 700; }
-  img { display: block; box-sizing: border-box; width: 100%; max-height: 82vh; object-fit: contain; object-position: top; background: white; border: 1px solid color-mix(in srgb, CanvasText 20%, transparent); }
-  pre { overflow: auto; } .ok { color: #16803a; } .bad { color: #c62d2d; }
-  .perception { color: color-mix(in srgb, CanvasText 62%, transparent); font-size: 0.92em; }
-</style>
-<h1>Kvísl layouter comparison gallery</h1>
-<p>Generated from the repository TSX fixtures. Original images are references, not pixel targets.</p>
-${results.map(card).join("\n")}
-</html>`;
-await writeFile(path.join(output, "index.html"), html, "utf8");
-console.log(`gallery: ${path.join(output, "index.html")}`);
+const markdown = `# Kvísl layouter comparison gallery
+
+Generated from the repository TSX fixtures. Original images are references, not pixel targets.
+
+> This file is generated by \`npm run layout:examples\`. Do not edit it by hand.
+
+${results.map(markdownCard).join("\n\n")}
+`;
+await writeFile(path.join(output, "README.md"), markdown, "utf8");
+console.log(`gallery: ${path.join(output, "README.md")}`);
