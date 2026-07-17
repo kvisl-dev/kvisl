@@ -301,6 +301,7 @@ export function project(expanded, options = {}) {
       label: node.props.label ?? null,
       roles: list(node.props.role),
       classes: list(node.props.className),
+      theme: node.props.theme ?? parent?.theme ?? null,
       orientation: node.props.orientation ?? 0,
       shape: node.props.shape ?? (node.core === "node" ? "rounded-rectangle" : null),
       source: node.props.source ?? null,
@@ -548,6 +549,7 @@ export function project(expanded, options = {}) {
 
   return {
     root,
+    theme: root.theme,
     objects,
     objectByPath,
     lines,

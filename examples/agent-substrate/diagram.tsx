@@ -110,8 +110,8 @@ function SubstrateControlPlane() {
         <Port id="ingress" side="top" />
         <Port id="templates" side="left" />
         <Port id="workers" side="right" />
+        <Port id="suspend" side="right" />
         <Port id="state" side="bottom" />
-        <Port id="suspend" side="bottom" />
       </Node>
 
       <Scope
@@ -169,6 +169,7 @@ function RuntimeLayer() {
         <Text>node supervisor</Text>
         <Port id="api" side="left" />
         <Port id="pod" side="bottom" />
+        <Port id="snapshot" side="bottom" />
       </Node>
 
       <Column id="worker-stack" gap="large">
@@ -198,7 +199,6 @@ function RuntimeLayer() {
               <Port id="suspend" side="left" />
             </Node>
             <Port id="visor" side="top" />
-            <Port id="snapshot" side="left" />
             <Port id="request" side="right" />
           </Scope>
 
@@ -276,7 +276,6 @@ export default (
         id="resume-actor"
         from="layers/control-and-storage/substrate-control/ateapi.workers"
         to="layers/runtime/atelet.api"
-        heads="both"
         style={{ stroke: colors.blue, dash: "dashed" }}
       >
         <Segment
@@ -291,13 +290,19 @@ export default (
         style={{ stroke: colors.blue, dash: "dashed" }}
       >
         <Segment
+          through={gap("layers/runtime/atelet", "layers/runtime/worker-stack")}
+          label="self-suspend"
+          labelPlacement="start"
+        />
+        <Segment
           through={gap("layers/control-and-storage", "layers/runtime")}
-          label={"api.ate-system.svc.cluster.local:443\nSuspendActor(actorID) · self-suspend"}
+          label={"api.ate-system.svc.cluster.local:443\nSuspendActor(actorID)"}
+          labelPlacement="center"
         />
       </Line>
       <Line
         id="checkpoint-transfer"
-        from="layers/runtime/worker-stack/worker-pod/sandbox.snapshot"
+        from="layers/runtime/atelet.snapshot"
         to="layers/control-and-storage/snapshot-storage/checkpoint.transfer"
         heads="both"
         style={{ stroke: colors.purple, dash: "dashed" }}
@@ -305,6 +310,7 @@ export default (
         <Segment
           through={gap("layers/control-and-storage", "layers/runtime")}
           label={"restore download\ncheckpoint upload"}
+          labelPlacement="end"
         />
       </Line>
     </Scope>

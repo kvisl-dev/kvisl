@@ -88,8 +88,8 @@ function lineShareKey(line) {
   return null;
 }
 
-export function lineLabelDemand(line, axis) {
-  const texts = lineLabelTexts(line);
+export function lineLabelDemand(line, axis, text = null) {
+  const texts = text == null ? lineLabelTexts(line) : [String(text)];
   if (!texts.length) return 0;
   if (axis === "horizontal") return Math.max(...texts.map((text) => Math.max(...text.split("\n").map((part) => part.length)) * 7.4 + 34));
   return Math.max(...texts.map((text) => text.split("\n").length * 16 + 12));
@@ -241,7 +241,9 @@ export function reserveRoutingSpace(scene) {
         }
       }
       if (segmentRegions.length && (segment.label != null || line.label != null || line.labels.length)) {
-        line.labelRegionKey = segmentRegions[Math.floor(segmentRegions.length / 2)].key;
+        const key = segmentRegions[Math.floor(segmentRegions.length / 2)].key;
+        if (segment.label != null) segment.labelRegionKey = key;
+        else line.labelRegionKey = key;
       }
     }
   }
@@ -262,6 +264,9 @@ export function reserveRoutingSpace(scene) {
       : gapRunsVertically(region) ? "horizontal" : "vertical";
     for (const entry of region.entries) {
       if (entry.line.labelRegionKey === region.key) entry.line.labelReservation = { key: region.key, axis: labelAxis };
+      for (const segment of entry.line.segments) {
+        if (segment.labelRegionKey === region.key) segment.labelReservation = { key: region.key, axis: labelAxis };
+      }
     }
     const labelDemand = reservations.get(region.key) ?? 0;
     // share-eligible lines occupy one track, so demand counts distinct tracks
@@ -367,7 +372,11 @@ function wrapText(text, limit) {
 function measureContent(object, childMax = 0) {
   const fontSize = object.kind === "title" ? 32 : object.kind === "subtitle" ? 18 : object.style.fontSize ?? 15;
   const charWidth = fontSize * 0.55;
-  const wrap = object.roles.includes("implementation-status") ? 120
+  // An infinite canvas gives document headings their intrinsic width. Only an
+  // authored newline splits them; a future finite allocation may reflow them
+  // against that concrete width in a separate bounded pass.
+  const wrap = object.kind === "title" || object.kind === "subtitle" ? Number.POSITIVE_INFINITY
+    : object.roles.includes("implementation-status") ? 120
     : object.kind === "note" || object.kind === "legend-item" ? 44
     : 72;
   // a container title wraps toward its children's width — the box must not
@@ -397,6 +406,16 @@ function defaultPadding(object, tokens) {
 
 function flowChildren(object) {
   return object.children.filter((child) => !child.anchor && !child.frame);
+}
+
+function themeMinimum(object) {
+  if (object.theme !== "excalidraw-handdrawn" || object.kind !== "node" || fixedShape(object) || object.id.startsWith("$text-")) {
+    return { width: 0, height: 0 };
+  }
+  return {
+    width: object.style.minWidth == null ? 220 : 0,
+    height: object.style.minHeight == null ? 60 : 0,
+  };
 }
 
 function measureObject(object, scene) {
@@ -474,11 +493,22 @@ function measureObject(object, scene) {
   const textual = ["title", "subtitle", "legend-item", "diagram"].includes(object.kind);
   const minimumWidth = textual ? 0 : object.visible ? 72 : 0;
   const minimumHeight = textual ? 0 : object.visible ? 38 : 0;
+  const themedMinimum = themeMinimum(object);
   const contentBesideChildren = members.length === 0;
   const innerWidth = Math.max(bodyWidth, content.width);
   const innerHeight = bodyHeight + (contentBesideChildren ? content.height : object.contentHeight);
-  object.frameWidth = Math.max(minimumWidth, innerWidth + padding.left + padding.right, length(object.style.minWidth, 0, tokens));
-  object.frameHeight = Math.max(minimumHeight, innerHeight + padding.top + padding.bottom, length(object.style.minHeight, 0, tokens));
+  object.frameWidth = Math.max(
+    minimumWidth,
+    themedMinimum.width,
+    innerWidth + padding.left + padding.right,
+    length(object.style.minWidth, 0, tokens),
+  );
+  object.frameHeight = Math.max(
+    minimumHeight,
+    themedMinimum.height,
+    innerHeight + padding.top + padding.bottom,
+    length(object.style.minHeight, 0, tokens),
+  );
   const quarterTurn = object.orientation === 90 || object.orientation === 270;
   // floors from stretch, quantization, and same-size act on the physical box
   const floor = object.sizeFloor ?? { width: 0, height: 0 };
@@ -848,6 +878,10 @@ function alignConnectedNeighbors(scene) {
   for (const container of scene.objects) {
     const layout = effectiveLayout(container);
     if (layout !== "row" && layout !== "column") continue;
+    // A declared distribution owns the available main-axis slack. Route-aware
+    // alignment may consume slack only from the default/start arrangement;
+    // otherwise it would silently invalidate space-between/around/center/end.
+    if (container.distribute !== "start") continue;
     if ((container.physicalOrientation ?? 0) % 360 !== 0) continue;
     const members = flowChildren(container);
     if (members.length < 2) continue;

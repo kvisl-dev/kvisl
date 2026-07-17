@@ -171,13 +171,14 @@ function drawLine(line, scene) {
 function drawLineLabels(line, scene) {
   return line.routeLabels.map((label) => {
     const lines = String(label.text).split("\n");
-    const width = Math.max(...lines.map((text) => text.length)) * 7.4 + 8;
-    const height = lines.length * 16 + 4;
-    const x = label.x - width / 2;
-    const y = label.y - height / 2;
+    const box = label.box;
+    const centerX = label.x ?? box.x + box.width / 2;
+    const centerY = label.y ?? box.y + box.height / 2;
+    const lineHeight = 16;
+    const firstBaseline = centerY - lines.length * lineHeight / 2 + 13;
     const stroke = color(line.style.stroke, scene, "#334155");
-    const transform = label.angle ? ` transform="rotate(${label.angle} ${label.x} ${label.y})"` : "";
-    return `<g${transform}><rect x="${x}" y="${y}" width="${width}" height="${height}" rx="4" fill="#ffffff" fill-opacity=".9"/>${lines.map((text, index) => `<text x="${label.x}" y="${y + 15 + index * 16}" text-anchor="middle" font-family="ui-rounded, sans-serif" font-size="13" fill="${escape(stroke)}">${escape(text)}</text>`).join("")}</g>`;
+    const transform = label.angle ? ` transform="rotate(${label.angle} ${centerX} ${centerY})"` : "";
+    return `<g data-line-label="${escape(line.id)}"${transform}>${lines.map((text, index) => `<text x="${centerX}" y="${firstBaseline + index * lineHeight}" text-anchor="middle" font-family="ui-rounded, sans-serif" font-size="13" fill="${escape(stroke)}" stroke="#ffffff" stroke-opacity=".92" stroke-width="3.5" stroke-linejoin="round" paint-order="stroke fill">${escape(text)}</text>`).join("")}</g>`;
   }).join("");
 }
 

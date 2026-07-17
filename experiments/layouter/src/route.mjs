@@ -301,8 +301,7 @@ class SpatialIndex {
   }
 }
 
-function segmentHitsBox(first, second, box) {
-  const inset = 3;
+function segmentHitsBox(first, second, box, inset = 3) {
   const left = box.x + inset;
   const right = box.x + box.width - inset;
   const top = box.y + inset;
@@ -531,13 +530,21 @@ function paddingTrackPins(track, start, end) {
   const geometry = track.region.geometry;
   const offset = (track.index - (track.total - 1) / 2) * track.region.spacing;
   if (geometry.axis === "vertical") {
-    const x = geometry.x + geometry.width / 2 + offset;
+    const centered = geometry.x + geometry.width / 2 + offset;
+    const reusable = track.total === 1
+      ? [start.x, end.x].find((value) => value >= geometry.x && value <= geometry.x + geometry.width)
+      : null;
+    const x = reusable ?? centered;
     return [
       { x, y: Math.max(geometry.y, Math.min(geometry.y + geometry.height, start.y)), region: track.region },
       { x, y: Math.max(geometry.y, Math.min(geometry.y + geometry.height, end.y)), region: track.region },
     ];
   }
-  const y = geometry.y + geometry.height / 2 + offset;
+  const centered = geometry.y + geometry.height / 2 + offset;
+  const reusable = track.total === 1
+    ? [start.y, end.y].find((value) => value >= geometry.y && value <= geometry.y + geometry.height)
+    : null;
+  const y = reusable ?? centered;
   return [
     { x: Math.max(geometry.x, Math.min(geometry.x + geometry.width, start.x)), y, region: track.region },
     { x: Math.max(geometry.x, Math.min(geometry.x + geometry.width, end.x)), y, region: track.region },
@@ -568,6 +575,17 @@ function pinDistance(pin, start) {
   return pin.region?.geometry
     ? distanceToBox(start, pin.region.geometry)
     : Math.abs(pin.x - start.x) + Math.abs(pin.y - start.y);
+}
+
+function explicitSegmentOwner(segment) {
+  if (segment.region?.kind === "padding") return segment.region.container;
+  if (segment.region?.kind === "gap") return segment.region.between?.[0]?.parent ?? null;
+  if (segment.corridor?.container) return segment.corridor.container;
+  return segment.corridor?.between?.[0]?.parent ?? null;
+}
+
+function insideOrSelf(object, ancestor) {
+  return object === ancestor || hasAncestor(object, ancestor);
 }
 
 function orderedPins(line, start, end) {
@@ -606,6 +624,25 @@ function orderedPins(line, start, end) {
       if (endpoint?.physicalSide && endpoint.physicalSide !== track.region.side) continue;
       const fromSide = endpoint === line.from;
       const distance = ancestorDistance(endpoint.object, track.region.owner);
+      const containedExplicit = line.segments
+        .map((segment, index) => ({ index, owner: explicitSegmentOwner(segment) }))
+        .filter((entry) => entry.owner && insideOrSelf(entry.owner, track.region.owner));
+
+      // Explicit regions inside a container occur before its source-side exit
+      // padding and after its target-side entry padding. Interleave those
+      // bands with authored segments instead of placing every source padding
+      // before every explicit pin, which would force hierarchy backtracking.
+      if (containedExplicit.length) {
+        const authoredIndex = fromSide
+          ? Math.max(...containedExplicit.map((entry) => entry.index)) + 0.25 + distance * 0.001
+          : Math.min(...containedExplicit.map((entry) => entry.index)) - 0.25 - distance * 0.001;
+        groups.push({
+          phase: 2,
+          rank: authoredIndex,
+          pins: [{ ...trackPoint(track, start, end), passThrough: true, endpoint }],
+        });
+        continue;
+      }
       groups.push({
         phase: fromSide ? 0 : 4,
         rank: fromSide ? distance : -distance,
@@ -686,7 +723,7 @@ function routeLine(line, index, routeIndex) {
     const pin = rawPins[index];
     const geometry = pin.region?.geometry;
     if (pin.soft && geometry) {
-      const next = rawPins[index + 1] ?? end;
+      const nextTravel = rawPins.slice(index + 1).find((candidate) => !candidate.passThrough) ?? end;
       if (geometry.axis === "vertical") {
         const clamp = (value) => Math.max(geometry.y, Math.min(geometry.y + geometry.height, value));
         if (pin.passThrough) {
@@ -695,7 +732,10 @@ function routeLine(line, index, routeIndex) {
           const x = vector.x > 0 ? Math.max(pin.x, escape.x) : vector.x < 0 ? Math.min(pin.x, escape.x) : pin.x;
           pins.push({ x, y: clamp(cursor.y) });
         }
-        else pins.push({ x: pin.x, y: clamp(cursor.y) }, { x: pin.x, y: clamp(next.y) });
+        else {
+          const nextY = nextTravel.soft && nextTravel.region?.geometry?.axis === "vertical" ? cursor.y : nextTravel.y;
+          pins.push({ x: pin.x, y: clamp(cursor.y) }, { x: pin.x, y: clamp(nextY) });
+        }
       } else {
         const clamp = (value) => Math.max(geometry.x, Math.min(geometry.x + geometry.width, value));
         if (pin.passThrough) {
@@ -704,7 +744,10 @@ function routeLine(line, index, routeIndex) {
           const y = vector.y > 0 ? Math.max(pin.y, escape.y) : vector.y < 0 ? Math.min(pin.y, escape.y) : pin.y;
           pins.push({ x: clamp(cursor.x), y });
         }
-        else pins.push({ x: clamp(cursor.x), y: pin.y }, { x: clamp(next.x), y: pin.y });
+        else {
+          const nextX = nextTravel.soft && nextTravel.region?.geometry?.axis === "horizontal" ? cursor.x : nextTravel.x;
+          pins.push({ x: clamp(cursor.x), y: pin.y }, { x: clamp(nextX), y: pin.y });
+        }
       }
       cursor = pins.at(-1);
     } else {
@@ -920,7 +963,7 @@ function positionAlong(segment, ratio) {
 }
 
 function pointLabelCandidates(point, horizontal, label, size, rank) {
-  const offsets = [7, 18, 32, 48];
+  const offsets = [7, 18, 32, 48, 72, 96];
   const angle = label.orientation === "along" && !horizontal ? 90 : 0;
   const visualWidth = angle ? size.height : size.width;
   const visualHeight = angle ? size.width : size.height;
@@ -967,16 +1010,64 @@ function segmentRegionPoint(segment, geometry) {
   return start <= end ? { x: segment.first.x, y: (start + end) / 2 } : null;
 }
 
+function authoredRunPoints(segment, geometry, anchor, label, size) {
+  const horizontal = segment.first.y === segment.second.y;
+  const start = horizontal ? Math.min(segment.first.x, segment.second.x) : Math.min(segment.first.y, segment.second.y);
+  const end = horizontal ? Math.max(segment.first.x, segment.second.x) : Math.max(segment.first.y, segment.second.y);
+  const alongExtent = horizontal ? size.width : label.orientation === "along" ? size.width : size.height;
+  const half = alongExtent / 2;
+  // The label center belongs to the solved run; its box may overhang a short
+  // run into adjacent free space. Requiring the whole label to fit between
+  // the bends is what previously inflated narrow structural gaps.
+  const low = start;
+  const high = end;
+  const regionStart = horizontal ? geometry.x : geometry.y;
+  const regionEnd = regionStart + (horizontal ? geometry.width : geometry.height);
+  const anchorValue = horizontal ? anchor.x : anchor.y;
+  const clamp = (value) => Math.max(low, Math.min(high, value));
+  const values = [
+    anchorValue,
+    regionStart,
+    regionEnd,
+    regionStart - half - 8,
+    regionEnd + half + 8,
+    (anchorValue + low) / 2,
+    (anchorValue + high) / 2,
+    low + half + 16,
+    high - half - 16,
+    low,
+    high,
+  ].map(clamp).concat([start - half - 8, end + half + 8]);
+  const unique = [...new Set(values.map((value) => Math.round(value * 2) / 2))]
+    .sort((first, second) => Math.abs(first - anchorValue) - Math.abs(second - anchorValue) || first - second);
+  return unique.map((value) => horizontal ? { x: value, y: anchor.y } : { x: anchor.x, y: value });
+}
+
 function authoredSegmentLabelCandidates(scene, line, label, size) {
   const regions = authoredSegmentRegions(scene, label.authoredSegment);
   if (!regions.length) return [];
   const candidates = [];
-  for (const segment of routeSegments(line.route)) {
+  const routed = routeSegments(line.route);
+  const lastIndex = Math.max(0, line.route.length - 2);
+  for (const [prominence, segment] of routed.entries()) {
     for (const region of regions) {
+      const segmentHorizontal = segment.first.y === segment.second.y;
+      const followsRegionAxis = region.geometry.axis === "horizontal" ? segmentHorizontal : !segmentHorizontal;
+      const routeRank = label.placement === "start" ? segment.index
+        : label.placement === "end" ? lastIndex - segment.index
+        : label.placement === "center" ? followsRegionAxis ? 0 : 1 + prominence
+        : prominence;
       const point = segmentRegionPoint(segment, region.geometry);
       if (point) {
-        candidates.push(...pointLabelCandidates(point, segment.first.y === segment.second.y, label, size, -4)
-          .map((candidate) => ({ ...candidate, authoredRegion: region })));
+        for (const [rank, runPoint] of authoredRunPoints(segment, region.geometry, point, label, size).entries()) {
+          candidates.push(...pointLabelCandidates(runPoint, segmentHorizontal, label, size, -4 + routeRank * 0.2 + rank * 0.02)
+            .map((candidate) => ({
+              ...candidate,
+              authoredRegion: region,
+              authoredRun: segment.index,
+              authoredAxis: followsRegionAxis,
+            })));
+        }
       }
     }
   }
@@ -990,7 +1081,7 @@ function endpointLabelCandidates(endpoint, label, size, rank) {
   const horizontalSide = side === "left" || side === "right";
   const alongExtent = horizontalSide ? size.width : size.height;
   const perpendicularExtent = horizontalSide ? size.height : size.width;
-  return [8, 18, 32].flatMap((offset, offsetIndex) => [-1, 1].flatMap((direction) => [0, 1, 2].map((tier) => {
+  return [8, 18, 32].flatMap((offset, offsetIndex) => [-1, 1].flatMap((direction) => [0, 1, 2, 3, 4].map((tier) => {
     const perpendicularDistance = perpendicularExtent / 2 + 4 + tier * (perpendicularExtent + 6);
     const center = {
       x: endpoint.point.x + vector.x * (alongExtent / 2 + offset) + perpendicular.x * direction * perpendicularDistance,
@@ -1012,7 +1103,12 @@ function labelSpecs(line) {
   if (line.label != null) specs.push({ text: line.label, placement: "auto", orientation: "upright" });
   specs.push(...line.labels.map((label) => ({ placement: "auto", orientation: "upright", ...label })));
   for (const segment of line.segments) {
-    if (segment.label != null) specs.push({ text: segment.label, placement: "auto", orientation: segment.labelOrientation ?? "upright", authoredSegment: segment });
+    if (segment.label != null) specs.push({
+      text: segment.label,
+      placement: segment.labelPlacement ?? "auto",
+      orientation: segment.labelOrientation ?? "upright",
+      authoredSegment: segment,
+    });
   }
   for (const [end, labels] of line.endLabels.entries()) {
     for (const label of labels) specs.push({ placement: "auto", orientation: "upright", ...label, endpoint: end === 0 ? line.from : line.to });
@@ -1020,7 +1116,42 @@ function labelSpecs(line) {
   return specs;
 }
 
-function labelCandidateScore(candidate, scene, objectIndex, labelIndex, borderIndex) {
+function labelGeometryMayShare(first, second) {
+  if (first.share?.group && first.share.group === second.share?.group) {
+    const mode = first.share.mode ?? second.share.mode ?? "auto";
+    if (mode === "merge" || mode === "auto") return true;
+  }
+  const firstPorts = [first.from?.port, first.to?.port].filter(Boolean);
+  const secondPorts = new Set([second.from?.port, second.to?.port].filter(Boolean));
+  return firstPorts.some((port) => {
+    const mode = port.sharing?.mode ?? "auto";
+    return secondPorts.has(port) && (mode === "merge" || mode === "auto");
+  });
+}
+
+function labelRouteIndex(scene) {
+  const index = new SpatialIndex([]);
+  for (const line of scene.lines) {
+    for (let segmentIndex = 1; segmentIndex < line.route.length; segmentIndex += 1) {
+      const first = line.route[segmentIndex - 1];
+      const second = line.route[segmentIndex];
+      index.insert({
+        line,
+        first,
+        second,
+        box: {
+          x: Math.min(first.x, second.x) - 2,
+          y: Math.min(first.y, second.y) - 2,
+          width: Math.abs(first.x - second.x) + 4,
+          height: Math.abs(first.y - second.y) + 4,
+        },
+      });
+    }
+  }
+  return index;
+}
+
+function labelCandidateScore(candidate, line, scene, objectIndex, labelIndex, borderIndex, routeIndex) {
   let score = candidate.rank * 40;
   if (candidate.x < 4 || candidate.y < 4 || candidate.x + candidate.width > scene.width - 4 || candidate.y + candidate.height > scene.height - 4) score += 100000;
   for (const object of objectIndex.queryBox(candidate)) if (boxesOverlap(candidate, object.box, 2)) score += 100000;
@@ -1028,12 +1159,18 @@ function labelCandidateScore(candidate, scene, objectIndex, labelIndex, borderIn
   // sitting on a container border stroke is noise even where the interior is
   // free; weighted below a real object overlap so it stays the lesser evil
   for (const ring of borderIndex.queryBox(candidate)) if (boxesOverlap(candidate, ring.box, 2)) score += 60000;
+  for (const segment of routeIndex.queryBox(candidate)) {
+    if (segment.line !== line && !labelGeometryMayShare(line, segment.line) && segmentHitsBox(segment.first, segment.second, candidate, 1)) {
+      score += 120000;
+    }
+  }
   return score;
 }
 
 function placeAllLabels(scene, objectIndex) {
   const labelIndex = new SpatialIndex([]);
   const borderIndex = new SpatialIndex(containerBorderRings(scene));
+  const routeIndex = labelRouteIndex(scene);
   for (const line of scene.lines) {
     line.routeLabels = [];
     const segments = routeSegments(line.route);
@@ -1046,11 +1183,28 @@ function placeAllLabels(scene, objectIndex) {
             ...segments.flatMap((segment, rank) => segmentLabelCandidates(segment, spec, size, rank + 4)),
           ];
       if (!candidates.length) continue;
-      candidates.sort((first, second) => labelCandidateScore(first, scene, objectIndex, labelIndex, borderIndex) - labelCandidateScore(second, scene, objectIndex, labelIndex, borderIndex));
+      candidates.sort((first, second) =>
+        labelCandidateScore(first, line, scene, objectIndex, labelIndex, borderIndex, routeIndex)
+        - labelCandidateScore(second, line, scene, objectIndex, labelIndex, borderIndex, routeIndex));
       const chosen = candidates[0];
+      const authoredAxisCandidates = spec.placement === "center" && !chosen.authoredAxis
+        ? candidates.filter((candidate) => candidate.authoredRegion && candidate.authoredAxis)
+        : [];
+
+      // Prefer a rejected candidate whose obstruction belongs to a locally
+      // managed row/column gap. Feeding that concrete pocket back to the
+      // solver avoids widening a remote corridor merely to move the same
+      // candidate past the obstruction.
+      const locallyBlocked = authoredAxisCandidates.find((candidate) =>
+        [...borderIndex.queryBox(candidate)].some((ring) => {
+          const layout = ring.owner?.parent?.layout?.kind;
+          return (layout === "row" || layout === "column") && boxesOverlap(candidate, ring.box, 2);
+        }));
+      const rejectedAuthoredCandidate = locallyBlocked ?? authoredAxisCandidates[0] ?? null;
       const placed = {
         ...spec,
         ...chosen,
+        rejectedAuthoredCandidate,
         x: chosen.x + chosen.width / 2,
         y: chosen.y + chosen.height / 2,
         box: { x: chosen.x, y: chosen.y, width: chosen.width, height: chosen.height },

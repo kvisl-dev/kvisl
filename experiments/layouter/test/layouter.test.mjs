@@ -45,6 +45,11 @@ test("every repository diagram produces a finite orthogonal SVG preview", async 
     }
     const quality = analyzeScene(scene);
     assert.deepEqual(
+      quality.layoutContractViolations.map((item) => `${item.kind}:${item.container?.path ?? "$root"}:${item.child?.path ?? ""}`),
+      [],
+      `${path.relative(repo, file)} violates a declarative layout contract`,
+    );
+    assert.deepEqual(
       quality.unexpectedObjectOverlaps.map((item) => `${item.first.path}<->${item.second.path}`),
       [],
       `${path.relative(repo, file)} overlaps unrelated rendered objects`,
@@ -63,6 +68,11 @@ test("every repository diagram produces a finite orthogonal SVG preview", async 
       quality.labelLabelOverlaps.map((item) => `${item.line.id}:${item.label.text}<->${item.otherLine.id}:${item.otherLabel.text}`),
       [],
       `${path.relative(repo, file)} overlaps line labels`,
+    );
+    assert.deepEqual(
+      quality.labelRouteOverlaps.map((item) => `${item.line.id}:${item.label.text}<->${item.otherLine.id}`),
+      [],
+      `${path.relative(repo, file)} places a line label over an unrelated route`,
     );
     assert.deepEqual(
       quality.unexpectedRouteOverlaps.map((item) => `${item.first.line.id}<->${item.second.line.id}`),
@@ -89,12 +99,14 @@ test("solving the same diagram is deterministic", async () => {
   assert.equal(first.svg, second.svg);
 });
 
-test("connected siblings consume free distribution slack to align across containers", async () => {
+test("route-aware alignment preserves declared space-between distribution", async () => {
   const entry = path.join(repo, "examples", "agent-substrate", "diagram.tsx");
   const { scene } = await solveFile(entry);
-  const line = scene.lines.find((candidate) => candidate.id === "ingress-control");
-  assert.equal(line.route.length, 2, "router and API should admit one straight vertical run");
-  assert.equal(line.route[0].x, line.route[1].x);
+  const ingress = scene.objectByPath.get("ingress");
+  const members = ingress.children.filter((child) => !child.anchor && !child.frame);
+  const gaps = members.slice(1).map((member, index) =>
+    member.box.x - (members[index].box.x + members[index].box.width));
+  assert.ok(Math.max(...gaps) - Math.min(...gaps) < 1, `space-between gaps differ: ${gaps.join(", ")}`);
 });
 
 test("an automatic dock follows the nearest explicit ancestor padding", async () => {
@@ -141,19 +153,46 @@ test("hierarchical route itinerary leaves a source before crossing its parent ga
   assert.ok(firstIngressPin >= 0 && firstIngressPin < firstGapPin);
 });
 
-test("connected-neighbor alignment uses settled positions from a bounded second sweep", async () => {
+test("aligned single padding tracks do not introduce a cosmetic jog", async () => {
+  const entry = path.join(repo, "examples", "agent-substrate", "diagram.tsx");
+  const { scene } = await solveFile(entry);
+  const line = scene.lines.find((candidate) => candidate.id === "request-to-agent");
+  const interiorRuns = line.route.slice(1, -1).map((point, index) => ({ first: line.route[index], second: point }));
+  assert.equal(interiorRuns.some((segment) => {
+    const length = Math.abs(segment.first.x - segment.second.x) + Math.abs(segment.first.y - segment.second.y);
+    return length > 0 && length < 12;
+  }), false);
+});
+
+test("declared distribution is not replaced by cross-container endpoint alignment", async () => {
   const entry = path.join(repo, "examples", "agent-substrate", "diagram.tsx");
   const { scene } = await solveFile(entry);
   const forward = scene.objectByPath.get("ingress/worker-forward");
   const sandbox = scene.objectByPath.get("cluster/layers/runtime/worker-stack/worker-pod/sandbox");
   const centerX = (object) => object.box.x + object.box.width / 2;
-  assert.ok(Math.abs(centerX(forward) - centerX(sandbox)) < 1);
+  assert.ok(Math.abs(centerX(forward) - centerX(sandbox)) > 1);
 });
 
-test("a feasible solve reclaims escalation overshoot from label corridors", async () => {
+test("nested explicit segment regions remain monotone from source to target", async () => {
   const entry = path.join(repo, "examples", "agent-substrate", "diagram.tsx");
   const { scene } = await solveFile(entry);
-  assert.ok(scene.labelReservations.get("gap:cluster/layers/control-and-storage:0") < 54);
+  const line = scene.lines.find((candidate) => candidate.id === "self-suspend");
+  for (let index = 1; index < line.route.length; index += 1) {
+    assert.ok(line.route[index].x <= line.route[index - 1].x, "self-suspend backtracks across an authored region");
+  }
+  const outerGap = [...scene.regions.values()].find((region) => region.key === "gap:cluster/layers:1");
+  const firstVertical = line.route.slice(1).map((point, index) => ({ first: line.route[index], second: point }))
+    .find((segment) => segment.first.x === segment.second.x && segment.first.y !== segment.second.y);
+  assert.ok(firstVertical.first.x >= outerGap.geometry.x && firstVertical.first.x <= outerGap.geometry.x + outerGap.geometry.width);
+});
+
+test("authored run candidates avoid label-driven grid inflation", async () => {
+  const entry = path.join(repo, "examples", "agent-substrate", "diagram.tsx");
+  const { scene } = await solveFile(entry);
+  const grid = scene.objectByPath.get("cluster/layers");
+  assert.ok(grid.layoutData.columnGaps[1] <= 64);
+  assert.ok(scene.lines.flatMap((line) => line.routeLabels).filter((label) => label.authoredSegment)
+    .every((label) => label.authoredRegion));
   assert.equal(analyzeScene(scene).labelObjectOverlaps.length, 0);
   assert.equal(analyzeScene(scene).labelLabelOverlaps.length, 0);
 });
@@ -164,7 +203,12 @@ test("a segment label stays anchored at the authored routing region", async () =
   const line = scene.lines.find((candidate) => candidate.id === "resume-actor");
   const gap = [...scene.regions.values()].find((region) => region.kind === "gap" && region.entryLines.has(line));
   const label = line.routeLabels[0];
-  assert.ok(Math.abs(label.x - (gap.geometry.x + gap.geometry.width / 2)) < 1);
+  assert.equal(label.authoredRegion, gap);
+  const segment = line.route.slice(1).map((point, index) => ({ first: line.route[index], second: point }))[label.authoredRun];
+  const horizontal = segment.first.y === segment.second.y;
+  assert.ok(horizontal
+    ? label.x >= Math.min(segment.first.x, segment.second.x) && label.x <= Math.max(segment.first.x, segment.second.x)
+    : label.y >= Math.min(segment.first.y, segment.second.y) && label.y <= Math.max(segment.first.y, segment.second.y));
 });
 
 test("explicit padding pins reserve a physical routing band", async () => {

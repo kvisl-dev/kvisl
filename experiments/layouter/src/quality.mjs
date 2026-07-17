@@ -244,6 +244,217 @@ function flowMembers(object) {
   return object.children.filter((child) => !child.anchor && !child.frame);
 }
 
+const LAYOUT_TOLERANCE = 0.75;
+
+function primaryVector(layout, orientation = 0) {
+  const turns = (((orientation % 360) + 360) % 360) / 90;
+  const rowVectors = [{ x: 1, y: 0 }, { x: 0, y: 1 }, { x: -1, y: 0 }, { x: 0, y: -1 }];
+  const columnVectors = [{ x: 0, y: 1 }, { x: -1, y: 0 }, { x: 0, y: -1 }, { x: 1, y: 0 }];
+  return (layout === "row" ? rowVectors : columnVectors)[turns] ?? null;
+}
+
+function projectedInterval(box, vector) {
+  const values = [
+    box.x * vector.x + box.y * vector.y,
+    (box.x + box.width) * vector.x + box.y * vector.y,
+    box.x * vector.x + (box.y + box.height) * vector.y,
+    (box.x + box.width) * vector.x + (box.y + box.height) * vector.y,
+  ];
+  return { start: Math.min(...values), end: Math.max(...values) };
+}
+
+function childInsideParent(child, parent, tolerance = LAYOUT_TOLERANCE) {
+  return child.box.x >= parent.box.x - tolerance
+    && child.box.y >= parent.box.y - tolerance
+    && child.box.x + child.box.width <= parent.box.x + parent.box.width + tolerance
+    && child.box.y + child.box.height <= parent.box.y + parent.box.height + tolerance;
+}
+
+function constraintManagedObjects(scene) {
+  const managed = new Set();
+  for (const constraint of scene.constraints ?? []) {
+    if (constraint.itemObject) managed.add(constraint.itemObject);
+    if (constraint.containerObject) managed.add(constraint.containerObject);
+    for (const object of constraint.memberObjects ?? []) managed.add(object);
+  }
+  return managed;
+}
+
+function valuesEqual(values, tolerance = LAYOUT_TOLERANCE) {
+  if (values.length < 2) return true;
+  return Math.max(...values) - Math.min(...values) <= tolerance;
+}
+
+function distributionViolations(container, intervals, actualGaps, minimumGaps, vector) {
+  const distribution = container.distribute ?? "start";
+  if (distribution === "start" || intervals.length < 2) return [];
+  const residuals = actualGaps.map((gap, index) => gap - (minimumGaps[index] ?? 0));
+  const violations = [];
+  if ((distribution === "space-between" || distribution === "space-around") && !valuesEqual(residuals)) {
+    violations.push({
+      container,
+      kind: "distribution",
+      distribution,
+      expected: "equal-residual-gaps",
+      actual: residuals,
+    });
+  }
+
+  const parent = projectedInterval(container.box, vector);
+  const padding = container.paddingBox ?? { top: 0, right: 0, bottom: 0, left: 0 };
+  const row = effectiveLayout(container) === "row";
+  const startPadding = row ? padding.left : padding.top + (container.contentHeight ?? 0);
+  const endPadding = row ? padding.right : padding.bottom;
+  const leading = intervals[0].start - (parent.start + startPadding);
+  const trailing = parent.end - endPadding - intervals.at(-1).end;
+  const residual = residuals.length ? residuals.reduce((sum, value) => sum + value, 0) / residuals.length : 0;
+  const balanced = (first, second) => Math.abs(first - second) <= LAYOUT_TOLERANCE;
+
+  if (distribution === "space-around" && (!balanced(leading, trailing) || !balanced(leading * 2, residual))) {
+    violations.push({
+      container,
+      kind: "distribution",
+      distribution,
+      expected: "half-residual-outer-slack",
+      actual: { leading, trailing, residual },
+    });
+  } else if (distribution === "center" && (!balanced(leading, trailing) || residuals.some((value) => Math.abs(value) > LAYOUT_TOLERANCE))) {
+    violations.push({
+      container,
+      kind: "distribution",
+      distribution,
+      expected: "balanced-outer-slack",
+      actual: { leading, trailing, residuals },
+    });
+  } else if (distribution === "end" && (Math.abs(trailing) > LAYOUT_TOLERANCE || residuals.some((value) => Math.abs(value) > LAYOUT_TOLERANCE))) {
+    violations.push({
+      container,
+      kind: "distribution",
+      distribution,
+      expected: "trailing-edge",
+      actual: { leading, trailing, residuals },
+    });
+  }
+  return violations;
+}
+
+// Layout contracts are checked independently from the solver that produced
+// the boxes. This catches a later soft pass silently undoing source order,
+// containment, reserved minimum gaps, or an explicit distribution mode.
+export function layoutContractViolations(scene) {
+  const violations = [];
+  const managed = constraintManagedObjects(scene);
+  for (const container of scene.objects) {
+    const layout = effectiveLayout(container);
+    const members = flowMembers(container);
+    if (!layout || !members.length) continue;
+
+    for (const member of members) {
+      const temporal = member.roles.includes("uml-occurrence") || member.roles.includes("uml-lifeline-end");
+      if (!managed.has(member) && !temporal && !childInsideParent(member, container)) {
+        violations.push({ container, member, kind: "containment" });
+      }
+    }
+
+    if (layout === "grid" && container.layoutData) {
+      const { columns, columnGaps = [], rowGaps = [] } = container.layoutData;
+      const columnVector = primaryVector("row", container.physicalOrientation);
+      const rowVector = primaryVector("column", container.physicalOrientation);
+      for (let index = 0; index < members.length; index += 1) {
+        const column = index % columns;
+        const row = Math.floor(index / columns);
+        const right = members[index + 1];
+        if (right && column + 1 < columns && !managed.has(members[index]) && !managed.has(right)) {
+          const firstInterval = projectedInterval(members[index].box, columnVector);
+          const secondInterval = projectedInterval(right.box, columnVector);
+          const gap = secondInterval.start - firstInterval.end;
+          if (gap < -LAYOUT_TOLERANCE) violations.push({ container, first: members[index], second: right, kind: "source-order", actual: gap });
+          if (gap + LAYOUT_TOLERANCE < (columnGaps[column] ?? 0)) {
+            violations.push({ container, first: members[index], second: right, kind: "minimum-gap", expected: columnGaps[column] ?? 0, actual: gap });
+          }
+        }
+        const below = members[index + columns];
+        if (below && !managed.has(members[index]) && !managed.has(below)) {
+          const firstInterval = projectedInterval(members[index].box, rowVector);
+          const secondInterval = projectedInterval(below.box, rowVector);
+          const gap = secondInterval.start - firstInterval.end;
+          if (gap < -LAYOUT_TOLERANCE) violations.push({ container, first: members[index], second: below, kind: "source-order", actual: gap });
+          if (gap + LAYOUT_TOLERANCE < (rowGaps[row] ?? 0)) {
+            violations.push({ container, first: members[index], second: below, kind: "minimum-gap", expected: rowGaps[row] ?? 0, actual: gap });
+          }
+        }
+      }
+      continue;
+    }
+
+    if (layout !== "row" && layout !== "column") continue;
+    const vector = primaryVector(layout, container.physicalOrientation);
+    if (!vector) continue;
+    const intervals = members.map((member) => projectedInterval(member.box, vector));
+    const minimumGaps = container.gapSizes ?? [];
+    const actualGaps = [];
+    for (let index = 1; index < members.length; index += 1) {
+      const first = members[index - 1];
+      const second = members[index];
+      const gap = intervals[index].start - intervals[index - 1].end;
+      actualGaps.push(gap);
+      if (managed.has(first) || managed.has(second)) continue;
+      if (gap < -LAYOUT_TOLERANCE) violations.push({ container, first, second, kind: "source-order", actual: gap });
+      if (gap + LAYOUT_TOLERANCE < (minimumGaps[index - 1] ?? 0)) {
+        violations.push({ container, first, second, kind: "minimum-gap", expected: minimumGaps[index - 1] ?? 0, actual: gap });
+      }
+    }
+    if (!members.some((member) => managed.has(member))) {
+      violations.push(...distributionViolations(container, intervals, actualGaps, minimumGaps, vector));
+    }
+  }
+  return violations;
+}
+
+function segmentCrossesLabel(first, second, box) {
+  const inset = 1;
+  const left = box.x + inset;
+  const right = box.x + box.width - inset;
+  const top = box.y + inset;
+  const bottom = box.y + box.height - inset;
+  if (first.x === second.x) {
+    return first.x > left && first.x < right
+      && Math.max(first.y, second.y) > top && Math.min(first.y, second.y) < bottom;
+  }
+  if (first.y === second.y) {
+    return first.y > top && first.y < bottom
+      && Math.max(first.x, second.x) > left && Math.min(first.x, second.x) < right;
+  }
+  return false;
+}
+
+// Labels may cover their own stroke, and explicitly shareable lines may run
+// together. Every other route remains readable instead of disappearing under
+// another line's opaque label background.
+export function labelRouteOverlaps(scene) {
+  const index = new BoxIndex();
+  for (const line of scene.lines) {
+    for (let segmentIndex = 1; segmentIndex < line.route.length; segmentIndex += 1) {
+      const first = line.route[segmentIndex - 1];
+      const second = line.route[segmentIndex];
+      index.insert({ box: segmentBox(first, second), line, segmentIndex: segmentIndex - 1, first, second });
+    }
+  }
+
+  const overlaps = [];
+  for (const line of scene.lines) {
+    for (const label of line.routeLabels) {
+      for (const segment of index.query(label.box)) {
+        if (segment.line === line || sharedGeometryAllowed(line, segment.line)) continue;
+        if (segmentCrossesLabel(segment.first, segment.second, label.box)) {
+          overlaps.push({ line, label, otherLine: segment.line, segmentIndex: segment.segmentIndex });
+        }
+      }
+    }
+  }
+  return overlaps;
+}
+
 // Soft drawing-quality measures a human perceives at a glance. They are
 // reported alongside the hard conflict gate and guide the aesthetics passes.
 export function perceptionMetrics(scene) {
@@ -338,24 +549,55 @@ export function perceptionMetrics(scene) {
 // end as narrow as the labels allow. Returns true when a reservation grew.
 export function escalateLabelReservations(scene, reservations) {
   const quality = analyzeScene(scene);
-  let changed = false;
+  const proposals = new Map();
   const raise = (key, value) => {
-    const current = reservations.get(key) ?? 0;
-    if (value > current + 0.5) {
-      reservations.set(key, value);
-      changed = true;
-    }
+    if (!key) return;
+    proposals.set(key, Math.max(proposals.get(key) ?? 0, value));
   };
+  const raiseAdjacentGap = (box, owner) => {
+    const parent = owner?.parent;
+    const layout = parent ? effectiveLayout(parent) : null;
+    if (!owner || (layout !== "row" && layout !== "column")) return false;
+    const extent = layout === "column" ? "height" : "width";
+    const need = box[extent] + 16;
+    for (const index of [owner.siblingIndex - 1, owner.siblingIndex]) {
+      if (index < 0 || index >= flowMembers(parent).length - 1) continue;
+      const key = `gap:${parent.path || "$root"}:${index}`;
+      raise(key, Math.max(need, (reservations.get(key) ?? 0) + 16));
+    }
+    return true;
+  };
+
+  // A center-placed label prefers the run along its authored region. If a
+  // collision-free fallback on an entry/exit run won instead, apply pressure
+  // to the concrete adjacent pocket that blocked the preferred solved box.
+  const rings = containerBorderRings(scene);
+  for (const line of scene.lines) {
+    for (const label of line.routeLabels) {
+      const rejected = label.rejectedAuthoredCandidate;
+      if (!rejected) continue;
+      const owners = new Set(rings.filter((ring) => boxesOverlap(rejected, ring.box, 2)).map((ring) => ring.owner));
+      let localized = false;
+      for (const owner of owners) localized = raiseAdjacentGap(rejected, owner) || localized;
+      if (localized) continue;
+      const target = label.authoredSegment?.labelReservation ?? line.labelReservation;
+      if (!target) continue;
+      const current = reservations.get(target.key) ?? 0;
+      const cap = lineLabelDemand(line, target.axis, label.text);
+      raise(target.key, Math.min(cap, current + 32));
+    }
+  }
 
   // A collision-free fallback is still a failed placement when an authored
   // segment label could not stay at its declared region. Treat that rejected
   // preferred candidate as pressure on the same reserving corridor.
   for (const line of scene.lines) {
     for (const label of line.routeLabels) {
-      if (!label.authoredSegment || label.authoredRegion || !line.labelReservation) continue;
-      const current = reservations.get(line.labelReservation.key) ?? 0;
-      const cap = lineLabelDemand(line, line.labelReservation.axis);
-      raise(line.labelReservation.key, Math.min(cap, current + 32));
+      const target = label.authoredSegment?.labelReservation ?? line.labelReservation;
+      if (!label.authoredSegment || label.authoredRegion || !target) continue;
+      const current = reservations.get(target.key) ?? 0;
+      const cap = lineLabelDemand(line, target.axis, label.text);
+      raise(target.key, Math.min(cap, current + 32));
     }
   }
   for (const item of [...quality.labelObjectOverlaps, ...quality.labelDecorOverlaps, ...quality.labelLabelOverlaps]) {
@@ -363,28 +605,23 @@ export function escalateLabelReservations(scene, reservations) {
     // to that container — widening the adjacent sibling gaps is the targeted
     // fix, so it replaces the corridor bump for these offenders
     const owner = item.object?.owner;
-    const parent = owner?.parent;
-    const layout = parent ? effectiveLayout(parent) : null;
-    if (owner && (layout === "row" || layout === "column")) {
-      const extent = layout === "column" ? "height" : "width";
-      const need = item.label.box[extent] + 16;
-      for (const index of [owner.siblingIndex - 1, owner.siblingIndex]) {
-        if (index < 0) continue;
-        const key = `gap:${parent.path || "$root"}:${index}`;
-        raise(key, Math.max(need, (reservations.get(key) ?? 0) + 16));
-      }
-      continue;
-    }
-    const target = item.line.labelReservation;
+    if (raiseAdjacentGap(item.label.box, owner)) continue;
+    const target = item.label.authoredSegment?.labelReservation ?? item.line.labelReservation;
     if (!target) continue;
     const current = reservations.get(target.key) ?? 0;
-    const cap = lineLabelDemand(item.line, target.axis);
+    const cap = lineLabelDemand(item.line, target.axis, item.label.text);
     const other = item.object?.box ?? item.otherLabel.box;
     const overlap = target.axis === "horizontal"
       ? Math.min(item.label.box.x + item.label.box.width, other.x + other.width) - Math.max(item.label.box.x, other.x)
       : Math.min(item.label.box.y + item.label.box.height, other.y + other.height) - Math.max(item.label.box.y, other.y);
     // thin decor rings understate the shortfall, so steps have a floor
     raise(target.key, Math.min(cap, current + Math.max(32, overlap + 8)));
+  }
+  let changed = false;
+  for (const [key, value] of proposals) {
+    if (value <= (reservations.get(key) ?? 0) + 0.5) continue;
+    reservations.set(key, value);
+    changed = true;
   }
   return changed;
 }
@@ -394,10 +631,12 @@ export function analyzeScene(scene) {
   const routeInteractions = routeRouteInteractions(scene);
   const titleStrips = boundaryLabelStrips(scene);
   return {
+    layoutContractViolations: layoutContractViolations(scene),
     unexpectedObjectOverlaps: unexpectedObjectOverlaps(objects),
     routeObjectIntersections: routeObjectIntersections(scene, objects),
     labelObjectOverlaps: labelObjectOverlaps(scene, objects),
     labelLabelOverlaps: labelLabelOverlaps(scene),
+    labelRouteOverlaps: labelRouteOverlaps(scene),
     routeCrossings: routeInteractions.crossings,
     unexpectedRouteOverlaps: routeInteractions.unexpectedOverlaps,
     // decor readability: runs parallel to a container title's text line,
