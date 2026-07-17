@@ -5,8 +5,11 @@
   "type": "module",
   "description": "Composable modelling language for design diagrams — normalizer slice",
   "scripts": {
+    "layout:examples": "node experiments/layouter/render-all.mjs",
+    "layout:render": "node experiments/layouter/render.mjs",
     "normalize": "node tools/normalize.mjs",
-    "test": "node --test tests/*.test.mjs"
+    "test": "node --test tests/*.test.mjs experiments/layouter/test/*.test.mjs",
+    "test:layouter": "node --test experiments/layouter/test/*.test.mjs"
   },
   "devDependencies": {
     "esbuild": "^0.25.0"

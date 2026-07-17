@@ -1,0 +1,651 @@
+# Kvísl Script Layout and Routing Algorithm
+
+Status: Algorithm design draft
+
+This document defines a scalable reference algorithm for turning a materialized Kvísl [Projection IR](../../MODEL.md) into Solved IR. It does not define authoring grammar, model semantics, package boundaries, or implementation language. [MODEL.md](../../MODEL.md) remains the source of truth for the data consumed by the algorithm; [REQUIREMENTS.md](../../REQUIREMENTS.md) remains the source of truth for required behavior; [DESIGN.md](../../DESIGN.md) defines the surrounding plumbing.
+
+The central requirement is joint layout and routing: objects must be placed with enough space for lines, labels, docks, and shared trunks, while port and dock positions must be chosen in concert with the routes that use them. Routing is not a paint pass over immutable object coordinates.
+
+## 1. Short answer on complexity
+
+Yes, a useful Kvísl solver can be sub-quadratic for the large, sparse, hierarchical models the language targets. It cannot honestly promise sub-quadratic time as a function of the number of objects alone for every valid document.
+
+If `n` objects are connected by `Theta(n^2)` authored lines, merely reading the lines is quadratic. A sparse input can also require quadratic output: for example, many lines may cross a hierarchy of linear depth and require a distinct emitted portal at every boundary. No algorithm can run asymptotically faster than the input it must read or the geometry it must emit.
+
+The correct guarantee is therefore:
+
+> The reference solver MUST have no hidden all-pairs object phase, no all-pairs line phase, and no exhaustive search. Its running time MUST be near-linear in the actual input, realized route-incidence, and emitted-geometry sizes, with only a logarithmic indexing factor and a fixed number of heuristic refinement passes.
+
+For the common case in which the numbers of lines, constraints, route incidences, bends, and portals are `O(n log n)`, this gives `O(n log^2 n)` time, which is sub-quadratic. A simpler bounded-depth model is `O(n log n)`.
+
+The reference algorithm never performs exponential search. Exact global optimization is deliberately out of scope: minimum-crossing graph drawing is NP-complete, and even the two-layer crossing subproblem used by layered layout is NP-complete. Kvísl uses deterministic, bounded heuristics for those objectives and reserves exact algorithms for polynomial subproblems.
+
+## 2. Size measures and complexity contract
+
+Complexity is stated against the following quantities after view materialization:
+
+- `N`: projected objects, including structural containers and anchored objects;
+- `P`: canonical ports plus line-owned docks;
+- `L`: lines;
+- `S`: explicit segment pins, endpoint adornments, and labels;
+- `C`: constraints and paint relations relevant to solving;
+- `R`: implicit gap and padding regions plus named corridor refinements;
+- `J`: realized line/share-group incidences in routing regions after compact hierarchy expansion;
+- `G`: emitted geometric fragments: bends, portals, dock stubs, trunks, branches, and solved label boxes;
+- `X`: crossing adornments, but only if a painter profile explicitly requires one emitted fragment per crossing.
+
+Let `I = N + P + L + S + C + R` and `Q = I + J + G + X`.
+
+The target full-solve bound is:
+
+```text
+time:   O(Q log Q)
+memory: O(Q)
+```
+
+The logarithm covers stable sorting, balanced spatial indexes, priority queues, interval packing, and sparse constraint processing. A phase MAY use a linear-time specialization. It MUST NOT add an unconditional `O(N^2)`, `O(L^2)`, or `O(NL)` term.
+
+This is an output-sensitive contract. When the input or mandatory output is quadratic, the solve may be quadratic because it cannot be otherwise; diagnostics and telemetry MUST attribute that cost to the measured input or output term rather than to an opaque solver phase.
+
+The algorithm also has a **bounded-work rule**:
+
+- every heuristic sweep count is a renderer-versioned constant, not “until no improvement”;
+- every view alternative is attempted at most once per projection instance and allocation state;
+- every route has a bounded set of canonical topology candidates before an output-sensitive detour is constructed;
+- no phase enumerates permutations, port-side combinations, route combinations, or view combinations;
+- no default phase invokes SAT, mixed-integer programming, or another solver with exponential worst-case search.
+
+An optional offline quality solver may use a different polynomial algorithm, but conformance cannot depend on it and it must publish its own complexity profile.
+
+## 3. What is optimized, and what is guaranteed
+
+The solver separates hard feasibility from soft drawing quality.
+
+Hard requirements include:
+
+- containment and local orientation;
+- explicit object sizes and minimum/maximum bounds;
+- required sides, port capacity, minimum dock spacing, and port-group order;
+- required ordering, alignment, inside, extent, route, and avoid constraints;
+- explicit segment order and required region traversal;
+- corridor capacity and minimum spacing;
+- `merge`, `bundle`, and `separate` requirements when they are not automatic preferences;
+- non-overlap and routing-space reservation for `space: "reserve"` lines.
+
+Soft objectives include, in descending default priority:
+
+1. preserve hard feasibility and semantic attachment;
+2. avoid object-line intersections;
+3. preserve source order and the existing incremental solution;
+4. reduce crossings;
+5. reduce bends and route length;
+6. keep bundles and shared trunks coherent;
+7. reduce occupied corridor width according to pressure;
+8. improve symmetry, alignment, and compactness.
+
+The order is renderer policy, not new authoring semantics. A target may tune weights, but it must not turn a preference into a hidden hard constraint.
+
+The reference solver guarantees a deterministic feasible result for the polynomial constraint profile described here or a structured diagnostic. It does not guarantee a globally minimal number of crossings, bends, total area, or total route length.
+
+## 4. Solver invariants
+
+The following invariants hold throughout the pipeline.
+
+### 4.1 Combinatorial topology precedes coordinates
+
+The solver first decides relative order, region itinerary, sharing topology, track order, and dock order. Concrete lengths and coordinates are assigned only after those decisions have produced space demands. Coordinates never decide semantic identity or sharing.
+
+### 4.2 Whitespace is the only reserving routing plane
+
+Every reserving route occupies implicit padding bands and gaps, optionally refined by corridors. Objects and corridor residents are obstacles. A line may cross container boundaries, but it receives a portal into the relevant padding band rather than passing through an object interior.
+
+The algorithm may use temporary overlay geometry while estimating a route, but only the corresponding whitespace demand becomes part of the size solve.
+
+### 4.3 Hierarchy decomposes work; it does not restrict connectivity
+
+A line may connect arbitrary depths and cross arbitrary containment boundaries. The containment tree is an acceleration and composition structure. Each cross-hierarchy line is projected into local obligations at its least common ancestors and boundary paths; the author does not provide those steps.
+
+### 4.4 Port placement is a routing result
+
+Fixed port sides constrain routing. Automatic port sides and all unspecified perimeter positions are selected from route direction, remote order, group order, labels, marker size, and side capacity. The algorithm never places all ports independently and then asks routing to repair the result.
+
+### 4.5 Reservations are monotone within one solve attempt
+
+Once a route, dock, label, or resident establishes a minimum region thickness, later phases may retain or increase that minimum but never shrink it during the same feasibility attempt. Soft compaction happens only after feasibility and cannot cross a recorded minimum.
+
+This removes oscillating “layout moves line, line moves layout” fixed points. A topology change starts a new, explicitly bounded attempt.
+
+### 4.6 Determinism is total
+
+Every otherwise equal choice is broken by canonical containment address, line identity, endpoint index, corridor rank, and finally source order. Hash-map iteration, thread scheduling, and pointer identity never decide geometry.
+
+### 4.7 Work is local or output-sensitive
+
+Pairwise geometric relations are discovered by sweep lines, interval trees, spatial indexes, or sparse adjacency. A phase may spend time on every actual overlap, route incidence, bend, or emitted crossing, but not on every possible pair.
+
+## 5. Derived solver structures
+
+These structures are derived from Projection IR and do not change the data model.
+
+### 5.1 Containment index
+
+The projected object containment tree is indexed with:
+
+- depth and parent arrays;
+- Euler entry/exit ranges for ancestor tests;
+- a lowest-common-ancestor index;
+- level-ancestor or binary-lifting support;
+- local-to-parent orientation transforms;
+- heavy paths for compressed path updates and queries.
+
+Linear preprocessing with constant-time LCA is possible; an `O(N log N)` binary-lifting implementation is also inside the contract. A line endpoint pair can then be assigned to its least common ancestor without walking the complete ancestor chain.
+
+### 5.2 Local quotient interaction graphs
+
+For every container, the solver builds a sparse graph whose vertices are its immediate placeable children plus its own boundary. A deep line contributes an interaction between the immediate child branches below the relevant least common ancestor. Parallel interactions are aggregated by line class, share group, and required segment itinerary where possible.
+
+This quotient graph is what a container layout sees. It prevents a parent layout from inspecting every descendant pair and gives a reusable component a finite routing envelope.
+
+Each projected line contributes to `O(log N)` compressed containment ranges plus its explicit pins, rather than one eagerly allocated record per crossed ancestor. Records are expanded only where a portal or geometric fragment is actually required.
+
+### 5.3 Routing regions and the sparse channel mesh
+
+Every container produces a local routing mesh from its layout topology:
+
+- four padding bands form a boundary ring;
+- row and column layouts contribute the gaps between consecutive members;
+- a grid contributes row and column gutters;
+- tree and layered layouts contribute inter-layer and inter-sibling gaps;
+- a constraint layout contributes separators between spatial neighbors discovered by a sweep-line decomposition;
+- named corridors annotate or subdivide those same regions;
+- corridor residents split a channel locally but do not create a detached routing plane.
+
+The mesh stores adjacency, local axis, capacity, minimum/preferred spacing, pressure, divider occupancy, residents, and route prohibitions. It contains only structural neighbors. It must not contain one visibility edge for every mutually visible object pair.
+
+For unconstrained rectangular siblings, a vertical/horizontal decomposition or nearest-neighbor sweep produces a linear-size mesh in `O(k log k)` time for `k` members. Row, column, grid, tree, and layered layouts produce their mesh directly in linear time.
+
+### 5.4 Routing obligations and compact itineraries
+
+A routing obligation is not yet a polyline. It contains:
+
+- two terminal docks or intermediate explicit pins;
+- the least common ancestor in which they must be connected;
+- required and forbidden regions;
+- the ordered explicit segment sequence;
+- sharing and branch policy;
+- style-derived stroke, marker, and label clearances;
+- whether it reserves space or overlays;
+- a compact list of chosen local channel spans.
+
+An itinerary is represented as tokens such as `exit child through right padding`, `cross sibling gap`, `use named corridor`, and `enter child through top padding`. Consecutive hierarchy ranges may remain compressed until geometry is emitted.
+
+### 5.5 Routing envelopes
+
+Every solved or provisionally solved container exposes a summary to its parent:
+
+- minimum and preferred box size;
+- boundary portal demand by local side;
+- ordered port and transit groups visible at the boundary;
+- compressed through-traffic classes;
+- minimum padding-band thicknesses;
+- hard maximum-size conflicts;
+- a stable summary hash for incremental invalidation.
+
+The parent never needs the child's internal track coordinates to place siblings. It needs the box, portal intervals, and routing demand. This is the main composition boundary for both scale and incremental solving.
+
+## 6. End-to-end pipeline
+
+```text
+Projection IR
+  -> resolve styles, metrics, text, and active endpoint targets
+  -> index containment and constraints
+  -> measure intrinsic objects and endpoint adornments
+  -> lift lines into local quotient interaction graphs
+  -> choose local layout topology and member order
+  -> build sparse whitespace channel meshes
+  -> choose line/share-group itineraries and port sides
+  -> order docks and tracks with bounded alternating sweeps
+  -> allocate tracks and compute routing reservations
+  -> solve object and container sizes bottom-up
+  -> assign coordinates and transforms top-down
+  -> realize portals, trunks, branches, bends, and labels
+  -> linearize paint relations over solved fragments
+  -> validate hard constraints and emit Solved IR
+```
+
+The phases are detailed below.
+
+## 7. Phase A: resolve target-dependent inputs
+
+The renderer planner has already selected and materialized views. The solver resolves:
+
+- conditional rules against the immutable render context;
+- style cascade and metric tokens;
+- text and image intrinsic measurements;
+- marker, stroke, roughness, and label clearances that consume geometry;
+- `PortPlacement` anchors in the selected views;
+- endpoint alternatives and truncation points chosen during materialization;
+- local orientations composed only as transforms, while retaining local directional vocabulary.
+
+Text is measured before routing because an end label may enlarge a dock group and a segment label may enlarge a channel. Painterly jitter does not participate in feasibility; the solver reserves a deterministic conservative clearance derived from the style.
+
+If an asset or font required for measurement is unavailable, solving stops or uses an explicitly permitted fallback. It must not silently measure with a host-dependent font.
+
+## 8. Phase B: intrinsic measurement and equality collapse
+
+Objects are measured bottom-up without routing reservations first. The result is a lower bound, not final geometry.
+
+The solver uses disjoint-set structures to collapse compatible `same-size` and alignment equalities. Required contradictory fixed sizes are diagnosed before routing. Anchored objects are measured here even though they are not layout members.
+
+Content groups and labels contribute their measured boxes. Container lower bounds include child lower bounds, resolved padding, layout gap minima, visible boundary labels, and inside-anchored furniture. Frames that enclose foreign members are recorded as later bounding dependencies rather than being treated as containment.
+
+## 9. Phase C: hierarchy projection of lines
+
+For each line, the solver processes the ordered chain:
+
+```text
+end 0 -> implicit traversal -> explicit segment pins -> implicit traversal -> end 1
+```
+
+Each adjacent pair of terminals or pins is assigned to its least common ancestor. Heavy-path range updates accumulate boundary demand along the ascent and descent without visiting every ancestor immediately. Explicit `through` regions split the path at the named region; `via` waypoints split it at the waypoint object.
+
+At each relevant container, the line becomes one local quotient interaction between:
+
+- two immediate child branches;
+- one child branch and the container boundary;
+- two boundary portals for through-traffic;
+- or a child/boundary and an explicit local region.
+
+This is how a line can ignore semantic hierarchy while the solver remains hierarchical. A route that exits two levels, crosses a parent gap, and re-enters three levels elsewhere is one semantic line but a small sequence of local obligations joined by stable portal identities.
+
+## 10. Phase D: choose layout topology and member order
+
+Layout topology means member ranks, rows, columns, layers, rings, and adjacency; it does not yet mean final coordinates.
+
+### 10.1 Required and preferred order
+
+Required order constraints form a directed acyclic graph. A cycle is a diagnostic. A stable topological sort chooses among currently available members using source order and canonical identity.
+
+For `prefer-source`, source order is the initial order. For `free`, the initial order derives from the quotient interaction graph. A fixed number of median or barycenter sweeps may improve it. Each sweep sorts by aggregated neighbor ranks and uses canonical identity as the stable tie-breaker.
+
+The solver never tests all permutations and never performs adjacent swaps until convergence. Crossing deltas for one sweep are counted with inversion counters or Fenwick trees rather than by enumerating edge pairs.
+
+### 10.2 Strategy-specific topology
+
+- **Row and column:** preserve or improve the one-dimensional member order; positions later become prefix sums of member sizes, margins, gaps, and channel reservations.
+- **Grid:** assign members to a declared or derived number of rows and columns with stable streaming placement; a bounded local pass may swap cells when hard order permits.
+- **Tree:** determine parent/child ranks from the relevant structural or quotient relation, order siblings with bounded median sweeps, and use subtree contours for separation.
+- **Layered:** orient or break cycles deterministically, assign ranks with a sparse DAG pass, order members per layer with bounded median sweeps, and use a linear or near-linear coordinate assignment. Exact crossing minimization is forbidden.
+- **Radial:** assign stable angular order and rings, then derive radial and tangential whitespace bands. Cross-ring lines still use the local routing mesh and boundary padding.
+- **Stack and overlay:** preserve the declared stacking relation; reserving lines normally escape through padding because overlapping interiors are not general routing space.
+- **Constraint:** solve the typed order, align, near, inside, extent, and size relations. It is not a general nonlinear optimizer. Initial spatial neighbors and separation constraints are produced by sweep lines rather than all-pairs overlap tests.
+
+`avoid-overlap` is implemented by generating separation constraints only for actual spatial neighbors or actual overlaps discovered by an index. A bounded-overlap input can therefore use an `O(k log k)` overlap-removal pass instead of an `O(k^2)` scan.
+
+## 11. Phase E: build the symbolic routing mesh
+
+The chosen topology determines which gaps and padding bands exist and their axial order. At this point every region has symbolic extents such as “between member ranks 3 and 7” even though it does not yet have a physical width.
+
+The mesh provides at least one fallback connection between every member and its container boundary: escape to a legal side, enter the padding ring, traverse clockwise or counter-clockwise, then approach the destination. This fallback may be visually longer, but it guarantees that obstacle avoidance does not depend on a dense visibility graph. A hard `avoid` or capacity constraint may remove the fallback and make the route infeasible.
+
+For common layouts, the solver generates a bounded family of better candidates:
+
+1. a direct route through the separating sibling gap;
+2. horizontal-then-vertical and vertical-then-horizontal monotone routes through available gutters;
+3. the shorter legal direction around the padding ring;
+4. the other padding-ring direction;
+5. a route required by explicit segment pins.
+
+A route around a sequence of actual blocking neighbors is constructed output-sensitively with spatial successor queries. Candidate generation may spend `O(log k)` per query and `O(b)` for `b` emitted detours; it may not run a whole-mesh shortest-path search independently for every line.
+
+Exact single-connector obstacle routing may be used as a bounded local fallback, but repeated global Dijkstra/A* over the complete document mesh is outside the reference complexity profile.
+
+### 11.1 Example: vertical exit, horizontal parent run, vertical entry
+
+Consider a line that should leave a nested source vertically, travel horizontally in a whitespace band of a common ancestor, enter another nested subtree vertically, and dock on the target's bottom side. The solver represents that intent as this symbolic itinerary:
+
+```text
+source dock block
+  -> vertical escape track in the source-side padding band
+  -> source boundary portal
+  -> horizontal track in the selected parent gap/corridor
+  -> target boundary portal
+  -> vertical entry track in the target-side padding band
+  -> target bottom dock block
+```
+
+Before coordinates exist, this itinerary already contributes four independent space demands:
+
+- longitudinal room on the source side for its dock and label;
+- cross-sectional room for the source exit track and portal;
+- one track or share block in the horizontal parent corridor, including its label;
+- cross-sectional and longitudinal room for the target entry and bottom dock.
+
+Track allocation determines the required thickness of the parent corridor. Dock packing may enlarge the target width. The bottom-up size pass then moves the surrounding objects far enough apart, and the top-down coordinate pass chooses exact portal and track centers. The line therefore crosses relative layers without naming every ancestor and without being overlaid on geometry that was finalized too early.
+
+## 12. Phase F: choose routes and ports jointly
+
+### 12.1 Work order
+
+Routing obligations are processed in this stable priority:
+
+1. fully pinned routes and required corridor traversals;
+2. required merged share groups;
+3. required bundles and fixed port groups;
+4. lines with fixed endpoint sides;
+5. other reserving lines, longest hierarchy span first;
+6. overlay lines.
+
+Within one class, canonical line/share-group identity decides. Routing constrained traffic first prevents a flexible line from consuming the only legal channel of an inflexible line.
+
+### 12.2 Candidate scoring
+
+Each bounded candidate is scored from information available without final coordinates:
+
+- hard legality;
+- new peak track demand in each region;
+- corridor pressure and capacity;
+- estimated bends and symbolic span;
+- agreement with explicit/preferred endpoint sides;
+- preservation of an existing incremental itinerary;
+- estimated crossings from track-order inversions;
+- opportunities for legal sharing or bundling.
+
+The lowest lexicographic cost wins; stable identity breaks ties. The algorithm does not combine every candidate of every line into a global Cartesian product.
+
+### 12.3 Side selection
+
+An explicitly constrained side is used as declared. An automatic side has at most four candidates. Its score uses the first/last route direction, current side demand, required group adjacency, marker and label extent, and estimated bends.
+
+Automatic sides are selected greedily in routing priority order, followed by a fixed number of alternating port/track-order sweeps. A topology attempt may reconsider an automatic side once when its selected side is provably infeasible. It may not backtrack through arbitrary combinations of previous side choices.
+
+The current Logical IR encodes `side: "auto"` or a concrete side but does not distinguish a preferred concrete side from a required concrete side. Until the model adds that distinction, the reference algorithm must treat a concrete `PortIR.side` as required.
+
+### 12.4 Dock order and perimeter slots
+
+For each object side, the solver forms dock blocks:
+
+- one block for a canonical named port, regardless of attachment count;
+- one block for each line-owned dock;
+- one contiguous super-block for a port group;
+- adjacent sub-slots for `bundle` geometry;
+- a single trunk slot for a merged join.
+
+Required port-group and explicit order constraints form a partial order. Remaining docks are ordered by the median remote track rank, with source order and canonical identity as stabilizers. End-label and marker boxes are part of the block extent.
+
+Slots are packed along the side with a one-dimensional sweep and priority queue. If the side is too short, the object receives a larger minimum width or height. A fixed maximum that cannot contain its required docks is a hard conflict or a view rejection, never an overlap accepted by the painter.
+
+Two line-owned docks remain distinct even if packing gives them the same visual coordinate. Coincidence never changes topology.
+
+## 13. Phase G: sharing, trunks, bundles, and branches
+
+Sharing is solved per canonical port join, port group, or explicit share group. It is not discovered by geometric coincidence.
+
+The solver orients member itineraries away from the group's common end and inserts their region tokens into a trie:
+
+- `merge` turns the common trie prefix into one positive-length trunk;
+- `bundle` retains parallel strokes in an adjacent track block along the common prefix;
+- `separate` retains only the zero-length common dock and allocates distinct first tracks;
+- `auto` chooses merge or bundle from style compatibility, pressure, and available capacity.
+
+The trie is linear in the summed itinerary length; no pairwise longest-common-prefix comparison is needed.
+
+Default late branching keeps the maximal common prefix. `early` shortens it at the earliest legal branch region; `balanced` chooses a stable middle legal token. A `within` policy restricts the candidate branch tokens to the referenced region. If no legal token exists, a required policy is diagnosed and a preference falls back deterministically.
+
+Explicit segments that pin grouped lines to the same region contribute the same trie token and therefore share there. Shared-piece style compatibility is checked by hashing the resolved trunk-applicable style. An incompatible required merge is a diagnostic; an automatic merge downgrades to a bundle as required by the model.
+
+This trie construction is a deterministic hyperedge heuristic. It does not search for a globally minimal rectilinear Steiner tree.
+
+## 14. Phase H: tracks, corridor demand, and crossings
+
+### 14.1 Channel intervals
+
+Every selected itinerary produces one or more axial occupancy intervals in a routing region. An interval carries its dock/share block, stroke width, minimum separation, preferred separation, label occupancy, and order constraints.
+
+Merged trunks contribute one interval. Bundles contribute one adjacent multi-track block. Separate lines contribute independent intervals.
+
+### 14.2 Track allocation
+
+Without extra order constraints, channel allocation is interval-graph coloring:
+
+1. sort intervals by start, then end, then stable identity;
+2. release tracks whose active interval has ended;
+3. reuse the lowest legal released track or allocate a new one;
+4. keep bundle blocks contiguous and `separate` obligations distinct.
+
+For independent unit-track intervals, the sweep is `O(k log k)` for `k` intervals and uses the minimum number of tracks for the fixed interval set. Bundle blocks, variable widths, and order constraints preserve the complexity bound but may use more tracks than the unconstrained optimum. Track-order constraints are incorporated as an acyclic precedence graph; required cycles are diagnostics. A longest-path rank supplies a legal lower bound, after which the sweep chooses the first legal track.
+
+Several corridor refinements of one region are allocated in rank order. Capacity is checked after sharing has reduced the demand. A capacity overflow cannot be repaired by drawing through an object.
+
+### 14.3 Pressure and required thickness
+
+The required region thickness is the sum of:
+
+- boundary clearances and divider occupancy;
+- resident-object cross section;
+- track or track-block widths;
+- required minimum separations;
+- marker, arrowhead, and label protrusions that occupy the region.
+
+Preferred separation is then compacted toward the required minimum according to pressure. The exact pressure scale remains a model decision, but every permitted mapping must be monotone: increasing pressure cannot increase preferred width, and no pressure may reduce a hard minimum.
+
+### 14.4 Crossing estimates without pair enumeration
+
+At a channel boundary, crossings correspond to inversions between dock order and track order. Fenwick trees count those inversions in `O(k log k)`. A fixed number of alternating median sweeps updates:
+
+- object-side dock order from remote track ranks;
+- channel track order from dock ranks at its ends;
+- sibling order where the layout policy permits it.
+
+The solver does not enumerate every crossing merely to optimize a score. If the painter requires a bridge or gap fragment at every final crossing, discovering and emitting those fragments is charged to `X`, because the requested output itself may be quadratic.
+
+## 15. Phase I: compute sizes and coordinates
+
+At this point all minimum routing thicknesses are known.
+
+### 15.1 Bottom-up size solve
+
+Containers are processed bottom-up. Their minimum sizes combine:
+
+- intrinsic child and content sizes;
+- margins and padding minima;
+- member gaps widened by allocated channel demand;
+- padding bands widened by boundary and transit demand;
+- dock-side minimum lengths;
+- layout alignment/distribution requirements;
+- inside anchors and boundary labels;
+- required frame/inside dependencies that are now geometrically known.
+
+Row and column sizes are prefix sums. Grid sizes are row/column maxima plus gutter reservations. Tree, layered, and radial strategies use their topology-specific contours or ranks. Sparse difference constraints solve required axis separations. A cycle of positive required separations is unsatisfiable.
+
+No iterative route search is needed when a corridor widens: the itinerary and track assignment stay fixed, so member coordinates simply move apart.
+
+### 15.2 Top-down coordinate assignment
+
+Once the root allocation is known, coordinates are assigned top-down in local frames. Alignment and distribution consume surplus space without violating reserved minima. Orientations become parent transforms; child declarations and local route sides remain unchanged.
+
+Automatic fill sizes and preferred sizes may consume surplus, but routing reservations are never compressed below their minima. If a finite target allocation cannot satisfy the minimum, the solver returns the smallest conflicting envelope to the renderer planner. The planner may reject the tentative view and try the next declared view.
+
+## 16. Phase J: realize line geometry and labels
+
+The symbolic itinerary is lowered into concrete local geometry:
+
+1. choose the exact dock coordinate within its allocated side slot;
+2. create a short orthogonal escape stub normal to the side;
+3. select the allocated track center in each gap or padding band;
+4. create stable boundary portals where the itinerary crosses containers;
+5. join consecutive local tracks with the minimum legal bends;
+6. materialize shared trunks once and branches separately;
+7. place endpoint labels near their dock blocks;
+8. place segment labels in reserved axial intervals, preferring the most prominent run;
+9. emit provenance for every fragment;
+10. lift logical paint relations to fragments and compute a stable topological order.
+
+Label placement uses another interval sweep along each track. A label first tries its requested or automatic position, then the nearest free position on the same run. If its already-reserved box cannot fit longitudinally, the associated gap length increases and the affected prefix coordinates are recomputed. The route topology and cross-sectional track allocation do not change.
+
+Overlay lines use the existing mesh and spatial index but contribute no earlier width reservation. They may accept overlap penalties that reserving lines may not.
+
+Required paint-order cycles are diagnostics. Soft relations are removed in stable lowest-weight order until the graph is acyclic; canonical identity chooses among otherwise equal fragments. This phase is sparse in the number of fragments and authored paint relations and does not compare every fragment pair.
+
+## 17. Bounded refinement and termination
+
+The feasibility solve has no open-ended convergence loop. The reference schedule is:
+
+1. one topology and itinerary selection pass;
+2. a fixed small number of alternating member/dock/track ordering sweeps;
+3. one track-allocation and reservation pass;
+4. one bottom-up size pass and one top-down coordinate pass;
+5. at most one automatic-side correction for a locally infeasible endpoint;
+6. optional compaction that preserves all minima and topology.
+
+A side correction invalidates only the endpoint's local route suffix, its side packing, and affected channel intervals. It does not restart unrelated containers.
+
+View fallback is also monotone. The renderer planner advances from one declared view to the next and never returns to a rejected view for the same allocation state. Nested failures propagate through routing envelopes: a child first falls back locally; if the parent envelope still cannot fit, the parent view is rejected. Memoized `(instance, view, allocation-class, context-hash)` attempts prevent repeated work. The total work is proportional to the actually attempted projection branches, not to their Cartesian product.
+
+If a heuristic topology cannot satisfy a hard constraint but infeasibility is not proven, the solver reports **incomplete for this solver profile**, not **unsatisfiable**. Only contradictions such as hard cycles, impossible fixed bounds, exhausted required capacity, or incompatible required sharing may be called unsatisfiable.
+
+## 18. Incremental and viewport solving
+
+The same decomposition supports large and infinite canvases.
+
+### 18.1 Cache units
+
+Cache at least:
+
+- intrinsic object measurements;
+- containment/LCA indexes per projection generation;
+- local quotient interaction graphs;
+- container topology and routing mesh;
+- chosen compact itineraries;
+- share tries and track allocations;
+- routing envelopes;
+- solved local geometry and stable output identities.
+
+Every cache key includes the relevant projection identities, styles and metrics, solver version, target policy, and inherited allocation/context class.
+
+### 18.2 Invalidation
+
+A local object edit invalidates its measurement, its container topology, and ancestors until a routing envelope hash is unchanged. A line edit invalidates the compressed containment paths between its terminals and explicit pins, not every object in the document. A style change invalidates only entities matched by the rule plus ancestors whose metrics change.
+
+Spatial indexes identify local overlap and route changes. Stable canonical tie-breakers and preservation costs keep unaffected member, port, and track order unchanged.
+
+### 18.3 Focused projections
+
+A viewport or subtree solve materializes and solves visible containers plus a halo containing:
+
+- boundary portals of lines that continue outside;
+- routing regions needed to reach those portals;
+- constraints whose other member can affect the visible envelope;
+- enough ancestor envelopes to place the focused region.
+
+The hidden continuation is represented by an external portal, not silently deleted. Full and incremental solves must converge on canonical-equivalent local geometry when no changed external constraint or congestion affects the region.
+
+## 19. Diagnostics required from the algorithm
+
+Diagnostics should name the smallest responsible objects, ports, lines, regions, or views and include provenance. At minimum:
+
+- hard order or track-order cycle;
+- fixed/min/max size contradiction;
+- required docks do not fit an object side;
+- port or corridor capacity exceeded;
+- no legal route remains after required `avoid` and `through` constraints;
+- required corridor missing from the projected view;
+- incompatible styles on a required merged trunk;
+- branch policy has no legal branch region;
+- corridor resident and required track order conflict;
+- frame/inside dependency cycle;
+- view rejected because its minimum routing envelope exceeds allocation;
+- solver-profile incompleteness distinct from proven unsatisfiability;
+- operational budget exceeded, including the measured `I`, `J`, `G`, and `X` terms.
+
+A diagnostic must not be “layout failed” when the solver can identify the saturated side, cyclic constraints, or missing route region.
+
+## 20. Complexity by phase
+
+| Phase | Target bound | Reason |
+| --- | ---: | --- |
+| Style, measurement, normalization checks | `O(I log I)` | indexed rule matching and stable maps; often linear |
+| Containment and LCA indexes | `O(N log N)` or `O(N)` | binary lifting or linear LCA preprocessing |
+| Line hierarchy projection | `O((L + S) log N)` before expansion | LCA plus heavy-path range representation |
+| Local quotient graphs | `O(I log I)` | aggregate sparse interactions by stable keys |
+| Layout topology | `O((N + E_q) log N)` | fixed number of stable median/order sweeps |
+| Routing mesh construction | `O((N + R) log N)` | structural generation and neighbor sweeps |
+| Candidate itinerary selection | `O((L + S) log Q + J)` | bounded candidates plus output-sensitive detours |
+| Share tries | `O(J)` | trie insertion over compact itineraries |
+| Dock and track ordering | `O((P + J) log Q)` | bounded median and inversion sweeps |
+| Track and label interval packing | `O((J + S) log Q)` | interval sweeps and priority queues |
+| Size and coordinate solve | `O((N + C + R) log Q)` | sparse constraints, prefix sums, spatial indexes |
+| Geometry and paint realization | `O((G + X + C) log Q)` | emitted fragments plus sparse paint-order sorting |
+
+`E_q` is the total number of aggregated edges in local quotient interaction graphs and is bounded by the relevant line/segment incidences. Summed over phases, the target remains `O(Q log Q)` time and `O(Q)` memory.
+
+## 21. Forbidden algorithmic patterns
+
+The reference solver MUST NOT use:
+
+- an all-pairs object repulsion or overlap pass;
+- an all-pairs line crossing table;
+- a dense visibility graph with every visible object pair;
+- a full-document shortest-path search separately for every line;
+- exact crossing minimization;
+- exhaustive member ordering or adjacent swaps until convergence;
+- exhaustive automatic-port-side combinations;
+- exhaustive share/branch-point combinations;
+- global backtracking across component views;
+- an unbounded layout-routing fixed-point loop;
+- SAT, ILP, SMT, or mixed-integer solving in the mandatory path;
+- silent relaxation of a hard constraint to make the drawing finish.
+
+Force-directed layout is not the reference default. A Barnes-Hut or multilevel force phase can be sub-quadratic, but by itself it does not allocate corridor tracks, respect deep containment, or jointly place ports. A renderer may use one as a bounded initializer for `constraint` layout, after which the same whitespace reservation pipeline still applies.
+
+## 22. Model details that still need a decision
+
+The algorithm exposes several model questions without inventing grammar for them. [`DECISIONS.md`](DECISIONS.md) fixes concrete answers for this experiment so implementation can proceed; the list remains open at the language-model level until those answers are deliberately incorporated into MODEL.md and REQUIREMENTS.md.
+
+1. `PortIR.side` currently distinguishes only `auto` from a concrete side. It does not encode “prefer right, but may move” versus “must be right.” The reference assumption is that a concrete side is required.
+2. Corridor `capacity` needs an exact unit: physical tracks, bundle blocks, or weighted demand. The algorithm assumes physical allocated tracks unless MODEL.md says otherwise.
+3. Pressure needs a normalized range and a deterministic preferred-spacing mapping. Only its monotonic and minimum-preserving behavior is currently fixed.
+4. The default geometric route vocabulary needs to state whether the core solver is orthogonal. The examples and corridor model strongly imply orthogonal routing, but `LineIR` does not currently carry a route-shape policy.
+5. Corridor-resident objects need an unambiguous normalized relation to the region so that the solver can split channel intervals without inferring residence from geometry.
+6. A hard maximum object/container size combined with reserving lines needs one explicit result: hard unsatisfiability, local view rejection, or permission to reroute outside that container.
+7. Solved IR must decide whether every hierarchy portal is emitted explicitly or whether unchanged portal chains may remain compressed. That decision controls `G` for deeply nested models.
+8. Crossing adornments need a target capability flag; otherwise the solver should not enumerate all crossings merely for painting.
+
+These are semantic or Solved-IR questions for MODEL.md and REQUIREMENTS.md. They are not reasons to add coordinates to the authoring language.
+
+## 23. Validation and performance fixtures
+
+Before implementation, the algorithm should be tested on generated families in addition to the visual fixtures:
+
+- a wide row with adjacent, skip, and long-span lines;
+- a deep containment chain with lines crossing many boundary levels;
+- a balanced hierarchy with cross-subtree lines;
+- one high-cardinality named port under each sharing policy;
+- large port groups with fixed, preferred, and free order;
+- one gap subdivided into many ranked corridors under different pressure;
+- many corridor intervals with bounded and adversarial overlap;
+- constraint layouts with sparse actual overlaps but many objects;
+- a deliberately dense `Theta(N^2)` line input to verify that cost follows input size rather than an extra pairwise factor;
+- incremental edits whose affected envelope stops after a few ancestors;
+- view fallback chains and nested view rejection without combinatorial retries.
+
+Performance tests should record `I`, `J`, `G`, `X`, peak active intervals, dirty containers, and attempted views. Wall time without these counters cannot reveal an accidental quadratic phase.
+
+The four main visual fixtures remain quality gates. In particular, the solver must reproduce their hierarchy-crossing lines, deep ports, shared fan-out/fan-in, padding-band routes, corridor ordering, labels, and reserved whitespace without fixture-specific algorithms.
+
+## 24. Research basis
+
+The reference design adapts established graph-drawing techniques but combines them around Kvísl's containment and whitespace model:
+
+- Sugiyama, Tagawa, and Toda separate hierarchical drawing into ordering and coordinate phases and use heuristics for scale: [Methods for Visual Understanding of Hierarchical System Structures](https://doi.org/10.1109/TSMC.1981.4308636).
+- Eades and Wormald show that the two-layer crossing problem is NP-complete and analyze median/barycenter heuristics: [Edge Crossings in Drawings of Bipartite Graphs](https://doi.org/10.1007/BF01187020).
+- Garey and Johnson establish the broader crossing-number limit: [Crossing Number Is NP-Complete](https://doi.org/10.1137/0604033).
+- Brandes and Köpf provide a fast coordinate-assignment phase for layered drawings: [Fast and Simple Horizontal Coordinate Assignment](https://doi.org/10.1007/3-540-45848-4_3).
+- Dwyer, Marriott, and Stuckey show how sparse separation constraints support `O(n log n)` overlap removal under bounded overlap: [Fast Node Overlap Removal](https://doi.org/10.1007/11618058_15).
+- Wybrow, Marriott, and Stuckey give efficient object-avoiding orthogonal connector routing for fixed obstacles: [Orthogonal Connector Routing](https://doi.org/10.1007/978-3-642-11805-0_22).
+- Their hyperedge work motivates solving shared joins as trees rather than as coincident independent lines: [Orthogonal Hyperedge Routing](https://doi.org/10.1007/978-3-642-31223-6_10).
+- Pupyrev, Nachmanson, Bereg, and Holroyd motivate ordered bundles with explicit width and channel-pressure costs: [Edge Routing with Ordered Bundles](https://doi.org/10.1016/j.comgeo.2015.10.005).
+- Kiel's layered-port work demonstrates that port constraints must participate in crossing reduction and routing rather than be attached afterward: [Drawing Layered Graphs with Port Constraints](https://doi.org/10.1016/j.jvlc.2013.11.005).
+- Bender and Farach-Colton provide simple optimal preprocessing for repeated least-common-ancestor queries: [The LCA Problem Revisited](https://doi.org/10.1007/10719839_9).
+
+These papers do not supply one complete Kvísl solver. The distinctive step here is to use the containment tree and its implicit gaps/padding as the sparse routing substrate, then let track and dock demand determine layout spacing before coordinates are finalized.
