@@ -148,6 +148,21 @@ function nestedExitReservations(endpoint, lca, side, line, regions) {
   }
 }
 
+function hasAncestorOrSelf(object, ancestor) {
+  for (let current = object; current; current = current.parent) if (current === ancestor) return true;
+  return false;
+}
+
+function explicitPaddingSide(line, endpoint) {
+  const segments = endpoint === line.from ? line.segments : [...line.segments].reverse();
+  for (const segment of segments) {
+    const container = segment.region?.kind === "padding" ? segment.region.container : segment.corridor?.container;
+    const side = segment.region?.kind === "padding" ? segment.region.side : segment.corridor?.side;
+    if (container && side && hasAncestorOrSelf(endpoint.object, container)) return side;
+  }
+  return null;
+}
+
 export function reserveRoutingSpace(scene) {
   const regions = new Map();
   // corridors start at bare track width; labels only widen a corridor after
@@ -203,7 +218,7 @@ export function reserveRoutingSpace(scene) {
       // an author-declared port side wins over the topological direction —
       // the line leaves where the port sits, so that band needs the room
       const exitSide = (endpoint, fallback) =>
-        SIDES.includes(endpoint.port?.side) ? endpoint.port.side : fallback;
+        SIDES.includes(endpoint.port?.side) ? endpoint.port.side : explicitPaddingSide(line, endpoint) ?? fallback;
       const fromSide = exitSide(line.from, directionToward(lca, fromBranch, toBranch));
       const toSide = exitSide(line.to, directionToward(lca, toBranch, fromBranch));
       nestedExitReservations(line.from.object, lca, fromSide, line, regions);
@@ -852,7 +867,7 @@ function alignConnectedNeighbors(scene) {
         if (remote === container || isDescendantOf(remote, container)) continue;
         centers.push(remote.box[axis] + remote.box[extent] / 2);
       }
-      if (!centers.length) return member.box[axis] + member.box[extent] / 2;
+      if (!centers.length) return null;
       return centers.reduce((sum, value) => sum + value, 0) / centers.length;
     });
 
@@ -867,18 +882,38 @@ function alignConnectedNeighbors(scene) {
       members.at(-1).box[axis] + members.at(-1).box[extent],
       container.box[axis] + container.box[extent] - (horizontal ? padding.right : padding.bottom),
     );
-    // suffix demand keeps every later member placeable within the span
-    const demand = Array(members.length).fill(0);
-    for (let index = members.length - 2; index >= 0; index -= 1) {
-      demand[index] = demand[index + 1] + members[index + 1].box[extent] + (minGaps[index] ?? 0);
+    // Prefix and suffix demand bound each connected member's feasible range.
+    // Moving an anchor then propagates only as far as required, which lets
+    // otherwise free siblings surrender distributive slack on either side.
+    const prefixDemand = Array(members.length).fill(0);
+    const suffixDemand = Array(members.length).fill(0);
+    for (let index = 1; index < members.length; index += 1) {
+      prefixDemand[index] = prefixDemand[index - 1] + members[index - 1].box[extent] + (minGaps[index - 1] ?? 0);
     }
-    let cursor = lower;
+    for (let index = members.length - 2; index >= 0; index -= 1) {
+      suffixDemand[index] = suffixDemand[index + 1] + members[index + 1].box[extent] + (minGaps[index] ?? 0);
+    }
+
+    const positions = members.map((member) => member.box[axis]);
+    for (const index of members.keys()) {
+      if (desired[index] == null) continue;
+      const minimum = lower + prefixDemand[index];
+      const maximum = upper - suffixDemand[index] - members[index].box[extent];
+      positions[index] = Math.max(minimum, Math.min(maximum, desired[index] - members[index].box[extent] / 2));
+
+      for (let previous = index - 1; previous >= 0; previous -= 1) {
+        const maximumPrevious = positions[previous + 1] - (minGaps[previous] ?? 0) - members[previous].box[extent];
+        positions[previous] = Math.min(positions[previous], maximumPrevious);
+      }
+      for (let next = index + 1; next < members.length; next += 1) {
+        const minimumNext = positions[next - 1] + members[next - 1].box[extent] + (minGaps[next - 1] ?? 0);
+        positions[next] = Math.max(positions[next], minimumNext);
+      }
+    }
+
     members.forEach((member, index) => {
-      const max = upper - demand[index] - member.box[extent];
-      const target = Math.max(cursor, Math.min(max, desired[index] - member.box[extent] / 2));
-      const delta = target - member.box[axis];
+      const delta = positions[index] - member.box[axis];
       if (Math.abs(delta) > 0.5) shiftObject(member, horizontal ? delta : 0, horizontal ? 0 : delta);
-      cursor = target + member.box[extent] + (minGaps[index] ?? 0);
     });
   }
 }
@@ -912,7 +947,7 @@ export function layout(scene) {
   scene.root.localX = 0;
   scene.root.localY = 0;
   assignGlobal(scene.root, { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 });
-  alignConnectedNeighbors(scene);
+  for (let pass = 0; pass < 2; pass += 1) alignConnectedNeighbors(scene);
   assignAnchored(scene);
   applyConstraints(scene);
   normalizeCanvas(scene);

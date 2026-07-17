@@ -161,7 +161,7 @@ function RuntimeLayer() {
       id="runtime"
       label="Worker node / runtime layer"
       role="runtime-layer"
-      layout={{ kind: "column", gap: "large" }}
+      layout={{ kind: "row", align: "start", gap: "large" }}
       style={{ fill: "warm-white", stroke: colors.orange }}
     >
       <Node id="atelet" role="node-supervisor" style={{ stroke: colors.orange }}>
@@ -171,53 +171,55 @@ function RuntimeLayer() {
         <Port id="pod" side="bottom" />
       </Node>
 
-      <Scope
-        id="worker-pod"
-        label="Persistent Worker Pod — label: ate.dev/worker-pool"
-        role="worker-pod"
-        layout={{ kind: "column", align: "center", gap: "medium" }}
-        style={{ fill: "pale-orange", stroke: colors.orange }}
-      >
-        <Node id="ateom-visor" role="runtime-helper" style={{ stroke: colors.orange }}>
-          <Text>ateom-visor</Text>
-          <Text>runtime helper</Text>
-          <Port id="supervisor" side="left" />
-          <Port id="sandbox" side="bottom" />
-        </Node>
+      <Column id="worker-stack" gap="large">
         <Scope
-          id="sandbox"
-          label="gVisor / runsc sandbox — create / start · checkpoint / restore"
-          role="sandbox"
-          layout={{ kind: "column" }}
-          style={{ fill: "pale-yellow", stroke: colors.yellow }}
+          id="worker-pod"
+          label="Persistent Worker Pod — label: ate.dev/worker-pool"
+          role="worker-pod"
+          layout={{ kind: "column", align: "center", gap: "medium" }}
+          style={{ fill: "pale-orange", stroke: colors.orange }}
         >
-          <Node id="agent" role="agent-process" style={{ stroke: colors.yellow }}>
-            <Text>Agent</Text>
-            <Text>process</Text>
-            <Port id="request" side="right" />
-            <Port id="suspend" side="left" />
+          <Node id="ateom-visor" role="runtime-helper" style={{ stroke: colors.orange }}>
+            <Text>ateom-visor</Text>
+            <Text>runtime helper</Text>
+            <Port id="supervisor" side="left" />
+            <Port id="sandbox" side="bottom" />
           </Node>
-          <Port id="visor" side="top" />
-          <Port id="snapshot" side="left" />
+          <Scope
+            id="sandbox"
+            label="gVisor / runsc sandbox — create / start · checkpoint / restore"
+            role="sandbox"
+            layout={{ kind: "column" }}
+            style={{ fill: "pale-yellow", stroke: colors.yellow }}
+          >
+            <Node id="agent" role="agent-process" style={{ stroke: colors.yellow }}>
+              <Text>Agent</Text>
+              <Text>process</Text>
+              <Port id="suspend" side="left" />
+            </Node>
+            <Port id="visor" side="top" />
+            <Port id="snapshot" side="left" />
+            <Port id="request" side="right" />
+          </Scope>
+
+          <Line from="ateom-visor.sandbox" to="sandbox.visor" style={{ stroke: colors.red }} />
         </Scope>
 
-        <Line from="ateom-visor.sandbox" to="sandbox.visor" style={{ stroke: colors.red }} />
-      </Scope>
-
-      <Node
-        id="warm-pods"
-        role="capacity-pool"
-        style={{ stroke: colors.orange, dash: "dashed" }}
-      >
-        <Text>Warm free worker Pods</Text>
-        <Text>waiting for actor</Text>
-        <Text>assignment</Text>
-      </Node>
+        <Node
+          id="warm-pods"
+          role="capacity-pool"
+          style={{ stroke: colors.orange, dash: "dashed" }}
+        >
+          <Text>Warm free worker Pods</Text>
+          <Text>waiting for actor</Text>
+          <Text>assignment</Text>
+        </Node>
+      </Column>
 
       <Line
         id="supervise-pod"
         from="atelet.pod"
-        to="worker-pod/ateom-visor.supervisor"
+        to="worker-stack/worker-pod/ateom-visor.supervisor"
         style={{ stroke: colors.blue, dash: "dashed" }}
       />
     </Scope>
@@ -284,7 +286,7 @@ export default (
       </Line>
       <Line
         id="self-suspend"
-        from="layers/runtime/worker-pod/sandbox/agent.suspend"
+        from="layers/runtime/worker-stack/worker-pod/sandbox/agent.suspend"
         to="layers/control-and-storage/substrate-control/ateapi.suspend"
         style={{ stroke: colors.blue, dash: "dashed" }}
       >
@@ -295,7 +297,7 @@ export default (
       </Line>
       <Line
         id="checkpoint-transfer"
-        from="layers/runtime/worker-pod/sandbox.snapshot"
+        from="layers/runtime/worker-stack/worker-pod/sandbox.snapshot"
         to="layers/control-and-storage/snapshot-storage/checkpoint.transfer"
         heads="both"
         style={{ stroke: colors.purple, dash: "dashed" }}
@@ -322,14 +324,17 @@ export default (
     <Constraint
       kind="same-size"
       dimension="width"
-      members={["cluster/layers/runtime/worker-pod", "cluster/layers/runtime/warm-pods"]}
+      members={[
+        "cluster/layers/runtime/worker-stack/worker-pod",
+        "cluster/layers/runtime/worker-stack/warm-pods",
+      ]}
     />
 
     {/* the controller path runs along the cluster's top padding band */}
     <Line
       id="worker-pool-controller"
       from="cluster/layers/kubernetes-api/worker-pool.controller"
-      to="cluster/layers/runtime/worker-pod"
+      to="cluster/layers/runtime/worker-stack/worker-pod"
       style={{ stroke: colors.gray, dash: "dashed" }}
     >
       <Segment
@@ -348,7 +353,7 @@ export default (
     <Line
       id="request-to-agent"
       from="ingress/worker-forward.worker"
-      to="cluster/layers/runtime/worker-pod/sandbox/agent.request"
+      to="cluster/layers/runtime/worker-stack/worker-pod/sandbox.request"
       style={{ stroke: colors.green }}
     >
       <Segment through={padding("cluster", "right")} />

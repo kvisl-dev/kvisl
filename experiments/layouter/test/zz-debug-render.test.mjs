@@ -17,10 +17,10 @@ test("zz debug render agent-substrate", async () => {
   for (const p of [
     "cluster/layers/runtime",
     "cluster/layers/runtime/atelet",
-    "cluster/layers/runtime/worker-pod",
-    "cluster/layers/runtime/worker-pod/ateom-visor",
-    "cluster/layers/runtime/worker-pod/sandbox",
-    "cluster/layers/runtime/warm-pods",
+    "cluster/layers/runtime/worker-stack/worker-pod",
+    "cluster/layers/runtime/worker-stack/worker-pod/ateom-visor",
+    "cluster/layers/runtime/worker-stack/worker-pod/sandbox",
+    "cluster/layers/runtime/worker-stack/warm-pods",
     "cluster/layers/control-and-storage/substrate-control",
     "cluster/layers/control-and-storage/snapshot-storage",
   ]) {
@@ -30,7 +30,7 @@ test("zz debug render agent-substrate", async () => {
   for (const line of scene.lines) {
     console.log("ROUTE", line.id, JSON.stringify(line.route.map((pt) => [Math.round(pt.x), Math.round(pt.y)])));
   }
-  const visor = scene.objectByPath.get("cluster/layers/runtime/worker-pod/ateom-visor");
-  const sandbox = scene.objectByPath.get("cluster/layers/runtime/worker-pod/sandbox");
+  const visor = scene.objectByPath.get("cluster/layers/runtime/worker-stack/worker-pod/ateom-visor");
+  const sandbox = scene.objectByPath.get("cluster/layers/runtime/worker-stack/worker-pod/sandbox");
   console.log("DEBUG centers visor", Math.round(visor.box.x + visor.box.width / 2), "sandbox", Math.round(sandbox.box.x + sandbox.box.width / 2));
 });

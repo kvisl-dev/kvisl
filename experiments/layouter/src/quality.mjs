@@ -346,6 +346,18 @@ export function escalateLabelReservations(scene, reservations) {
       changed = true;
     }
   };
+
+  // A collision-free fallback is still a failed placement when an authored
+  // segment label could not stay at its declared region. Treat that rejected
+  // preferred candidate as pressure on the same reserving corridor.
+  for (const line of scene.lines) {
+    for (const label of line.routeLabels) {
+      if (!label.authoredSegment || label.authoredRegion || !line.labelReservation) continue;
+      const current = reservations.get(line.labelReservation.key) ?? 0;
+      const cap = lineLabelDemand(line, line.labelReservation.axis);
+      raise(line.labelReservation.key, Math.min(cap, current + 32));
+    }
+  }
   for (const item of [...quality.labelObjectOverlaps, ...quality.labelDecorOverlaps, ...quality.labelLabelOverlaps]) {
     // a label pressed against container decor is squeezed in a pocket next
     // to that container — widening the adjacent sibling gaps is the targeted

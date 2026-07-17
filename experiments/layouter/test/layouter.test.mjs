@@ -8,7 +8,7 @@ import { layout } from "../src/layout.mjs";
 import { solveFile } from "../src/pipeline.mjs";
 import { project } from "../src/project.mjs";
 import { analyzeScene } from "../src/quality.mjs";
-import { route } from "../src/route.mjs";
+import { boundaryLabelStrips, route } from "../src/route.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repo = path.dirname(path.dirname(path.dirname(here)));
@@ -87,6 +87,84 @@ test("solving the same diagram is deterministic", async () => {
   const first = await solveFile(entry);
   const second = await solveFile(entry);
   assert.equal(first.svg, second.svg);
+});
+
+test("connected siblings consume free distribution slack to align across containers", async () => {
+  const entry = path.join(repo, "examples", "agent-substrate", "diagram.tsx");
+  const { scene } = await solveFile(entry);
+  const line = scene.lines.find((candidate) => candidate.id === "ingress-control");
+  assert.equal(line.route.length, 2, "router and API should admit one straight vertical run");
+  assert.equal(line.route[0].x, line.route[1].x);
+});
+
+test("an automatic dock follows the nearest explicit ancestor padding", async () => {
+  const entry = path.join(repo, "examples", "agent-substrate", "diagram.tsx");
+  const { scene } = await solveFile(entry);
+  const line = scene.lines.find((candidate) => candidate.id === "worker-pool-controller");
+  assert.equal(line.to.physicalSide, "top");
+  assert.equal(line.to.point.y, line.to.object.box.y);
+});
+
+test("nested padding pins are ordered by their regions instead of provisional midpoints", async () => {
+  const entry = path.join(repo, "examples", "agent-substrate", "diagram.tsx");
+  const { scene } = await solveFile(entry);
+  const line = scene.lines.find((candidate) => candidate.id === "worker-pool-controller");
+  assert.ok(line.pinPoints[0].y > line.pinPoints[1].y, "the inner top padding should precede the outer top padding");
+});
+
+test("padding tracks occupy reserved inner padding instead of a container border or title", async () => {
+  const entry = path.join(repo, "examples", "agent-substrate", "diagram.tsx");
+  const { scene } = await solveFile(entry);
+  const cluster = scene.objectByPath.get("cluster");
+  const track = [...scene.regions.values()].find((region) => region.kind === "padding" && region.owner === cluster && region.side === "top");
+  const title = boundaryLabelStrips(scene).find((strip) => strip.owner === cluster);
+  assert.ok(track.geometry.y >= title.box.y + title.box.height);
+  assert.ok(track.geometry.y > cluster.box.y + 3);
+});
+
+test("routing reservations predict the approach side selected from an explicit ancestor corridor", async () => {
+  const entry = path.join(repo, "examples", "agent-substrate", "diagram.tsx");
+  const { scene } = await solveFile(entry);
+  const runtime = scene.objectByPath.get("cluster/layers/runtime");
+  const top = [...scene.regions.values()].find((region) => region.kind === "padding" && region.owner === runtime && region.side === "top");
+  assert.ok(top?.entryLines.has(scene.lines.find((line) => line.id === "worker-pool-controller")));
+});
+
+test("hierarchical route itinerary leaves a source before crossing its parent gap", async () => {
+  const entry = path.join(repo, "examples", "agent-substrate", "diagram.tsx");
+  const { scene } = await solveFile(entry);
+  const line = scene.lines.find((candidate) => candidate.id === "request-to-agent");
+  const ingressRight = [...scene.regions.values()].find((region) => region.kind === "padding" && region.owner.path === "ingress" && region.side === "right");
+  const rootGap = [...scene.regions.values()].find((region) => region.kind === "gap" && region.owner === scene.root && region.entryLines.has(line));
+  const firstIngressPin = line.pinPoints.findIndex((point) => point.x >= ingressRight.geometry.x && point.x <= ingressRight.geometry.x + ingressRight.geometry.width);
+  const firstGapPin = line.pinPoints.findIndex((point) => point.y >= rootGap.geometry.y && point.y <= rootGap.geometry.y + rootGap.geometry.height);
+  assert.ok(firstIngressPin >= 0 && firstIngressPin < firstGapPin);
+});
+
+test("connected-neighbor alignment uses settled positions from a bounded second sweep", async () => {
+  const entry = path.join(repo, "examples", "agent-substrate", "diagram.tsx");
+  const { scene } = await solveFile(entry);
+  const forward = scene.objectByPath.get("ingress/worker-forward");
+  const sandbox = scene.objectByPath.get("cluster/layers/runtime/worker-stack/worker-pod/sandbox");
+  const centerX = (object) => object.box.x + object.box.width / 2;
+  assert.ok(Math.abs(centerX(forward) - centerX(sandbox)) < 1);
+});
+
+test("a feasible solve reclaims escalation overshoot from label corridors", async () => {
+  const entry = path.join(repo, "examples", "agent-substrate", "diagram.tsx");
+  const { scene } = await solveFile(entry);
+  assert.ok(scene.labelReservations.get("gap:cluster/layers/control-and-storage:0") < 54);
+  assert.equal(analyzeScene(scene).labelObjectOverlaps.length, 0);
+  assert.equal(analyzeScene(scene).labelLabelOverlaps.length, 0);
+});
+
+test("a segment label stays anchored at the authored routing region", async () => {
+  const entry = path.join(repo, "examples", "agent-substrate", "diagram.tsx");
+  const { scene } = await solveFile(entry);
+  const line = scene.lines.find((candidate) => candidate.id === "resume-actor");
+  const gap = [...scene.regions.values()].find((region) => region.kind === "gap" && region.entryLines.has(line));
+  const label = line.routeLabels[0];
+  assert.ok(Math.abs(label.x - (gap.geometry.x + gap.geometry.width / 2)) < 1);
 });
 
 test("explicit padding pins reserve a physical routing band", async () => {

@@ -39,6 +39,21 @@ function remoteCenter(line, endpoint) {
   return center((endpoint === line.from ? portTarget(line.to) : portTarget(line.from)).box);
 }
 
+function paddingSideHint(line, endpoint) {
+  const target = portTarget(endpoint);
+  const segments = endpoint === line.from ? line.segments : [...line.segments].reverse();
+  for (const segment of segments) {
+    const container = segment.region?.kind === "padding" ? segment.region.container : segment.corridor?.container;
+    const side = segment.region?.kind === "padding" ? segment.region.side : segment.corridor?.side;
+    if (container && side && (target === container || hasAncestor(target, container))) return rotateSide(side, container.physicalOrientation ?? 0);
+  }
+  return null;
+}
+
+function desiredEndpointSide(line, endpoint, target) {
+  return paddingSideHint(line, endpoint) ?? chooseSide(target.box, remoteCenter(line, endpoint));
+}
+
 function placePorts(scene, objectIndex = null) {
   const buckets = new Map();
   for (const object of scene.objects) {
@@ -58,7 +73,8 @@ function placePorts(scene, objectIndex = null) {
         average.x /= port.attachments.length;
         average.y /= port.attachments.length;
       }
-      const desiredSide = chooseSide(target.box, average);
+      const hintedSides = port.attachments.map(({ line, endpoint }) => paddingSideHint(line, endpoint)).filter(Boolean);
+      const desiredSide = hintedSides[0] ?? chooseSide(target.box, average);
       const localSide = port.allowedSides.includes(desiredSide) ? desiredSide : port.allowedSides[0];
       port.physicalSide = rotateSide(localSide, target.physicalOrientation ?? object.physicalOrientation ?? 0);
       const key = `${target.path}:${port.physicalSide}`;
@@ -71,7 +87,7 @@ function placePorts(scene, objectIndex = null) {
     for (const endpoint of [line.from, line.to]) {
       if (!endpoint || endpoint.port) continue;
       const target = endpoint.object;
-      const side = chooseSide(target.box, remoteCenter(line, endpoint));
+      const side = desiredEndpointSide(line, endpoint, target);
       endpoint.physicalSide = side;
       const key = `${target.path}:${side}`;
       if (!buckets.has(key)) buckets.set(key, []);
@@ -190,10 +206,18 @@ function regionGeometry(region) {
   if (region.kind === "padding") {
     const box = region.owner.box;
     const thickness = Math.max(region.thickness, 12);
-    if (region.side === "top") return { x: box.x, y: box.y, width: box.width, height: thickness, axis: "horizontal" };
-    if (region.side === "bottom") return { x: box.x, y: box.y + box.height - thickness, width: box.width, height: thickness, axis: "horizontal" };
-    if (region.side === "left") return { x: box.x, y: box.y, width: thickness, height: box.height, axis: "vertical" };
-    return { x: box.x + box.width - thickness, y: box.y, width: thickness, height: box.height, axis: "vertical" };
+    const padding = region.owner.paddingBox ?? { top: thickness, right: thickness, bottom: thickness, left: thickness };
+    const contentHeight = region.owner.contentHeight ?? 0;
+    if (region.side === "top") {
+      return { x: box.x, y: box.y + padding.top + contentHeight - thickness, width: box.width, height: thickness, axis: "horizontal" };
+    }
+    if (region.side === "bottom") {
+      return { x: box.x, y: box.y + box.height - padding.bottom, width: box.width, height: thickness, axis: "horizontal" };
+    }
+    if (region.side === "left") {
+      return { x: box.x + padding.left - thickness, y: box.y, width: thickness, height: box.height, axis: "vertical" };
+    }
+    return { x: box.x + box.width - padding.right, y: box.y, width: thickness, height: box.height, axis: "vertical" };
   }
   const first = region.owner.children[region.index]?.box;
   const second = region.owner.children[region.index + 1]?.box;
@@ -525,6 +549,27 @@ function hasAncestor(object, ancestor) {
   return false;
 }
 
+function ancestorDistance(object, ancestor) {
+  let distance = 0;
+  for (let current = object; current; current = current.parent) {
+    if (current === ancestor) return distance;
+    distance += 1;
+  }
+  return Number.POSITIVE_INFINITY;
+}
+
+function distanceToBox(point, box) {
+  const dx = point.x < box.x ? box.x - point.x : point.x > box.x + box.width ? point.x - (box.x + box.width) : 0;
+  const dy = point.y < box.y ? box.y - point.y : point.y > box.y + box.height ? point.y - (box.y + box.height) : 0;
+  return dx + dy;
+}
+
+function pinDistance(pin, start) {
+  return pin.region?.geometry
+    ? distanceToBox(start, pin.region.geometry)
+    : Math.abs(pin.x - start.x) + Math.abs(pin.y - start.y);
+}
+
 function orderedPins(line, start, end) {
   const tracks = [...(line.regionTracks?.values() ?? [])];
   const explicitPadding = new Set();
@@ -533,34 +578,61 @@ function orderedPins(line, start, end) {
     if (segment.region?.kind === "padding") for (const track of tracks) if (track.region.kind === "padding" && track.region.owner === segment.region.container && track.region.side === segment.region.side) explicitPadding.add(track.region);
   }
 
-  const pins = [];
+  const groups = [];
   for (const track of tracks) {
+    const explicitIndex = line.segments.findIndex((segment) =>
+      segment.region?.kind === "padding"
+        ? track.region.kind === "padding" && track.region.owner === segment.region.container && track.region.side === segment.region.side
+        : segment.region?.kind === "gap"
+          ? track.region.kind === "gap" && physicalGapContains(segment.region, track.region)
+          : segment.corridor
+            ? track.region.corridors.includes(segment.corridor)
+            : false);
     if (explicitPadding.has(track.region)) {
-      pins.push(...paddingTrackPins(track, start, end));
+      groups.push({ phase: 2, rank: explicitIndex, pins: paddingTrackPins(track, start, end) });
       continue;
     }
     if ([...explicitPadding].some((region) => region.owner === track.region.owner && track.region.kind === "gap")) continue;
+    if (explicitIndex >= 0) {
+      groups.push({ phase: 2, rank: explicitIndex, pins: [trackPoint(track, start, end)] });
+      continue;
+    }
     // an implicit exit/entry band that contradicts the chosen dock side would
     // drag the route around the object; the reservation stays, the pin goes.
     // matching bands are pass-through: the route crosses them, but lateral
     // travel belongs to the gap corridors, not to a container's exit band
     if (track.region.kind === "padding") {
-      const endpoint = [line.from, line.to].find((item) => item && hasAncestor(item.object, track.region.owner));
+      const endpoint = [line.from, line.to].find((item) => item && (item.object === track.region.owner || hasAncestor(item.object, track.region.owner)));
       if (endpoint?.physicalSide && endpoint.physicalSide !== track.region.side) continue;
-      pins.push({ ...trackPoint(track, start, end), passThrough: true });
+      const fromSide = endpoint === line.from;
+      const distance = ancestorDistance(endpoint.object, track.region.owner);
+      groups.push({
+        phase: fromSide ? 0 : 4,
+        rank: fromSide ? distance : -distance,
+        pins: [{ ...trackPoint(track, start, end), passThrough: true, endpoint }],
+      });
       continue;
     }
-    pins.push(trackPoint(track, start, end));
+    const pin = trackPoint(track, start, end);
+    groups.push({ phase: 1, rank: pinDistance(pin, start), pins: [pin] });
   }
-  for (const segment of line.segments) if (segment.waypoint) pins.push(center(segment.waypoint.box));
-  pins.sort((first, second) =>
-    Math.abs(first.x - start.x) + Math.abs(first.y - start.y)
-    - Math.abs(second.x - start.x) - Math.abs(second.y - start.y));
+  line.segments.forEach((segment, index) => {
+    if (segment.waypoint) groups.push({ phase: 2, rank: index, pins: [center(segment.waypoint.box)] });
+  });
+  groups.sort((first, second) => first.phase - second.phase || first.rank - second.rank);
+  const pins = groups.flatMap((group) => group.pins);
   for (const shared of line.sharedPins ?? []) {
     if (shared.endpoint === line.from) pins.unshift(shared.pin);
     else pins.push(shared.pin);
   }
   return pins;
+}
+
+function physicalGapContains(reference, region) {
+  return reference.between?.[0]?.parent === region.owner
+    && reference.between?.[1]?.parent === region.owner
+    && region.index >= Math.min(reference.between[0].siblingIndex, reference.between[1].siblingIndex)
+    && region.index < Math.max(reference.between[0].siblingIndex, reference.between[1].siblingIndex);
 }
 
 function escapePoint(endpoint, distance = endpoint.escapeDistance ?? 14) {
@@ -617,11 +689,21 @@ function routeLine(line, index, routeIndex) {
       const next = rawPins[index + 1] ?? end;
       if (geometry.axis === "vertical") {
         const clamp = (value) => Math.max(geometry.y, Math.min(geometry.y + geometry.height, value));
-        if (pin.passThrough) pins.push({ x: pin.x, y: clamp(cursor.y) });
+        if (pin.passThrough) {
+          const escape = escapePoint(pin.endpoint);
+          const vector = SIDE_VECTOR[pin.endpoint.physicalSide];
+          const x = vector.x > 0 ? Math.max(pin.x, escape.x) : vector.x < 0 ? Math.min(pin.x, escape.x) : pin.x;
+          pins.push({ x, y: clamp(cursor.y) });
+        }
         else pins.push({ x: pin.x, y: clamp(cursor.y) }, { x: pin.x, y: clamp(next.y) });
       } else {
         const clamp = (value) => Math.max(geometry.x, Math.min(geometry.x + geometry.width, value));
-        if (pin.passThrough) pins.push({ x: clamp(cursor.x), y: pin.y });
+        if (pin.passThrough) {
+          const escape = escapePoint(pin.endpoint);
+          const vector = SIDE_VECTOR[pin.endpoint.physicalSide];
+          const y = vector.y > 0 ? Math.max(pin.y, escape.y) : vector.y < 0 ? Math.min(pin.y, escape.y) : pin.y;
+          pins.push({ x: clamp(cursor.x), y });
+        }
         else pins.push({ x: clamp(cursor.x), y: pin.y }, { x: clamp(next.x), y: pin.y });
       }
       cursor = pins.at(-1);
@@ -837,26 +919,68 @@ function positionAlong(segment, ratio) {
   };
 }
 
+function pointLabelCandidates(point, horizontal, label, size, rank) {
+  const offsets = [7, 18, 32, 48];
+  const angle = label.orientation === "along" && !horizontal ? 90 : 0;
+  const visualWidth = angle ? size.height : size.width;
+  const visualHeight = angle ? size.width : size.height;
+  return offsets.flatMap((offset, offsetIndex) => [-1, 1].map((direction) => ({
+    x: horizontal ? point.x - visualWidth / 2 : point.x + direction * (visualWidth / 2 + offset) - visualWidth / 2,
+    y: horizontal ? point.y + direction * (visualHeight / 2 + offset) - visualHeight / 2 : point.y - visualHeight / 2,
+    width: visualWidth,
+    height: visualHeight,
+    angle,
+    rank: rank + offsetIndex * 0.1,
+  })));
+}
+
 function segmentLabelCandidates(segment, label, size, rank) {
   const horizontal = segment.first.y === segment.second.y;
   const ratios = label.placement === "start" ? [0.2, 0.35]
     : label.placement === "end" ? [0.8, 0.65]
     : [0.5, 0.35, 0.65, 0.25, 0.75, 0.15, 0.85];
-  const offsets = [7, 18, 32, 48];
-  const angle = label.orientation === "along" && !horizontal ? 90 : 0;
-  const visualWidth = angle ? size.height : size.width;
-  const visualHeight = angle ? size.width : size.height;
-  return ratios.flatMap((ratio, ratioIndex) => offsets.flatMap((offset, offsetIndex) => {
-    const point = positionAlong(segment, ratio);
-    return [-1, 1].map((direction) => ({
-      x: horizontal ? point.x - visualWidth / 2 : point.x + direction * (visualWidth / 2 + offset) - visualWidth / 2,
-      y: horizontal ? point.y + direction * (visualHeight / 2 + offset) - visualHeight / 2 : point.y - visualHeight / 2,
-      width: visualWidth,
-      height: visualHeight,
-      angle,
-      rank: rank + ratioIndex * 0.05 + offsetIndex * 0.1,
-    }));
-  }));
+  return ratios.flatMap((ratio, ratioIndex) =>
+    pointLabelCandidates(positionAlong(segment, ratio), horizontal, label, size, rank + ratioIndex * 0.05));
+}
+
+function authoredSegmentRegions(scene, authored) {
+  return [...scene.regions.values()].filter((region) => {
+    if (authored.region?.kind === "padding") {
+      return region.kind === "padding" && region.owner === authored.region.container && region.side === authored.region.side;
+    }
+    if (authored.region?.kind === "gap") return region.kind === "gap" && physicalGapContains(authored.region, region);
+    if (authored.corridor) return region.corridors.includes(authored.corridor);
+    return false;
+  });
+}
+
+function segmentRegionPoint(segment, geometry) {
+  if (segment.first.y === segment.second.y) {
+    if (segment.first.y < geometry.y || segment.first.y > geometry.y + geometry.height) return null;
+    const start = Math.max(Math.min(segment.first.x, segment.second.x), geometry.x);
+    const end = Math.min(Math.max(segment.first.x, segment.second.x), geometry.x + geometry.width);
+    return start <= end ? { x: (start + end) / 2, y: segment.first.y } : null;
+  }
+  if (segment.first.x < geometry.x || segment.first.x > geometry.x + geometry.width) return null;
+  const start = Math.max(Math.min(segment.first.y, segment.second.y), geometry.y);
+  const end = Math.min(Math.max(segment.first.y, segment.second.y), geometry.y + geometry.height);
+  return start <= end ? { x: segment.first.x, y: (start + end) / 2 } : null;
+}
+
+function authoredSegmentLabelCandidates(scene, line, label, size) {
+  const regions = authoredSegmentRegions(scene, label.authoredSegment);
+  if (!regions.length) return [];
+  const candidates = [];
+  for (const segment of routeSegments(line.route)) {
+    for (const region of regions) {
+      const point = segmentRegionPoint(segment, region.geometry);
+      if (point) {
+        candidates.push(...pointLabelCandidates(point, segment.first.y === segment.second.y, label, size, -4)
+          .map((candidate) => ({ ...candidate, authoredRegion: region })));
+      }
+    }
+  }
+  return candidates;
 }
 
 function endpointLabelCandidates(endpoint, label, size, rank) {
@@ -917,7 +1041,10 @@ function placeAllLabels(scene, objectIndex) {
       const size = labelSize(spec.text);
       const candidates = spec.endpoint
         ? endpointLabelCandidates(spec.endpoint, spec, size, 0)
-        : segments.flatMap((segment, rank) => segmentLabelCandidates(segment, spec, size, rank));
+        : [
+            ...(spec.authoredSegment ? authoredSegmentLabelCandidates(scene, line, spec, size) : []),
+            ...segments.flatMap((segment, rank) => segmentLabelCandidates(segment, spec, size, rank + 4)),
+          ];
       if (!candidates.length) continue;
       candidates.sort((first, second) => labelCandidateScore(first, scene, objectIndex, labelIndex, borderIndex) - labelCandidateScore(second, scene, objectIndex, labelIndex, borderIndex));
       const chosen = candidates[0];
