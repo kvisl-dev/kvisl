@@ -290,6 +290,8 @@ The solver never tests all permutations and never performs adjacent swaps until 
 
 `avoid-overlap` is implemented by generating separation constraints only for actual spatial neighbors or actual overlaps discovered by an index. A bounded-overlap input can therefore use an `O(k log k)` overlap-removal pass instead of an `O(k^2)` scan.
 
+Row and column containers apply bounded cross-axis near-miss stretching to all eligible visible siblings, not only siblings with identical roles or shapes. This is the structural `align-items: stretch` default described by the renderer policy; the near-miss cap prevents a small leaf from being inflated to the size of a fundamentally different large container. An explicit centered alignment uses the visible container frame as its target and is clamped to the routing-padding minima, so asymmetric route reservations do not create an accidental visual offset.
+
 ## 11. Phase E: build the symbolic routing mesh
 
 The chosen topology determines which gaps and padding bands exist and their axial order. At this point every region has symbolic extents such as “between member ranks 3 and 7” even though it does not yet have a physical width.
@@ -487,7 +489,7 @@ Automatic fill sizes and preferred sizes may consume surplus, but routing reserv
 The symbolic itinerary is lowered into concrete local geometry:
 
 1. choose the exact dock coordinate within its allocated side slot;
-2. create a short orthogonal escape stub normal to the side;
+2. create an orthogonal escape stub normal to the side; when the end has a head, the terminal run before the first bend is at least twice the rendered head width (a 2:1 length-to-width reserve);
 3. select the allocated track center in each gap or padding band;
 4. create stable boundary portals where the itinerary crosses containers;
 5. join consecutive local tracks with the minimum legal bends;
@@ -499,13 +501,21 @@ The symbolic itinerary is lowered into concrete local geometry:
 
 Region pins constrain only the dimension the region semantically owns. A longitudinal track fixes its cross-axis coordinate but remains movable along the track; a perpendicular crossing fixes the region intersection while allowing the adjacent branch run to choose the shortest legal axial position. Authored waypoints and explicit branch points remain fully hard. This distinction prevents an implicit padding crossing from becoming an accidental two-axis waypoint that creates a return jog.
 
+Polyline simplification may remove a collinear region vertex from the emitted point list, but the resulting segment must still contain that region pin geometrically. A bounded improvement is rejected if it moves the route off any required pin. Shared branch pins are materialized again as explicit vertices after improvement because they encode topology, not merely geometry.
+
+The terminal head reserve is a hard geometric invariant, not an aesthetic score. Simplification, dock sliding, bundling, and bounded refinement may lengthen that straight terminal run but must never insert a bend inside it. Head geometry has one shared source of truth for routing and painting, so a painter-side head-size change updates the required route reserve with it. When that terminal run occupies a sibling gap, measurement reserves the run plus ordinary route-to-object clearance; the router must not manufacture the space by entering a neighboring object.
+
 For each bounded topology candidate, feasibility is evaluated lexicographically before aesthetics: object collisions, forbidden shared runs, and hard-region violations dominate crossings; crossings dominate bends; bends dominate Manhattan length. Equal-length orthogonal candidates prefer a single crossing of an explicit gap and preserve the endpoint's normal departure before entering that gap. After realization, a fixed number of local windows may replace a polyline stretch only when no hard pin is removed and the complete candidate score strictly improves. No pass runs until convergence.
 
 Label placement uses another interval sweep along each track. A label first tries its requested or automatic position, then the nearest free position on the same run. If its already-reserved box cannot fit longitudinally, the associated gap length increases and the affected prefix coordinates are recomputed. The route topology and cross-sectional track allocation do not change.
 
-Candidate generation is local and bounded. Besides fixed offsets, the solver may query a bounded spatial neighborhood and derive exact perpendicular clearances and along-run positions from nearby obstacle edges. This avoids missing a narrow legal slot without searching the canvas or changing dock order. Candidates are rejected when they overlap object geometry, unrelated routes, labels, title strips, or container border decor.
+Candidate generation is local and bounded. Besides fixed offsets, the solver may query a bounded spatial neighborhood and derive exact perpendicular clearances and along-run positions from nearby obstacle and container-border edges. This avoids missing a narrow legal slot without searching the canvas or changing dock order. Candidates are rejected when they overlap object geometry, unrelated routes, labels, title strips, or unrelated container border decor. A label authored on a gap may slightly cross only the branch-facing border adjacent to that gap; this preserves the tight line-to-label spacing used by the visual references without granting a general decor-overlap exception.
+
+A container title strip remains forbidden as a longitudinal route. A short perpendicular boundary crossing receives a small local penalty rather than forcing a canvas-scale detour; the route must still retain the authored padding or corridor track on either side.
 
 Overlay lines use the existing mesh and spatial index but contribute no earlier width reservation. They may accept overlap penalties that reserving lines may not.
+
+A routing-debug render paints the complete channel mesh as a translucent overlay beneath lines and objects: all four side cells and four derived corner junctions of every non-empty container padding ring, every row/column sibling gap, and every grid gutter. The debug rectangles are inset by half a pixel on every edge so adjacent cell boundaries remain visible. This is an inspection of solved routing topology, not a new authoring construct: named and unnamed regions have identical geometric semantics, while provenance distinguishes actively materialized regions and regions explicitly refined by a `Corridor` declaration. Corner junctions are internal mesh cells and never become author-addressable `RegionRef` values. Their only portals are the two outward-facing container sides recorded by the mesh; they cannot form a side-to-side shortcut around the container interior.
 
 Crossing bridges, gaps, and line jumps are painter adornments, not default route topology. They are enumerated only when explicitly enabled by the painter profile and are off by default. The solver must not introduce a jump merely because two legal lines cross.
 

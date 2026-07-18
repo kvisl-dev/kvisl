@@ -1,3 +1,5 @@
+import { headGeometry, normalizedHeads } from "./heads.mjs";
+
 function escape(value) {
   return String(value)
     .replaceAll("&", "&amp;")
@@ -123,21 +125,9 @@ function drawObjectText(object, scene) {
   return result.join("");
 }
 
-function normalizedHeads(heads) {
-  if (Array.isArray(heads)) return heads;
-  if (heads === "none") return ["none", "none"];
-  if (heads === "both") return ["arrow", "arrow"];
-  if (heads === "backward") return ["arrow", "none"];
-  return ["none", "arrow"];
-}
-
-function headKind(value) {
-  if (typeof value === "string") return value;
-  return value?.name ?? "arrow";
-}
-
-function arrowGeometry(tip, previous, kind, stroke) {
-  if (!kind || kind === "none") return "";
+function arrowGeometry(tip, previous, head, stroke) {
+  const geometry = headGeometry(head);
+  if (!geometry.kind || geometry.kind === "none") return "";
   const dx = tip.x - previous.x;
   const dy = tip.y - previous.y;
   const length = Math.hypot(dx, dy) || 1;
@@ -145,16 +135,17 @@ function arrowGeometry(tip, previous, kind, stroke) {
   const uy = dy / length;
   const px = -uy;
   const py = ux;
-  const back = { x: tip.x - ux * 12, y: tip.y - uy * 12 };
-  if (kind.includes("diamond")) {
-    const far = { x: tip.x - ux * 22, y: tip.y - uy * 22 };
-    const fill = kind.includes("filled") ? stroke : "white";
-    return `<polygon points="${tip.x},${tip.y} ${back.x + px * 7},${back.y + py * 7} ${far.x},${far.y} ${back.x - px * 7},${back.y - py * 7}" fill="${escape(fill)}" stroke="${escape(stroke)}" stroke-width="2"/>`;
+  const halfWidth = geometry.width / 2;
+  const back = { x: tip.x - ux * geometry.shoulderDepth, y: tip.y - uy * geometry.shoulderDepth };
+  if (geometry.kind.includes("diamond")) {
+    const far = { x: tip.x - ux * geometry.depth, y: tip.y - uy * geometry.depth };
+    const fill = geometry.kind.includes("filled") ? stroke : "white";
+    return `<polygon points="${tip.x},${tip.y} ${back.x + px * halfWidth},${back.y + py * halfWidth} ${far.x},${far.y} ${back.x - px * halfWidth},${back.y - py * halfWidth}" fill="${escape(fill)}" stroke="${escape(stroke)}" stroke-width="2"/>`;
   }
-  if (kind.includes("triangle")) {
-    return `<polygon points="${tip.x},${tip.y} ${back.x + px * 8},${back.y + py * 8} ${back.x - px * 8},${back.y - py * 8}" fill="white" stroke="${escape(stroke)}" stroke-width="2"/>`;
+  if (geometry.kind.includes("triangle")) {
+    return `<polygon points="${tip.x},${tip.y} ${back.x + px * halfWidth},${back.y + py * halfWidth} ${back.x - px * halfWidth},${back.y - py * halfWidth}" fill="white" stroke="${escape(stroke)}" stroke-width="2"/>`;
   }
-  return `<path d="M ${back.x + px * 6} ${back.y + py * 6} L ${tip.x} ${tip.y} L ${back.x - px * 6} ${back.y - py * 6}" fill="none" stroke="${escape(stroke)}" stroke-width="2" stroke-linejoin="round"/>`;
+  return `<path d="M ${back.x + px * halfWidth} ${back.y + py * halfWidth} L ${tip.x} ${tip.y} L ${back.x - px * halfWidth} ${back.y - py * halfWidth}" fill="none" stroke="${escape(stroke)}" stroke-width="2" stroke-linejoin="round"/>`;
 }
 
 function drawLine(line, scene) {
@@ -162,7 +153,7 @@ function drawLine(line, scene) {
   const stroke = color(line.style.stroke, scene, "#334155");
   const width = line.style.strokeWidth ?? 2;
   const points = line.route.map((point) => `${point.x},${point.y}`).join(" ");
-  const heads = normalizedHeads(line.heads).map(headKind);
+  const heads = normalizedHeads(line.heads);
   const firstHead = arrowGeometry(line.route[0], line.route[1], heads[0], stroke);
   const lastHead = arrowGeometry(line.route.at(-1), line.route.at(-2), heads[1], stroke);
   return `<g data-line="${escape(line.id)}"><polyline points="${points}" fill="none" stroke="${escape(stroke)}" stroke-width="${width}" stroke-linejoin="round" stroke-linecap="round"${dash(line.style)}/>${firstHead}${lastHead}</g>`;
@@ -225,6 +216,17 @@ function drawDividers(scene) {
   return result.join("");
 }
 
+function drawRoutingRegions(scene) {
+  return (scene.channelMesh ?? [])
+    .filter((cell) => cell.geometry?.width > 1 && cell.geometry?.height > 1)
+    .map((cell) => {
+      const geometry = cell.geometry;
+      const authored = cell.corridors?.length ? "true" : "false";
+      return `<rect data-routing-region="${escape(cell.key)}" data-region-kind="${escape(cell.kind)}" data-materialized="${cell.materialized ? "true" : "false"}" data-authored="${authored}" x="${geometry.x + 0.5}" y="${geometry.y + 0.5}" width="${geometry.width - 1}" height="${geometry.height - 1}" fill="#ef4444" fill-opacity="0.1"/>`;
+    })
+    .join("");
+}
+
 export function renderSvg(scene, options = {}) {
   const containers = scene.objects.filter((object) => object.children.length || object.frame).sort((a, b) => depth(a) - depth(b));
   const leaves = scene.objects.filter((object) => !object.children.length && !object.frame);
@@ -235,7 +237,7 @@ export function renderSvg(scene, options = {}) {
   <desc>${escape(diagnostics || "Kvísl layouter prototype preview")}</desc>
   ${options.transparent ? "" : `<rect width="100%" height="100%" fill="${escape(options.background ?? "#ffffff")}"/>`}
   <g id="boundaries">${containers.map((object) => drawShape(object, scene)).join("")}</g>
-  <g id="corridor-dividers">${drawDividers(scene)}</g>
+${options.debugRouting ? `  <g id="routing-regions">${drawRoutingRegions(scene)}</g>\n` : ""}  <g id="corridor-dividers">${drawDividers(scene)}</g>
   <g id="lines">${scene.lines.map((line) => drawLine(line, scene)).join("")}</g>
   <g id="objects">${leaves.map((object) => drawShape(object, scene)).join("")}</g>
   <g id="ports">${drawPorts(scene)}</g>

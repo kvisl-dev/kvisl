@@ -1,3 +1,6 @@
+import { minimumHeadRun, normalizedHeads } from "./heads.mjs";
+import { buildChannelMesh, regionGeometry } from "./mesh.mjs";
+
 const CELL = 160;
 const SIDE_VECTOR = {
   top: { x: 0, y: -1 },
@@ -247,40 +250,6 @@ function alignFacingDocks(scene) {
   }
 }
 
-function regionGeometry(region) {
-  if (region.kind === "padding") {
-    const box = region.owner.box;
-    const clearance = region.clearance ?? 0;
-    const padding = region.owner.paddingBox ?? { top: 12, right: 12, bottom: 12, left: 12 };
-    // A crossing-only region spans the existing content padding. It guides a
-    // perpendicular hierarchy crossing without manufacturing a parallel lane.
-    const thickness = region.thickness > 0 ? region.thickness : padding[region.side];
-    const contentHeight = region.owner.contentHeight ?? 0;
-    if (region.side === "top") {
-      return { x: box.x, y: box.y + padding.top + contentHeight - clearance - thickness, width: box.width, height: thickness, axis: "horizontal" };
-    }
-    if (region.side === "bottom") {
-      return { x: box.x, y: box.y + box.height - padding.bottom + clearance, width: box.width, height: thickness, axis: "horizontal" };
-    }
-    if (region.side === "left") {
-      return { x: box.x + padding.left - clearance - thickness, y: box.y, width: thickness, height: box.height, axis: "vertical" };
-    }
-    return { x: box.x + box.width - padding.right + clearance, y: box.y, width: thickness, height: box.height, axis: "vertical" };
-  }
-  const first = region.owner.children[region.index]?.box;
-  const second = region.owner.children[region.index + 1]?.box;
-  if (!first || !second) return { x: 0, y: 0, width: 0, height: 0, axis: "vertical" };
-  const separatedX = first.x + first.width <= second.x || second.x + second.width <= first.x;
-  if (separatedX) {
-    const left = first.x < second.x ? first.x + first.width : second.x + second.width;
-    const right = first.x < second.x ? second.x : first.x;
-    return { x: left, y: Math.min(first.y, second.y), width: Math.max(0, right - left), height: Math.max(first.y + first.height, second.y + second.height) - Math.min(first.y, second.y), axis: "vertical" };
-  }
-  const top = first.y < second.y ? first.y + first.height : second.y + second.height;
-  const bottom = first.y < second.y ? second.y : first.y;
-  return { x: Math.min(first.x, second.x), y: top, width: Math.max(first.x + first.width, second.x + second.width) - Math.min(first.x, second.x), height: Math.max(0, bottom - top), axis: "horizontal" };
-}
-
 function trackPoint(track, start, end) {
   const geometry = track.region.geometry;
   const offset = (track.index - (track.total - 1) / 2) * track.region.spacing;
@@ -512,7 +481,11 @@ function candidateScore(points, index, ignored, routeIndex, line) {
       if (ignored.has(object) || !segmentHitsBox(first, second, object.box)) continue;
       // a run parallel to a title strip cuts through the text line; a quick
       // perpendicular crossing merely nicks it
-      if (object.kind === "boundary-label" && first.x === second.x) score += 800;
+      if (object.kind === "boundary-label" && first.x === second.x) {
+        const authoredPadding = line.segments.some((segment) =>
+          segment.region?.kind === "padding" || segment.corridor?.side);
+        score += authoredPadding ? 40 : 800;
+      }
       else collisions += 1;
     }
     const candidate = { first, second };
@@ -767,7 +740,11 @@ function orderedPins(line, start, end) {
             ? track.region.corridors.includes(segment.corridor)
             : false);
     if (explicitPadding.has(track.region)) {
-      groups.push({ phase: 2, rank: explicitIndex, pins: paddingTrackPins(track, start, end) });
+      groups.push({
+        phase: 2,
+        rank: explicitIndex,
+        pins: paddingTrackPins(track, start, end).map((pin) => ({ ...pin, required: true })),
+      });
       continue;
     }
     if ([...explicitPadding].some((region) => region.owner === track.region.owner && track.region.kind === "gap")) continue;
@@ -777,6 +754,7 @@ function orderedPins(line, start, end) {
       // a request to travel along the gap. Keep its cross-axis coordinate and
       // let routing choose the along-axis intersection from the endpoints.
       if (isDirectGapCrossing(line, track.region)) pin.crossing = true;
+      pin.required = true;
       groups.push({ phase: 2, rank: explicitIndex, pins: [pin] });
       continue;
     }
@@ -837,29 +815,41 @@ function physicalGapContains(reference, region) {
     && region.index < Math.max(reference.between[0].siblingIndex, reference.between[1].siblingIndex);
 }
 
-function escapePoint(endpoint, distance = endpoint.escapeDistance ?? 14) {
+function escapePoint(endpoint, distance = endpoint.routeEscapeDistance ?? endpoint.escapeDistance ?? 14) {
   const vector = SIDE_VECTOR[endpoint.physicalSide] ?? { x: 0, y: 0 };
   return { x: endpoint.point.x + vector.x * distance, y: endpoint.point.y + vector.y * distance };
 }
 
-function endpointStub(endpoint) {
+function endpointStub(line, endpoint) {
+  const endIndex = endpoint === line.from ? 0 : 1;
+  const minimumRun = minimumHeadRun(normalizedHeads(line.heads)[endIndex]);
+  const escapeDistance = Math.max(endpoint.escapeDistance ?? 14, minimumRun);
+  endpoint.routeEscapeDistance = escapeDistance;
   const port = endpoint.port;
   if (port?.sharing?.mode !== "bundle" || port.attachments.length < 2) {
-    return [endpoint.point, escapePoint(endpoint)];
+    return [endpoint.point, escapePoint(endpoint, escapeDistance)];
   }
   const attachmentIndex = port.attachments.findIndex((attachment) => attachment.endpoint === endpoint);
   const offset = (attachmentIndex - (port.attachments.length - 1) / 2) * 8;
   const vector = SIDE_VECTOR[endpoint.physicalSide] ?? { x: 0, y: 0 };
   const perpendicular = { x: -vector.y, y: vector.x };
-  const boundary = {
-    x: endpoint.point.x + perpendicular.x * offset,
-    y: endpoint.point.y + perpendicular.y * offset,
+  if (minimumRun === 0) {
+    const boundary = {
+      x: endpoint.point.x + perpendicular.x * offset,
+      y: endpoint.point.y + perpendicular.y * offset,
+    };
+    return [
+      endpoint.point,
+      boundary,
+      { x: boundary.x + vector.x * escapeDistance, y: boundary.y + vector.y * escapeDistance },
+    ];
+  }
+  const escape = escapePoint(endpoint, escapeDistance);
+  const branch = {
+    x: escape.x + perpendicular.x * offset,
+    y: escape.y + perpendicular.y * offset,
   };
-  return [
-    endpoint.point,
-    boundary,
-    { x: boundary.x + vector.x * 14, y: boundary.y + vector.y * 14 },
-  ];
+  return offset === 0 ? [endpoint.point, escape] : [endpoint.point, escape, branch];
 }
 
 // Docks sit on the box edge and stubs leave outward, so the endpoint boxes
@@ -873,8 +863,8 @@ function ignoredObjects(line, index) {
 
 function routeLine(line, index, routeIndex) {
   if (!line.from || !line.to) return;
-  const fromStub = endpointStub(line.from);
-  const toStub = endpointStub(line.to);
+  const fromStub = endpointStub(line, line.from);
+  const toStub = endpointStub(line, line.to);
   const start = fromStub.at(-1);
   const end = toStub.at(-1);
   // a track pin is hard across its region but soft along it: expand it into
@@ -938,6 +928,7 @@ function routeLine(line, index, routeIndex) {
     }
   }
   // escape stubs count as pins so collapse keeps the perpendicular departure
+  line.requiredRoutePins = pins.filter((pin) => pin.required).map((pin) => ({ x: pin.x, y: pin.y }));
   line.pinPoints = [...pins, ...fromStub.slice(1), ...toStub.slice(1)].map((pin) => ({ x: pin.x, y: pin.y }));
   const waypoints = [...fromStub, ...pins, ...toStub.reverse()];
   const route = [];
@@ -947,6 +938,10 @@ function routeLine(line, index, routeIndex) {
     route.push(...(route.length ? piece.slice(1) : piece));
   }
   line.route = simplify(route);
+  materializeSharedPins(line);
+}
+
+function materializeSharedPins(line) {
   for (const shared of line.sharedPins ?? []) {
     const pinIndex = line.route.findIndex((point) => point.x === shared.pin.x && point.y === shared.pin.y);
     if (pinIndex >= 0) continue;
@@ -983,6 +978,17 @@ function indexRoute(routeIndex, line) {
 
 function isPinPoint(line, point) {
   return (line.pinPoints ?? []).some((pin) => Math.abs(pin.x - point.x) < 0.5 && Math.abs(pin.y - point.y) < 0.5);
+}
+
+function routeContainsPoint(points, point) {
+  return points.slice(1).some((second, index) => {
+    const first = points[index];
+    const onHorizontal = first.y === second.y && point.y === first.y
+      && point.x >= Math.min(first.x, second.x) && point.x <= Math.max(first.x, second.x);
+    const onVertical = first.x === second.x && point.x === first.x
+      && point.y >= Math.min(first.y, second.y) && point.y <= Math.max(first.y, second.y);
+    return onHorizontal || onVertical;
+  });
 }
 
 // Like simplify, but keeps collinear pin points: a shared branch point stays
@@ -1022,6 +1028,11 @@ function collapseJogs(line, index, routeIndex) {
       }
       const current = line.route.slice(start, end + 1);
       const replacement = orthogonal(line.route[start], line.route[end], index, ignored, routeIndex, line);
+      const requiredPins = (line.requiredRoutePins ?? []).filter((pin) => routeContainsPoint(current, pin));
+      if (requiredPins.some((pin) => !routeContainsPoint(replacement, pin))) {
+        start += 1;
+        continue;
+      }
       const currentScore = candidateScore(current, index, ignored, routeIndex, line);
       const replacementScore = candidateScore(replacement, index, ignored, routeIndex, line);
       if (replacementScore < currentScore - 0.5) {
@@ -1412,13 +1423,43 @@ function labelCandidateScore(candidate, line, scene, objectIndex, labelIndex, bo
   for (const label of labelIndex.queryBox(candidate)) if (boxesOverlap(candidate, label.box, 4)) score += 150000;
   // sitting on a container border stroke is noise even where the interior is
   // free; weighted below a real object overlap so it stays the lesser evil
-  for (const ring of borderIndex.queryBox(candidate)) if (boxesOverlap(candidate, ring.box, 2)) score += 60000;
+  for (const ring of borderIndex.queryBox(candidate)) {
+    if (boxesOverlap(candidate, ring.box, 2) && !labelMayCrossContainerBorder(candidate, ring)) score += 60000;
+  }
   for (const segment of routeIndex.queryBox(candidate)) {
     if (segment.line !== line && !labelGeometryMayShare(line, segment.line) && segmentHitsBox(segment.first, segment.second, candidate, 1)) {
       score += 120000;
     }
   }
   return score;
+}
+
+// Object-aware label generation already derives exact clearances from nearby
+// leaf boxes. Add the equivalent bounded candidates for container borders so
+// a valid layout shift cannot strand the best label directly on a frame.
+function borderClearingCandidates(candidates, borderIndex) {
+  const result = [...candidates];
+  const clearance = 4;
+  for (const candidate of candidates) {
+    for (const ring of borderIndex.queryBox(candidate)) {
+      if (!boxesOverlap(candidate, ring.box, 2) || labelMayCrossContainerBorder(candidate, ring)) continue;
+      const shifts = ring.side === "left" || ring.side === "right"
+        ? [
+            { x: ring.box.x - clearance - candidate.width, y: candidate.y },
+            { x: ring.box.x + ring.box.width + clearance, y: candidate.y },
+          ]
+        : [
+            { x: candidate.x, y: ring.box.y - clearance - candidate.height },
+            { x: candidate.x, y: ring.box.y + ring.box.height + clearance },
+          ];
+      result.push(...shifts.map((shift, index) => ({
+        ...candidate,
+        ...shift,
+        rank: candidate.rank + 0.02 + index * 0.01,
+      })));
+    }
+  }
+  return result;
 }
 
 function placeAllLabels(scene, objectIndex) {
@@ -1430,12 +1471,13 @@ function placeAllLabels(scene, objectIndex) {
     const segments = routeSegments(line.route);
     for (const spec of labelSpecs(line)) {
       const size = labelSize(spec.text);
-      const candidates = spec.endpoint
+      const initialCandidates = spec.endpoint
         ? endpointLabelCandidates(spec.endpoint, spec, size, 0)
         : [
             ...(spec.authoredSegment ? authoredSegmentLabelCandidates(scene, line, spec, size, objectIndex) : []),
             ...segments.flatMap((segment, rank) => segmentLabelCandidates(segment, spec, size, rank + 4, objectIndex)),
           ];
+      const candidates = borderClearingCandidates(initialCandidates, borderIndex);
       if (!candidates.length) continue;
       candidates.sort((first, second) =>
         labelCandidateScore(first, line, scene, objectIndex, labelIndex, borderIndex, routeIndex)
@@ -1507,13 +1549,24 @@ export function containerBorderRings(scene) {
     if (object.children.length === 0 && !object.frame) continue;
     const box = object.box;
     rings.push(
-      { kind: "container-border", owner: object, box: { x: box.x, y: box.y, width: box.width, height: thickness } },
-      { kind: "container-border", owner: object, box: { x: box.x, y: box.y + box.height - thickness, width: box.width, height: thickness } },
-      { kind: "container-border", owner: object, box: { x: box.x, y: box.y, width: thickness, height: box.height } },
-      { kind: "container-border", owner: object, box: { x: box.x + box.width - thickness, y: box.y, width: thickness, height: box.height } },
+      { kind: "container-border", side: "top", owner: object, box: { x: box.x, y: box.y, width: box.width, height: thickness } },
+      { kind: "container-border", side: "bottom", owner: object, box: { x: box.x, y: box.y + box.height - thickness, width: box.width, height: thickness } },
+      { kind: "container-border", side: "left", owner: object, box: { x: box.x, y: box.y, width: thickness, height: box.height } },
+      { kind: "container-border", side: "right", owner: object, box: { x: box.x + box.width - thickness, y: box.y, width: thickness, height: box.height } },
     );
   }
   return rings;
+}
+
+export function labelMayCrossContainerBorder(label, ring) {
+  const region = label.authoredRegion;
+  if (ring.kind !== "container-border" || region?.kind !== "gap") return false;
+  const members = region.owner.children.filter((child) => !child.anchor && !child.frame);
+  const left = members[region.index];
+  const right = members[region.index + 1];
+  const inside = (object, branch) => object === branch || hasAncestor(object, branch);
+  return ring.side === "right" && left && inside(ring.owner, left)
+    || ring.side === "left" && right && inside(ring.owner, right);
 }
 
 export function route(scene) {
@@ -1537,6 +1590,8 @@ export function route(scene) {
   improveRoutes(scene, index);
   slideDocks(scene, index);
   improveRoutes(scene, index);
+  for (const line of scene.lines) materializeSharedPins(line);
   placeAllLabels(scene, index);
+  buildChannelMesh(scene);
   return scene;
 }

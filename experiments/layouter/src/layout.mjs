@@ -1,3 +1,5 @@
+import { minimumHeadRun, normalizedHeads } from "./heads.mjs";
+
 const SIDES = ["top", "right", "bottom", "left"];
 const SPACING = { none: 0, tiny: 6, small: 12, medium: 20, large: 32, xlarge: 48 };
 const ROUTE_CLEARANCE = 12;
@@ -228,12 +230,22 @@ export function reserveRoutingSpace(scene) {
           const gapIndex = Math.floor((fromColumn + toColumn - 1) / 2);
           const key = `gridcol:${lca.path}:${gapIndex}`;
           line.labelReservation = { key, axis: "horizontal" };
-          lca.reserved.gridColumnGaps[gapIndex] = Math.max(lca.reserved.gridColumnGaps[gapIndex] ?? 0, reservations.get(key) ?? 0);
+          const headRun = Math.max(...normalizedHeads(line.heads).map(minimumHeadRun));
+          lca.reserved.gridColumnGaps[gapIndex] = Math.max(
+            lca.reserved.gridColumnGaps[gapIndex] ?? 0,
+            reservations.get(key) ?? 0,
+            headRun ? headRun + ROUTE_CLEARANCE : 0,
+          );
         } else if (fromColumn === toColumn && fromRow !== toRow) {
           const gapIndex = Math.floor((fromRow + toRow - 1) / 2);
           const key = `gridrow:${lca.path}:${gapIndex}`;
           line.labelReservation = { key, axis: "vertical" };
-          lca.reserved.gridRowGaps[gapIndex] = Math.max(lca.reserved.gridRowGaps[gapIndex] ?? 0, reservations.get(key) ?? 0);
+          const headRun = Math.max(...normalizedHeads(line.heads).map(minimumHeadRun));
+          lca.reserved.gridRowGaps[gapIndex] = Math.max(
+            lca.reserved.gridRowGaps[gapIndex] ?? 0,
+            reservations.get(key) ?? 0,
+            headRun ? headRun + ROUTE_CLEARANCE : 0,
+          );
         }
       }
       const implicitRegions = physicalGapRegions(fromBranch, toBranch, regions, { implicit: true });
@@ -564,9 +576,10 @@ function measureObject(object, scene) {
   let cursor = 0;
   if (layout === "row") {
     const extra = Math.max(0, object.frameWidth - padding.left - padding.right - bodyWidth);
+    const availableHeight = Math.max(bodyHeight, object.frameHeight - padding.top - padding.bottom - object.contentHeight);
     members.forEach((child, index) => {
       child.localX = padding.left + distributeOffset(object.distribute, extra, index, members.length) + cursor;
-      child.localY = padding.top + object.contentHeight + alignOffset(object.align, bodyHeight, child.measured.height);
+      child.localY = padding.top + object.contentHeight + alignOffset(object.align, availableHeight, child.measured.height);
       cursor += child.measured.width + (gaps[index] ?? 0);
     });
   } else if (layout === "grid" && object.layoutData) {
@@ -591,8 +604,14 @@ function measureObject(object, scene) {
     });
   } else {
     const extra = layout === "column" ? Math.max(0, object.frameHeight - padding.top - padding.bottom - object.contentHeight - bodyHeight) : 0;
+    const availableWidth = Math.max(bodyWidth, object.frameWidth - padding.left - padding.right);
     members.forEach((child, index) => {
-      child.localX = padding.left + alignOffset(object.align, bodyWidth, child.measured.width);
+      const paddedX = padding.left + alignOffset(object.align, availableWidth, child.measured.width);
+      const centeredX = (object.frameWidth - child.measured.width) / 2;
+      const maximumX = object.frameWidth - padding.right - child.measured.width;
+      child.localX = object.align === "center"
+        ? Math.max(padding.left, Math.min(maximumX, centeredX))
+        : paddedX;
       child.localY = padding.top + object.contentHeight + distributeOffset(object.distribute, extra, index, members.length) + cursor;
       cursor += child.measured.height + (gaps[index] ?? 0);
     });
@@ -709,12 +728,8 @@ function computeSizeFloors(scene) {
       const dimension = layout === "row" ? "height" : "width";
       const overall = Math.max(...members.map((child) => child.measured[dimension]));
       for (const child of members) {
-        if (structural(child)) raised = raiseFloor(child, dimension, overall) || raised;
-      }
-      for (const group of groups.values()) {
-        if (group.length < 2) continue;
-        const target = Math.max(...group.map((child) => child.measured[dimension]));
-        for (const child of group) raised = stretchTo(child, dimension, target) || raised;
+        const lift = structural(child) ? raiseFloor : stretchTo;
+        raised = lift(child, dimension, overall) || raised;
       }
     } else if (layout === "grid" && container.layoutData) {
       const { columns, columnWidths, rowHeights } = container.layoutData;

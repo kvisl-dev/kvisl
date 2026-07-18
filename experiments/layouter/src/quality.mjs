@@ -1,5 +1,5 @@
 import { effectiveLayout, lineLabelDemand } from "./layout.mjs";
-import { boundaryLabelStrips, containerBorderRings } from "./route.mjs";
+import { boundaryLabelStrips, containerBorderRings, labelMayCrossContainerBorder } from "./route.mjs";
 
 const CELL = 160;
 
@@ -644,6 +644,7 @@ export function analyzeScene(scene) {
     // title strip are tolerated
     routeTitleCrossings: routeObjectIntersections(scene, titleStrips).filter((hit) =>
       hit.line.route[hit.segmentIndex].y === hit.line.route[hit.segmentIndex + 1].y),
-    labelDecorOverlaps: labelObjectOverlaps(scene, [...titleStrips, ...containerBorderRings(scene)]),
+    labelDecorOverlaps: labelObjectOverlaps(scene, [...titleStrips, ...containerBorderRings(scene)])
+      .filter((item) => !labelMayCrossContainerBorder(item.label, item.object)),
   };
 }

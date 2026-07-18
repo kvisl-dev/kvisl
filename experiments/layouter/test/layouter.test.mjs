@@ -5,6 +5,7 @@ import path from "node:path";
 import { performance } from "node:perf_hooks";
 import { test } from "node:test";
 import { layout } from "../src/layout.mjs";
+import { minimumHeadRun, normalizedHeads } from "../src/heads.mjs";
 import { solveFile } from "../src/pipeline.mjs";
 import { project } from "../src/project.mjs";
 import { analyzeScene } from "../src/quality.mjs";
@@ -92,6 +93,36 @@ test("every repository diagram produces a finite orthogonal SVG preview", async 
   }
 });
 
+test("a headed endpoint has a straight terminal run at least twice the head width", async () => {
+  for (const file of await exampleFiles()) {
+    const { scene } = await solveFile(file);
+    for (const line of scene.lines) {
+      const heads = normalizedHeads(line.heads);
+      const terminalRuns = [
+        Math.abs(line.route[1].x - line.route[0].x) + Math.abs(line.route[1].y - line.route[0].y),
+        Math.abs(line.route.at(-1).x - line.route.at(-2).x) + Math.abs(line.route.at(-1).y - line.route.at(-2).y),
+      ];
+      heads.forEach((head, endIndex) => {
+        const minimum = minimumHeadRun(head);
+        assert.ok(terminalRuns[endIndex] >= minimum,
+          `${path.relative(repo, file)}:${line.id} end ${endIndex} has ${terminalRuns[endIndex]}px before its first bend; expected ${minimum}px`);
+      });
+    }
+  }
+});
+
+test("the solved channel mesh includes unused padding sides, sibling gaps, and corner junctions", async () => {
+  const entry = path.join(repo, "examples", "agent-substrate", "diagram.tsx");
+  const { scene } = await solveFile(entry);
+  const keys = new Set(scene.channelMesh.map((cell) => cell.key));
+  assert.ok(keys.has("mesh:padding:cluster:bottom"));
+  assert.ok(keys.has("mesh:corner:cluster:top-left"));
+  assert.ok(keys.has("mesh:corner:cluster:bottom-right"));
+  assert.deepEqual(scene.channelMesh.find((cell) => cell.key === "mesh:corner:cluster:top-left").outwardSides, ["top", "left"]);
+  assert.ok(keys.has("mesh:grid-column-gap:cluster/layers:0"));
+  assert.ok(scene.channelMesh.some((cell) => cell.kind === "gap" && !cell.materialized));
+});
+
 test("solving the same diagram is deterministic", async () => {
   const entry = path.join(repo, "examples", "agent-substrate", "diagram.tsx");
   const first = await solveFile(entry);
@@ -159,6 +190,23 @@ test("padding tracks occupy reserved inner padding instead of a container border
   const title = boundaryLabelStrips(scene).find((strip) => strip.owner === cluster);
   assert.ok(track.geometry.y >= title.box.y + title.box.height);
   assert.ok(track.geometry.y > cluster.box.y + 3);
+});
+
+test("an authored padding route keeps its main run on the reserved track", async () => {
+  const entry = path.join(repo, "examples", "agent-substrate", "diagram.tsx");
+  const { scene } = await solveFile(entry);
+  const line = scene.lines.find((candidate) => candidate.id === "worker-pool-controller");
+  const cluster = scene.objectByPath.get("cluster");
+  const track = [...scene.regions.values()].find((region) =>
+    region.kind === "padding" && region.owner === cluster && region.side === "top");
+  const trackY = track.geometry.y + track.geometry.height / 2;
+  const horizontal = line.route.slice(1)
+    .map((point, index) => ({ first: line.route[index], second: point }))
+    .find((segment) => segment.first.y === segment.second.y && segment.first.y === trackY);
+  assert.deepEqual(line.route[0], line.from.point);
+  assert.deepEqual(line.route.at(-1), line.to.point);
+  assert.equal(horizontal.first.x, line.from.point.x);
+  assert.equal(horizontal.second.x, line.to.point.x);
 });
 
 test("routing reservations predict the approach side selected from an explicit ancestor corridor", async () => {
@@ -293,6 +341,33 @@ test("a segment label stays anchored at the authored routing region", async () =
   assert.ok(horizontal
     ? label.x >= Math.min(segment.first.x, segment.second.x) && label.x <= Math.max(segment.first.x, segment.second.x)
     : label.y >= Math.min(segment.first.y, segment.second.y) && label.y <= Math.max(segment.first.y, segment.second.y));
+});
+
+test("a gap label may hug the branch-facing border without moving away from its line", async () => {
+  const entry = path.join(repo, "examples", "agent-substrate", "diagram.tsx");
+  const { scene } = await solveFile(entry);
+  const line = scene.lines.find((candidate) => candidate.id === "self-suspend");
+  const label = line.routeLabels.find((candidate) => candidate.text.startsWith("api.ate-system"));
+  const segment = line.route.slice(1)
+    .map((point, index) => ({ first: line.route[index], second: point }))[label.authoredRun];
+  const distance = segment.first.x === segment.second.x
+    ? Math.min(Math.abs(label.box.x - segment.first.x), Math.abs(label.box.x + label.box.width - segment.first.x))
+    : Math.min(Math.abs(label.box.y - segment.first.y), Math.abs(label.box.y + label.box.height - segment.first.y));
+  assert.equal(label.authoredAxis, true);
+  assert.ok(distance <= 8, `gap label is ${distance}px from its authored run`);
+});
+
+test("column near-miss stretching and final-width alignment match the reference composition", async () => {
+  const entry = path.join(repo, "examples", "agent-substrate", "diagram.tsx");
+  const { scene } = await solveFile(entry);
+  const workerPod = scene.objectByPath.get("cluster/layers/runtime/worker-stack/worker-pod");
+  const helper = scene.objectByPath.get(`${workerPod.path}/ateom-visor`);
+  const sandbox = scene.objectByPath.get(`${workerPod.path}/sandbox`);
+  const storage = scene.objectByPath.get("cluster/layers/control-and-storage/snapshot-storage");
+  const checkpoint = scene.objectByPath.get(`${storage.path}/checkpoint`);
+  assert.equal(helper.box.width, sandbox.box.width);
+  assert.equal(helper.box.x, sandbox.box.x);
+  assert.equal(checkpoint.box.x + checkpoint.box.width / 2, storage.box.x + storage.box.width / 2);
 });
 
 test("explicit padding pins reserve a physical routing band", async () => {
