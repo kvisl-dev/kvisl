@@ -395,6 +395,14 @@ Commands must support machine-readable diagnostics, stdin/stdout where meaningfu
 
 Embedding APIs in TypeScript and JavaScript should mirror the same stage boundaries rather than expose one opaque `build()` function only.
 
+### 16.1 Current local package slice
+
+The repository currently prepares an npm tarball without publishing it. Its manifest includes public package metadata, the `kvisl` `bin`, Node.js engine range, runtime dependencies, and only the source files required by the command. The executable supports `check`, `normalize`, `materialize`, `solve`, `paint`, and end-to-end `render`; SVG is the implemented painter and Excalidraw returns an explicit unsupported-target diagnostic.
+
+The compiler frontend aliases the bundled authoring API, transforms TSX with esbuild, resolves local, bare npm, `npm:`, `jsr:`, and HTTPS modules, follows relative remote imports against final redirect URLs, records hashes, and supports explicit lock update plus offline cache verification. `.kvisl.css` is recognized as an immutable dependency value, but attachment is rejected until the open restricted-CSS grammar decision is resolved; this prevents the implementation from silently inventing semantics that do not exist in the model.
+
+The stage commands currently serialize explicitly prototype-namespaced JSON or YAML artifacts. They exercise and test the intended process boundaries but do not claim to be the stable canonical Logical, Projection, or Solved schemas drafted in [MODEL.md](MODEL.md). The packed-tarball test uses the tarball's `bin` through `npx` and verifies SVG output before any publication step.
+
 ## 17. Testing and conformance plumbing
 
 The fixtures under [`examples/`](examples/) are golden inputs. Every implemented pipeline stage should process every applicable fixture and produce:

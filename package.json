@@ -1,9 +1,45 @@
 {
   "name": "kvisl",
-  "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "Composable modelling language for design diagrams — normalizer slice",
+  "description": "Composable, agent-editable architecture diagrams authored in TSX",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sttts/kvisl.git"
+  },
+  "homepage": "https://github.com/sttts/kvisl#readme",
+  "bugs": {
+    "url": "https://github.com/sttts/kvisl/issues"
+  },
+  "keywords": [
+    "architecture-diagrams",
+    "diagramming",
+    "tsx",
+    "excalidraw",
+    "svg"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "bin": {
+    "kvisl": "bin/kvisl.mjs"
+  },
+  "exports": {
+    ".": "./packages/cli/index.mjs",
+    "./core": "./experiments/layouter/src/authoring.mjs",
+    "./core/jsx-runtime": "./experiments/layouter/src/jsx-runtime.mjs"
+  },
+  "files": [
+    "bin/",
+    "packages/",
+    "experiments/layouter/src/",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "build": "node tools/build-diagrams.mjs",
     "docs:build": "node tools/build-diagrams.mjs",
@@ -11,11 +47,14 @@
     "layout:examples:debug": "node experiments/layouter/render-all.mjs --debug-routing",
     "layout:css-example": "node experiments/layouter/render.mjs examples/modelplane-fleet-inference/neon-infrastructure.tsx --output experiments/layouter/output/modelplane-fleet-inference-neon.svg",
     "layout:render": "node experiments/layouter/render.mjs",
-    "normalize": "node tools/normalize.mjs",
+    "normalize": "node bin/kvisl.mjs normalize",
+    "cli": "node bin/kvisl.mjs",
+    "pack:check": "npm pack --dry-run",
     "test": "node --test tests/*.test.mjs experiments/layouter/test/*.test.mjs",
     "test:layouter": "node --test experiments/layouter/test/*.test.mjs"
   },
-  "devDependencies": {
-    "esbuild": "^0.25.0"
+  "dependencies": {
+    "esbuild": "^0.25.12",
+    "yaml": "^2.9.0"
   }
 }

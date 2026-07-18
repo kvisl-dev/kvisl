@@ -21,9 +21,29 @@ $ npx kvisl render diagram.tsx -o diagram.svg
 $ npx kvisl render diagram.tsx -o diagram.excalidraw
 ```
 
+The repository now packages and smoke-tests that command surface locally. The SVG painter, staged JSON/YAML artifacts, dependency cache and lock, and packed-tarball `npx` invocation are executable; publishing the package and implementing the Excalidraw painter are the two intentionally remaining distribution targets. Until the package is published, exercise exactly what npm will install with a local tarball:
+
+```console
+$ npm ci
+$ npm pack --pack-destination dist
+$ npm exec --package ./dist/kvisl-0.1.0.tgz -- kvisl render diagram.tsx -o diagram.svg
+```
+
+The CLI also exposes the pipeline for inspection:
+
+```console
+$ npx kvisl check diagram.tsx
+$ npx kvisl normalize diagram.tsx -o logical.yaml
+$ npx kvisl materialize logical.yaml --target a4 -o projection.yaml
+$ npx kvisl solve projection.yaml -o solved.yaml
+$ npx kvisl paint solved.yaml -o diagram.svg
+```
+
+These intermediate artifacts are explicitly versioned as prototype schemas while the canonical IR schemas in [MODEL.md](MODEL.md) are still being finalized. See the [CLI guide](docs/cli.md) for every option and the local release check.
+
 Human-facing output is deliberately cheerful and colorful: every pipeline step starts with an emoji, from `📦 Resolving dependencies` through `🛤️ Routing lines` to `✨ Wrote diagram.svg`. Machine-readable diagnostics remain undecorated structured data.
 
-Dependencies of a diagram remain ordinary module and stylesheet imports. Kvísl resolves local modules, project-installed bare npm packages, Deno-compatible `npm:`, `jsr:`, and `https:` specifiers, and local or remote `.kvisl.css` stylesheets without requiring Deno. Modules, stylesheets, their `@import` graph, and referenced assets are cached by content and covered by one reproducibility lock; there is no Kvísl module-declaration file.
+Dependencies of a diagram remain ordinary imports. The current frontend resolves local modules, project-installed bare npm packages, Deno-compatible `npm:`, `jsr:`, and `https:` specifiers without requiring Deno. Remote modules are cached by content and covered by a reproducibility lock; there is no Kvísl module-declaration file. The resolver already recognizes local and remote `.kvisl.css` values, but attaching one deliberately diagnoses until the restricted stylesheet grammar — still an open decision in [REQUIREMENTS.md](REQUIREMENTS.md) — is frozen and parsed into typed rules.
 
 ```tsx
 import { Diagram } from "@kvisl/core";
@@ -148,7 +168,7 @@ export default (
   </a>
 </p>
 
-Regenerate this rendering together with every other repository diagram using `npm run build`. Styles may be typed TS data or imported `.kvisl.css`; both normalize to the same `RuleIR` and `TokenSetIR`, so vendoring a company-wide stylesheet changes neither the model nor the renderer contract.
+Regenerate this rendering together with every other repository diagram using `npm run build`. Typed TS rules are the executable styling path today. Imported `.kvisl.css` is the planned equivalent serialization of `RuleIR` and `TokenSetIR`; its exact restricted syntax must be frozen before the parser can implement that contract without inventing a second styling model.
 
 ## Authoring
 
@@ -223,7 +243,8 @@ A normal deep line target stops at the deepest object instantiated by the select
 ## Documentation
 
 - [Overview](docs/overview.md) explains the model and where Kvísl fits.
-- [Getting started](docs/getting-started.md) creates and renders a TSX model as an editable Excalidraw document.
+- [Getting started](docs/getting-started.md) creates and renders a TSX model as SVG and explains the staged pipeline.
+- [CLI and local packaging](docs/cli.md) documents commands, diagnostics, lock/cache controls, and the packed-tarball test.
 - [Layout and orientation](docs/layout-and-orientation.md) defines local frames, quarter turns, upright child geometry, and orientation depth.
 - [Dependencies, remote modules, and stylesheets](docs/dependencies.md) explains local, npm, JSR, HTTPS, CSS, cache, lock, and trust behavior.
 - [Routing, corridors, and ports](docs/routing-and-ports.md) illustrates hierarchy-crossing routes, sharing modes, port groups, and docks.

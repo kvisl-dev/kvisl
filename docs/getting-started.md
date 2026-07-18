@@ -1,6 +1,6 @@
 # Getting started
 
-This guide walks from an empty TSX file to an editable Excalidraw document, then introduces reusable components, logical routing, presentation rules, and adaptive views. A supported Node.js installation with npm and `npx` is the only system prerequisite; the [dependency guide](dependencies.md) covers reusable local and Internet modules, stylesheets, and their assets.
+This guide walks from an empty TSX file to an SVG architecture diagram, then introduces reusable components, logical routing, presentation rules, and adaptive views. A supported Node.js installation with npm and `npx` is the only system prerequisite; the [CLI guide](cli.md) covers the locally packaged prototype and the [dependency guide](dependencies.md) covers reusable local and Internet modules.
 
 ## Create the first diagram
 
@@ -48,7 +48,7 @@ export default (
 Render it:
 
 ```console
-$ npx kvisl render architecture.tsx -o architecture.excalidraw
+$ npx kvisl render architecture.tsx -o architecture.svg
 📦 Resolving dependencies
 ⚡ Transforming TSX
 🧩 Expanding components
@@ -56,11 +56,11 @@ $ npx kvisl render architecture.tsx -o architecture.excalidraw
 🔭 Selecting views
 📐 Laying out objects
 🛤️ Routing lines
-🎨 Painting Excalidraw
-✨ Wrote architecture.excalidraw
+🎨 Painting SVG
+✨ Wrote architecture.svg
 ```
 
-The command evaluates the TSX module, expands components, normalizes the logical model, lays it out, routes the line, and writes an editable Excalidraw document. Human-facing progress is colorful and every step begins with an emoji; structured diagnostic modes omit that decoration.
+The command evaluates the TSX module once, expands components, normalizes the logical model, selects views, lays it out, routes the line, and writes SVG. Human-facing progress is colorful and every step begins with an emoji; structured diagnostic modes omit that decoration. The same painter dispatch reserves editable Excalidraw as the next target, but that painter is not part of the current local package yet.
 
 The important absence in the source is intentional: there are no x/y positions, line bends, or label coordinates.
 
@@ -295,8 +295,9 @@ Render for a constrained page:
 ```console
 $ npx kvisl render architecture.tsx \
     --target a4 \
-    --policy maximum-that-fits \
-    -o architecture-a4.excalidraw
+    --inline-size 780 \
+    --block-size 1080 \
+    -o architecture-a4.svg
 ```
 
 Render the same model for a large poster:
@@ -304,8 +305,9 @@ Render the same model for a large poster:
 ```console
 $ npx kvisl render architecture.tsx \
     --target a0 \
-    --policy maximum-that-fits \
-    -o architecture-a0.excalidraw
+    --inline-size 2800 \
+    --block-size 3960 \
+    -o architecture-a0.svg
 ```
 
 The renderer allocates space outside-in and may select different views without re-evaluating the TSX or changing semantic identity.
@@ -349,16 +351,16 @@ The single render command is the normal path. The CLI also exposes the pipeline 
 $ npx kvisl normalize architecture.tsx --output logical.yaml
 $ npx kvisl materialize logical.yaml --target a4 --output projection.yaml
 $ npx kvisl solve projection.yaml --output solved.yaml
-$ npx kvisl paint solved.yaml --format excalidraw --output architecture.excalidraw
+$ npx kvisl paint solved.yaml --format svg --output architecture.svg
 ```
 
 [![The complete renderer-neutral pipeline, authored and rendered with Kvísl](generated/render-pipeline.svg)](diagrams/render-pipeline.tsx)
 
-- Logical IR contains normalized objects, ports, lines, rules, constraints, and hidden view templates.
-- Projection IR records the selected view instances and renderer context.
-- Solved IR adds local-frame geometry and provenance for painters.
+- The current logical prototype artifact contains the serializable expanded model, dependency manifest, and frontend diagnostics.
+- The projection prototype records the renderer context and selected view instances without evaluating TSX again.
+- The solved prototype adds local-frame geometry, routed lines, diagnostics, and the renderer-neutral data consumed by the SVG painter.
 
-All three are versioned and serializable so the TypeScript and JavaScript stages can exchange, cache, and inspect the same model without re-running author code.
+All three are versioned and serializable so the TypeScript and JavaScript stages can exchange, cache, and inspect the same model without re-running author code. The executable prototype currently marks these schemas explicitly as provisional; [MODEL.md](../MODEL.md) remains the source of truth for the canonical IR being designed.
 
 ## What the author controls
 

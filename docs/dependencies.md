@@ -11,6 +11,8 @@ $ npx kvisl render diagram.tsx -o diagram.svg
 $ npx kvisl render diagram.tsx -o diagram.excalidraw
 ```
 
+The repository package currently executes the SVG command. Excalidraw remains the next painter behind the already-reserved suffix. Before registry publication, the same npm `bin` is exercised from a local tarball as described in the [CLI guide](cli.md).
+
 The npm package supplies the compiler frontend, matching `@kvisl/core` authoring API, automatic JSX runtime, planners, experimental layouter, and target painters. A project does not install Kvísl merely to make `@kvisl/core` visible to the compiler, and it does not need Deno, React, or a browser runtime.
 
 ## Supported source specifiers
@@ -46,7 +48,7 @@ export default (
 );
 ```
 
-Attached at the root, the sheet becomes a diagram-wide corporate style while still obeying component style boundaries and the fixed Kvísl cascade. A `.kvisl.css` module is parsed into the same typed rules and tokens as TypeScript helpers. It may use `@import`; relative imports, fonts, and images resolve against the sheet's final URL. Unsupported browser CSS and untyped declarations are diagnostics.
+Attached at the root, the sheet will become a diagram-wide corporate style while still obeying component style boundaries and the fixed Kvísl cascade. The resolver already treats `.kvisl.css` as an immutable, lockable value, but the current prototype diagnoses attachment because the restricted stylesheet syntax remains an open decision in the model. Once frozen, it must parse into the same typed rules and tokens as TypeScript helpers; unsupported browser CSS and untyped declarations remain diagnostics.
 
 ## One file can compose from the Internet
 

@@ -8,18 +8,25 @@ import { route } from "./route.mjs";
 import { renderSvg } from "./svg.mjs";
 
 export async function solveFile(entry, options = {}) {
-  const evaluated = await evaluateFile(entry);
+  const evaluated = await evaluateFile(entry, options.compiler);
+  const result = solveExpanded(evaluated.expanded, options);
+  result.scene.diagnostics.unshift(...evaluated.diagnostics);
+  result.dependencies = evaluated.dependencies;
+  return result;
+}
+
+export function solveExpanded(expanded, options = {}) {
   // corridors start at bare track width; when a label proves it has no free
   // spot, its corridor reservation escalates and the scene solves again
   let labelReservations = new Map();
-  let scene = project(evaluated.expanded, options);
+  let scene = project(expanded, options);
   if (scene.root) {
     for (let attempt = 0; ; attempt += 1) {
       scene.labelReservations = labelReservations;
       layout(scene);
       route(scene);
       if (attempt >= 7 || !escalateLabelReservations(scene, labelReservations)) break;
-      scene = project(evaluated.expanded, options);
+      scene = project(expanded, options);
     }
 
     // Escalation deliberately overshoots in bounded increments. Reclaim part
@@ -29,7 +36,7 @@ export async function solveFile(entry, options = {}) {
       const anchored = new Set(scene.lines.flatMap((line) =>
         line.routeLabels.map((label, index) => label.authoredRegion ? `${line.id}:${index}` : null).filter(Boolean)));
       const compacted = new Map([...labelReservations].map(([key, value]) => [key, Math.max(0, value - 8)]));
-      const candidate = project(evaluated.expanded, options);
+      const candidate = project(expanded, options);
       candidate.labelReservations = compacted;
       layout(candidate);
       route(candidate);
@@ -42,7 +49,6 @@ export async function solveFile(entry, options = {}) {
       scene = candidate;
     }
   }
-  scene.diagnostics.unshift(...evaluated.diagnostics);
   if (!scene.root) return { scene, svg: null };
   return { scene, svg: renderSvg(scene, options) };
 }
