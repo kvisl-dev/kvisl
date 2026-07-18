@@ -40,7 +40,7 @@ Generated from the repository TSX fixtures. Original images are references, not 
 
 **Structural quality:** 0 layout contract violations · 0 object overlaps · 0 route–object intersections · 0 label–object overlaps · 0 label–label overlaps · 0 label–route overlaps · 0 unexpected shared runs · 2 crossings · 0 title crossings · 0 label–decor overlaps
 
-**Perception:** 2.15 bends/line (max 4) · detour ×1.05 · backtrack 2% · 26/26 x/y guides for 12 boxes · peer-size CV 0.06 · gap CV 0.28 · label offset 0.0px
+**Perception:** 2.15 bends/line (max 4) · detour ×1.03 · backtrack 1% · 26/26 x/y guides for 12 boxes · peer-size CV 0.06 · gap CV 0.28 · label offset 0.0px
 
 <table>
   <tr><th>Original</th><th>Prototype SVG</th></tr>
@@ -100,7 +100,7 @@ Generated from the repository TSX fixtures. Original images are references, not 
 
 **Structural quality:** 0 layout contract violations · 0 object overlaps · 0 route–object intersections · 0 label–object overlaps · 0 label–label overlaps · 0 label–route overlaps · 0 unexpected shared runs · 1 crossings · 0 title crossings · 0 label–decor overlaps
 
-**Perception:** 2.25 bends/line (max 5) · detour ×1.19 · backtrack 8% · 14/6 x/y guides for 5 boxes · peer-size CV 0.07 · gap CV 0.09 · label offset 18.0px
+**Perception:** 2.50 bends/line (max 5) · detour ×1.26 · backtrack 10% · 14/6 x/y guides for 5 boxes · peer-size CV 0.07 · gap CV 0.09 · label offset 18.0px
 
 <p align="center"><img src="./uml-component.svg" alt="Prototype uml-component" width="90%"></p>
 
@@ -110,9 +110,9 @@ Generated from the repository TSX fixtures. Original images are references, not 
 
 13 objects · 4 lines · 945×663
 
-**Structural quality:** 0 layout contract violations · 0 object overlaps · 0 route–object intersections · 0 label–object overlaps · 0 label–label overlaps · 0 label–route overlaps · 0 unexpected shared runs · 0 crossings · 0 title crossings · 0 label–decor overlaps
+**Structural quality:** 0 layout contract violations · 0 object overlaps · 0 route–object intersections · 0 label–object overlaps · 0 label–label overlaps · 0 label–route overlaps · 0 unexpected shared runs · 1 crossings · 0 title crossings · 0 label–decor overlaps
 
-**Perception:** 3.75 bends/line (max 9) · detour ×1.38 · backtrack 14% · 9/12 x/y guides for 5 boxes · peer-size CV 0.09 · gap CV 0.00 · label offset 23.3px
+**Perception:** 4.00 bends/line (max 8) · detour ×1.43 · backtrack 15% · 9/12 x/y guides for 5 boxes · peer-size CV 0.09 · gap CV 0.00 · label offset 33.5px
 
 <p align="center"><img src="./uml-deployment.svg" alt="Prototype uml-deployment" width="90%"></p>
 
@@ -146,9 +146,9 @@ Generated from the repository TSX fixtures. Original images are references, not 
 
 36 objects · 12 lines · 1609×1000
 
-**Structural quality:** 0 layout contract violations · 0 object overlaps · 0 route–object intersections · 0 label–object overlaps · 0 label–label overlaps · 0 label–route overlaps · 0 unexpected shared runs · 0 crossings · 0 title crossings · 0 label–decor overlaps
+**Structural quality:** 0 layout contract violations · 0 object overlaps · 0 route–object intersections · 0 label–object overlaps · 0 label–label overlaps · 0 label–route overlaps · 0 unexpected shared runs · 6 crossings · 0 title crossings · 0 label–decor overlaps
 
-**Perception:** 0.67 bends/line (max 4) · detour ×1.11 · backtrack 0% · 23/33 x/y guides for 27 boxes · peer-size CV 0.66 · gap CV 0.70 · label offset 18.8px
+**Perception:** 1.33 bends/line (max 6) · detour ×1.20 · backtrack 0% · 23/33 x/y guides for 27 boxes · peer-size CV 0.66 · gap CV 0.70 · label offset 18.8px
 
 <p align="center"><img src="./uml-sequence.svg" alt="Prototype uml-sequence" width="90%"></p>
 
@@ -184,7 +184,7 @@ Generated from the repository TSX fixtures. Original images are references, not 
 
 **Structural quality:** 0 layout contract violations · 0 object overlaps · 0 route–object intersections · 0 label–object overlaps · 0 label–label overlaps · 0 label–route overlaps · 0 unexpected shared runs · 0 crossings · 0 title crossings · 0 label–decor overlaps
 
-**Perception:** 1.70 bends/line (max 4) · detour ×1.13 · backtrack 6% · 20/29 x/y guides for 13 boxes · peer-size CV 0.20 · gap CV 0.00 · label offset 67.1px
+**Perception:** 1.80 bends/line (max 4) · detour ×1.15 · backtrack 7% · 20/29 x/y guides for 13 boxes · peer-size CV 0.20 · gap CV 0.00 · label offset 53.5px
 
 <table>
   <tr><th>Original</th><th>Prototype SVG</th></tr>
