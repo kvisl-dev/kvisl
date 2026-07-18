@@ -556,6 +556,8 @@ Ports MUST be groupable. A port group coordinates several distinct ports; it is 
 
 The order of a bundled port group MUST become the terminal lane and dock-slot order. Solving MAY choose the group's side and absolute position, subject to its constraints, but MUST NOT exchange member identities or cross their terminal lanes merely to shorten individual routes.
 
+Port-group affinity does not disable general visual alignment. When equivalent same-direction approaches occupy disjoint axial intervals and one cross-axis coordinate is legal for all of them, the solver SHOULD align their bends on that coordinate. For `free`, this remains purely aesthetic: it MUST NOT create a shared run, bundle membership, or another routing dependency.
+
 ## 9. Lines, segments, and sharing
 
 ### 9.1 Symmetric lines and structured ends
@@ -603,6 +605,8 @@ An explicit segment MUST be able to:
 ```
 
 The normalizer MUST weave implicit segments around explicit ones and MUST reject explicit segment sequences no route can satisfy. Lines MUST also be able to `avoid` regions. Explicit ancestor paths MAY exist as a low-level escape hatch but SHOULD NOT be the normal authoring form because they couple a component to its nesting depth.
+
+A visible semantic container interior MUST NOT be used as transit whitespace. If neither line endpoint is the container itself or one of its descendants, the route MUST stay outside the container's open interior and go around its boundary. A line with exactly one endpoint inside a container may cross that boundary once as part of entering or leaving the endpoint's containment chain; after leaving a source container it MUST NOT re-enter it, and before the final entry into a target container it MUST NOT enter and leave it provisionally. This exception MUST NOT authorize a shortcut through an unrelated sibling container. The invariant also applies to `overlay` lines: overlay opts out of space reservation, not containment semantics. Explicit corridor pins do not weaken this invariant: an impossible itinerary MUST produce a diagnostic rather than cut through a container.
 
 ### 9.3 Labels
 
@@ -1049,6 +1053,7 @@ The first grammar and IR version MUST cover at least these golden scenarios:
 72. Bundled lines on a `PortGroup` terminate in member order, while an explicit bundle of entity-only endpoints retains distinct line-owned dock identities; neither case synthesizes another named-port join.
 73. An automatic join containing two compatible lines and one differently styled line produces two compact terminal lanes: one merged style cohort and one separate lane; an explicitly requested bundle over the same lines produces three.
 74. A TSX diagram imports a commit-addressed corporate `.kvisl.css` stylesheet from HTTPS; that sheet imports another relative stylesheet and references a relative font or image. All three resources enter the same locked graph, render offline from cache, and normalize to the same cascade data as equivalent typed rules without applying until the sheet is attached to the diagram.
+75. A line whose endpoints lie outside a visible semantic container routes around that container; a line with one endpoint inside crosses its boundary once and never leaves and re-enters it.
 
 ## 19. Open grammar decisions
 

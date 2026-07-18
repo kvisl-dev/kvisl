@@ -54,6 +54,28 @@ function assertNoReverseExcursion(routePoints, lineId) {
   }
 }
 
+function bendCount(routePoints) {
+  let bends = 0;
+  for (let index = 2; index < routePoints.length; index += 1) {
+    const previousHorizontal = routePoints[index - 2].y === routePoints[index - 1].y;
+    const currentHorizontal = routePoints[index - 1].y === routePoints[index].y;
+    if (previousHorizontal !== currentHorizontal) bends += 1;
+  }
+  return bends;
+}
+
+function routeLength(routePoints) {
+  return routePoints.slice(1).reduce((length, point, index) =>
+    length + Math.abs(point.x - routePoints[index].x) + Math.abs(point.y - routePoints[index].y), 0);
+}
+
+function longestVerticalCoordinate(routePoints) {
+  return routePoints.slice(1).map((point, index) => ({
+    x: point.x,
+    length: point.x === routePoints[index].x ? Math.abs(point.y - routePoints[index].y) : 0,
+  })).sort((first, second) => second.length - first.length)[0]?.x;
+}
+
 function longitudinalRouteLength(line, track) {
   const geometry = regionGeometry(track.region);
   let length = 0;
@@ -108,6 +130,11 @@ test("every repository diagram produces a finite orthogonal SVG preview", async 
       `${path.relative(repo, file)} routes through rendered objects`,
     );
     assert.deepEqual(
+      quality.routeContainerTransits.map((item) => `${item.line.id}->${item.container.path}`),
+      [],
+      `${path.relative(repo, file)} uses an unrelated container as transit space`,
+    );
+    assert.deepEqual(
       quality.labelObjectOverlaps.map((item) => `${item.line.id}:${item.label.text}->${item.object.path}`),
       [],
       `${path.relative(repo, file)} places line labels over rendered objects`,
@@ -154,6 +181,30 @@ test("every documentation diagram is executable by the local prototype", async (
       assert.ok(line.route.length >= 2, `${path.relative(repo, file)} did not route ${line.id}`);
       assertOrthogonal(line.route, line.id);
     }
+    assert.deepEqual(
+      analyzeScene(scene).routeContainerTransits.map((item) => `${item.line.id}->${item.container.path}`),
+      [],
+      `${path.relative(repo, file)} uses a container as non-monotone transit space`,
+    );
+  }
+});
+
+test("PortGroup affinity routes stay within their semantic bend budgets", async () => {
+  const { scene } = await solveFile(path.join(repo, "docs", "diagrams", "port-groups.tsx"));
+  const budgets = { merge: 4, bundle: 4, free: 2, separate: 0 };
+  for (const line of scene.lines) {
+    const affinity = line.from.port?.group?.affinity;
+    assert.ok(affinity in budgets, `${line.id} has no PortGroup affinity`);
+    assertNoReverseExcursion(line.route, line.id);
+    assert.ok(bendCount(line.route) <= budgets[affinity],
+      `${affinity} route ${line.id} uses ${bendCount(line.route)} bends; expected at most ${budgets[affinity]}`);
+  }
+  for (const affinity of ["merge", "bundle", "free"]) {
+    const outer = scene.lines.filter((line) => line.from.port?.group?.affinity === affinity)
+      .sort((first, second) => first.from.point.y - second.from.point.y)
+      .filter((line, index, lines) => index === 0 || index === lines.length - 1);
+    assert.equal(longestVerticalCoordinate(outer[0].route), longestVerticalCoordinate(outer[1].route),
+      `${affinity} fan-out bends do not share one alignment column`);
   }
 });
 
@@ -218,6 +269,34 @@ test("structured orientation depth remaps nested layouts without rotating their 
   assert.deepEqual(rotatedStages.map((object) => [object.box.width, object.box.height]),
     uprightStages.map((object) => [object.box.width, object.box.height]));
   assert.ok(rotatedStages[0].box.y < rotatedStages[1].box.y && rotatedStages[1].box.y < rotatedStages[2].box.y);
+});
+
+test("cross-hierarchy routes go around containers unrelated to both endpoints", async () => {
+  const entry = path.join(repo, "examples", "coverage", "diagram.tsx");
+  const { scene } = await solveFile(entry);
+  const line = scene.lines.find((candidate) => candidate.id === "audit-upright");
+  const rotated = scene.objectByPath.get("system/rotated");
+  const transits = analyzeScene(scene).routeContainerTransits.filter((item) => item.line === line);
+
+  assert.deepEqual(transits, []);
+  assert.ok(line.route.some((point) => point.y < rotated.box.y || point.y > rotated.box.y + rotated.box.height),
+    "audit-upright never leaves the unrelated rotated container's vertical span");
+});
+
+test("unconstrained routes receive the bounded shortest-path pass", async () => {
+  const machine = await solveFile(path.join(repo, "examples", "machine-thought-os", "diagram.tsx"));
+  const systemCall = machine.scene.lines.find((line) => line.id === "fork-system-call");
+  const directLength = Math.abs(systemCall.route[0].x - systemCall.route.at(-1).x)
+    + Math.abs(systemCall.route[0].y - systemCall.route.at(-1).y);
+  assert.equal(routeLength(systemCall.route), directLength);
+  assert.equal(bendCount(systemCall.route), 2);
+
+  const coverage = await solveFile(path.join(repo, "examples", "coverage", "diagram.tsx"));
+  const probe = coverage.scene.lines.find((line) => line.id === "probe-upright");
+  const rotated = coverage.scene.objectByPath.get("system/rotated");
+  assert.ok(routeLength(probe.route) < 1300, `probe-upright still takes a ${routeLength(probe.route)}px fallback detour`);
+  assert.ok(Math.min(...probe.route.map((point) => point.y)) >= rotated.box.y - 16,
+    "probe-upright leaves more clearance than its shortest legal top channel requires");
 });
 
 test("UML interaction routing keeps messages straight and lifelines equally deep", async () => {
@@ -880,7 +959,7 @@ test("a late named-port merge keeps one shared trunk until its corridor branches
   "tools fan-out does not authorize its common horizontal terminal run");
 });
 
-test("longitudinal corridor tracks form a centered geometry-ordered bundle", async () => {
+test("longitudinal corridor tracks form a centered geometry-ordered block", async () => {
   const entry = path.join(repo, "examples", "coverage", "diagram.tsx");
   const { scene } = await solveFile(entry);
   const region = scene.regions.get("gap:system:1");
@@ -888,12 +967,12 @@ test("longitudinal corridor tracks form a centered geometry-ordered bundle", asy
     .map((entry) => ({ entry, track: entry.line.regionTracks.get(region.key) }))
     .filter(({ track }) => !track.crossing)
     .sort((first, second) => first.track.index - second.track.index);
-  assert.deepEqual(entries.map(({ entry }) => entry.line.id), ["audit-upright", "audit-rotated"]);
+  assert.deepEqual(entries.map(({ entry }) => entry.line.id), ["probe-upright", "audit-upright", "audit-rotated"]);
   const projected = entries.map(({ entry }) => (entry.line.from.point.x + entry.line.to.point.x) / 2);
   assert.deepEqual(projected, [...projected].sort((first, second) => first - second));
   const geometry = regionGeometry(region);
   const coordinates = entries.map(({ track }) => track.allocation.coordinate);
-  assert.equal((coordinates[0] + coordinates.at(-1)) / 2, geometry.x + geometry.width / 2);
+  assert.equal((Math.min(...coordinates) + Math.max(...coordinates)) / 2, geometry.x + geometry.width / 2);
 });
 
 test("authored run candidates avoid label-driven grid inflation", async () => {

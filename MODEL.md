@@ -249,6 +249,8 @@ A handle is created by the caller, passed as a prop, and bound exactly once insi
 
 For a bundled group, member order is also terminal lane and dock-slot order. The solver may position the block but does not exchange port identities or cross its lanes at the terminal.
 
+Equivalent same-direction approaches may share an alignment coordinate when their occupied intervals are disjoint and the coordinate is legal for every member. This applies even to `free` affinity as a visual heuristic, but it does not create shared geometry or bundle topology.
+
 <table>
   <tr><th>Solved named-port policies</th><th>Canonical share groups, lanes, slots, and branch pins</th></tr>
   <tr>
@@ -286,6 +288,8 @@ Labels belong to segments and to ends. A segment label has a placement along its
 An `End` carries the endpoint reference plus everything that adorns that end: per-end head, dock style, side hint, and ordered end labels. Exactly two `End` children are required when the form is used; mixing `End` children with `from`/`to` props, or with a conflicting line-level `heads` value, is a diagnostic. `from`/`to` remain the sugar for the common two-liner and normalize into the same two endpoint records.
 
 Lines reserve routing space by default (`space: "reserve"`); `overlay` opts a line out of layout and route-occupancy interaction. Overlay intersections therefore do not displace either the overlay or reserving lines. A line may list regions to `avoid`.
+
+A visible semantic container is a topological boundary, not another patch of routing whitespace. A line may enter it only when an endpoint resolves to that container or one of its descendants. A source-side route leaves such a boundary once; a target-side route enters it once and stays inside until docking. Otherwise the inferred segments remain in surrounding gaps and padding bands and route around the container. `overlay` changes reservation and collision behavior but not this topology. Layout-only containers without a visible boundary do not create this barrier, and visual frames do not create it because they do not change containment.
 
 ## 9. Sharing: port joins, groups, trunks, and branches
 

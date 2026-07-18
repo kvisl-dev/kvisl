@@ -68,6 +68,14 @@ The solver materializes a boundary portal only where geometry, orientation, a vi
 
 Rationale: eagerly emitting one portal for every crossed ancestor can make a sparse, deeply nested input produce quadratic output.
 
+## D7a. Semantic container interiors are not transit space
+
+A visible semantic container blocks every line whose endpoints both lie outside its containment subtree. Containers on an endpoint's ancestry permit only the hierarchy entry or exit required by that endpoint: source-chain occupancy is one contiguous prefix and target-chain occupancy one contiguous suffix. Leaving and re-entering either chain is invalid. Layout-only rows, columns, and grids have no painted semantic boundary, while visual frames do not own their enclosed objects; neither creates this transit barrier.
+
+The router, bounded refinements, and quality analyzer use the same container classification and open-rectangle collision rule. Authored pins cannot override it.
+
+Rationale: treating a container border as decoration lets a Manhattan shortcut enter and leave an unrelated subsystem, contradicting both the hierarchy and the whitespace routing model.
+
 ## D8. Crossing geometry is output-sensitive and optional
 
 The reference solver may count crossings in aggregate while choosing routes. It enumerates individual crossings only when the painter requests bridge or gap adornments.
@@ -85,7 +93,7 @@ Preview output is valuable for visual comparison, but it is never evidence that 
 
 ## D10. The experiment is deterministic and bounded
 
-The prototype uses a fixed candidate set for routes, stable ordering by canonical path, and a fixed number of refinement passes. It contains no permutation search, backtracking over global route combinations, SAT/ILP invocation, or convergence loop.
+The prototype uses a fixed candidate family for provisional routes, stable ordering by canonical path, a coordinate-bounded shortest-path search over each eligible route's relevant whitespace subgraph, and a fixed number of refinement passes. It contains no pixel search, permutation search, backtracking over global route combinations, SAT/ILP invocation, document-wide shortest-path pass per line, or convergence loop.
 
 The implementation target is near-linear in projected input plus emitted geometry. Spatial queries use a sparse cell index instead of testing every route segment against every object.
 

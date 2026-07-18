@@ -1,6 +1,6 @@
 import { effectiveLayout, lineLabelDemand } from "./layout.mjs";
 import { boundaryLabelStrips } from "./mesh.mjs";
-import { containerBorderRings, labelMayCrossContainerBorder } from "./route.mjs";
+import { containerBorderRings, labelMayCrossContainerBorder, transitBarrierContainers } from "./route.mjs";
 import { buildShareGroups, segmentsMayShareGeometry } from "./sharing.mjs";
 
 const CELL = 160;
@@ -103,6 +103,46 @@ function routeObjectIntersections(scene, objects) {
           result.push({ line, object, segmentIndex: segmentIndex - 1 });
         }
       }
+    }
+  }
+  return result;
+}
+
+function insideOrSelf(object, container) {
+  for (let current = object; current; current = current.parent) if (current === container) return true;
+  return false;
+}
+
+// Container interiors are not general routing space. A container on either
+// endpoint's ancestry is a legitimate source or target boundary; every other
+// semantic container is forbidden transit geometry.
+function routeContainerTransits(scene) {
+  const containers = transitBarrierContainers(scene);
+  const index = new BoxIndex(containers);
+  const result = [];
+  for (const line of scene.lines) {
+    const nearby = new Set();
+    for (let segmentIndex = 1; segmentIndex < line.route.length; segmentIndex += 1) {
+      for (const container of index.query(segmentBox(line.route[segmentIndex - 1], line.route[segmentIndex]))) {
+        nearby.add(container);
+      }
+    }
+    for (const container of nearby) {
+      const hits = line.route.slice(1).map((second, segmentIndex) =>
+        segmentHitsBox(line.route[segmentIndex], second, container.box));
+      if (!hits.some(Boolean)) continue;
+      const containsSource = insideOrSelf(line.from?.object, container);
+      const containsTarget = insideOrSelf(line.to?.object, container);
+      let violation = !containsSource && !containsTarget;
+      if (containsSource !== containsTarget) {
+        const ordered = containsSource ? hits : [...hits].reverse();
+        let leftInterior = false;
+        for (const hit of ordered) {
+          if (!hit) leftInterior = true;
+          else if (leftInterior) violation = true;
+        }
+      }
+      if (violation) result.push({ line, container, segmentIndex: hits.findIndex(Boolean) });
     }
   }
   return result;
@@ -638,6 +678,7 @@ export function analyzeScene(scene) {
     layoutContractViolations: layoutContractViolations(scene),
     unexpectedObjectOverlaps: unexpectedObjectOverlaps(objects),
     routeObjectIntersections: routeObjectIntersections(scene, objects),
+    routeContainerTransits: routeContainerTransits(scene),
     labelObjectOverlaps: labelObjectOverlaps(scene, objects),
     labelLabelOverlaps: labelLabelOverlaps(scene),
     labelRouteOverlaps: labelRouteOverlaps(scene),

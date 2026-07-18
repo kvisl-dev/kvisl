@@ -239,15 +239,13 @@ function drawPorts(scene) {
   return result.join("");
 }
 
-function drawDividers(scene) {
+function solvedDividers(scene) {
   const result = [];
   for (const corridor of scene.corridors) {
     if (!corridor.divider) continue;
     const region = [...scene.regions.values()].find((candidate) => candidate.corridors.includes(corridor));
     if (!region?.channelBinding?.trackCell) continue;
     const geometry = regionGeometry(region);
-    const style = corridor.divider.style ?? {};
-    const stroke = color(style.stroke, scene, "#64748b");
     const horizontal = geometry.axis === "horizontal";
     const first = horizontal
       ? { x: geometry.x, y: geometry.y + geometry.height / 2 }
@@ -255,64 +253,161 @@ function drawDividers(scene) {
     const second = horizontal
       ? { x: geometry.x + geometry.width, y: first.y }
       : { x: first.x, y: geometry.y + geometry.height };
-    result.push(`<path d="M ${first.x} ${first.y} L ${second.x} ${second.y}" fill="none" stroke="${escape(stroke)}" stroke-width="2"${dash(style)}/>`);
-    if (corridor.divider.label) {
-      const x = horizontal ? second.x - 8 : first.x + 8;
-      const y = horizontal ? second.y - 8 : first.y + 14;
-      result.push(`<text x="${x}" y="${y}" text-anchor="end" font-family="ui-rounded, sans-serif" font-size="13" fill="${escape(stroke)}">${escape(corridor.divider.label)}</text>`);
-    }
+    result.push({ first, second, horizontal, style: corridor.divider.style ?? {}, label: corridor.divider.label });
   }
-  return result.join("");
+  return result;
+}
+
+function drawDividers(scene) {
+  return (scene.solvedDividers ?? solvedDividers(scene)).map((divider) => {
+    const stroke = color(divider.style.stroke, scene, "#64748b");
+    const path = `<path d="M ${divider.first.x} ${divider.first.y} L ${divider.second.x} ${divider.second.y}" fill="none" stroke="${escape(stroke)}" stroke-width="2"${dash(divider.style)}/>`;
+    if (!divider.label) return path;
+    const x = divider.horizontal ? divider.second.x - 8 : divider.first.x + 8;
+    const y = divider.horizontal ? divider.second.y - 8 : divider.first.y + 14;
+    return `${path}<text x="${x}" y="${y}" text-anchor="end" font-family="ui-rounded, sans-serif" font-size="13" fill="${escape(stroke)}">${escape(divider.label)}</text>`;
+  }).join("");
+}
+
+function solvedRoutingRegions(scene) {
+  return (scene.channelMesh ?? [])
+    .filter((cell) => cell.geometry?.width > 2 && cell.geometry?.height > 2)
+    .map((cell) => ({
+      key: cell.key,
+      kind: cell.kind,
+      materialized: cell.materialized ?? false,
+      authored: Boolean(cell.corridors?.length),
+      geometry: cell.geometry,
+    }));
 }
 
 function drawRoutingRegions(scene) {
-  return (scene.channelMesh ?? [])
-    .filter((cell) => cell.geometry?.width > 2 && cell.geometry?.height > 2)
-    .map((cell) => {
-      const geometry = cell.geometry;
-      const authored = cell.corridors?.length ? "true" : "false";
-      return `<rect data-routing-region="${escape(cell.key)}" data-region-kind="${escape(cell.kind)}" data-materialized="${cell.materialized ? "true" : "false"}" data-authored="${authored}" x="${geometry.x + 1}" y="${geometry.y + 1}" width="${geometry.width - 2}" height="${geometry.height - 2}" fill="#ef4444" fill-opacity="0.1"/>`;
-    })
-    .join("");
+  return (scene.solvedRoutingRegions ?? solvedRoutingRegions(scene)).map((cell) => {
+    const geometry = cell.geometry;
+    return `<rect data-routing-region="${escape(cell.key)}" data-region-kind="${escape(cell.kind)}" data-materialized="${cell.materialized ? "true" : "false"}" data-authored="${cell.authored ? "true" : "false"}" x="${geometry.x + 1}" y="${geometry.y + 1}" width="${geometry.width - 2}" height="${geometry.height - 2}" fill="#ef4444" fill-opacity="0.1"/>`;
+  }).join("");
 }
 
-function drawSharingDebug(scene) {
+function solvedSharingDebug(scene) {
   const result = [];
   for (const group of scene.shareGroups?.values?.() ?? []) {
-    const color = group.mode === "merge" ? "#2563eb" : group.mode === "bundle" ? "#7c3aed" : "#64748b";
     const laneCount = group.bundle?.lanes.length ?? (group.mode === "merge" ? 1 : group.members.length);
-    result.push(`<g data-share-group="${escape(group.id)}" data-share-mode="${escape(group.mode)}" data-share-lanes="${laneCount}">`);
+    const item = { id: group.id, mode: group.mode, laneCount, lanes: [], slots: [], pins: [], runs: [] };
     if (group.mode === "bundle") {
       for (const lane of group.bundle.lanes) {
         for (const member of lane.members) {
-          const points = member.line.route.map((point) => `${point.x},${point.y}`).join(" ");
-          result.push(`<polyline data-bundle-lane="${escape(lane.id)}" data-bundle-line="${escape(member.line.id)}" points="${points}" fill="none" stroke="${color}" stroke-width="8" stroke-opacity="0.12"/>`);
+          item.lanes.push({ id: lane.id, line: member.line.id, route: member.line.route });
         }
       }
       const slots = group.source.kind === "port" ? group.source.port.terminalSlots ?? [] : [];
-      for (const slot of slots) {
-        result.push(`<circle data-terminal-slot="${escape(slot.lane.id)}" cx="${slot.point.x}" cy="${slot.point.y}" r="4" fill="${color}" fill-opacity="0.55"/>`);
-      }
+      item.slots.push(...slots.map((slot) => ({ lane: slot.lane.id, point: slot.point })));
       const uniquePins = new Map();
       for (const member of group.members) {
         const pin = group.bundle.pinByLine?.get(member.line);
         if (pin) uniquePins.set(`${pin.x},${pin.y}`, pin);
       }
-      for (const pin of uniquePins.values()) {
-        result.push(`<rect data-bundle-pin="true" x="${pin.x - 3}" y="${pin.y - 3}" width="6" height="6" fill="${color}" fill-opacity="0.55"/>`);
-      }
+      item.pins.push(...uniquePins.values());
     } else if (group.merge?.pin) {
-      if (group.merge.convergence) {
-        result.push(`<circle data-merge-convergence="true" cx="${group.merge.convergence.x}" cy="${group.merge.convergence.y}" r="4" fill="${color}" fill-opacity="0.55"/>`);
-      }
-      result.push(`<circle data-merge-pin="true" cx="${group.merge.pin.x}" cy="${group.merge.pin.y}" r="4" fill="${color}" fill-opacity="0.55"/>`);
+      item.convergence = group.merge.convergence;
+      item.mergePin = group.merge.pin;
     }
-    for (const run of group.allowedSharedRuns ?? []) {
-      result.push(`<line data-authorized-shared-run="true" x1="${run.first.x}" y1="${run.first.y}" x2="${run.second.x}" y2="${run.second.y}" stroke="${color}" stroke-width="10" stroke-opacity="0.16"/>`);
+    item.runs.push(...(group.allowedSharedRuns ?? []).map((run) => ({ first: run.first, second: run.second })));
+    result.push(item);
+  }
+  return result;
+}
+
+function drawSharingDebug(scene) {
+  const result = [];
+  for (const group of scene.solvedSharingDebug ?? solvedSharingDebug(scene)) {
+    const debugColor = group.mode === "merge" ? "#2563eb" : group.mode === "bundle" ? "#7c3aed" : "#64748b";
+    result.push(`<g data-share-group="${escape(group.id)}" data-share-mode="${escape(group.mode)}" data-share-lanes="${group.laneCount}">`);
+    for (const lane of group.lanes) {
+      const points = lane.route.map((point) => `${point.x},${point.y}`).join(" ");
+      result.push(`<polyline data-bundle-lane="${escape(lane.id)}" data-bundle-line="${escape(lane.line)}" points="${points}" fill="none" stroke="${debugColor}" stroke-width="8" stroke-opacity="0.12"/>`);
+    }
+    for (const slot of group.slots) {
+      result.push(`<circle data-terminal-slot="${escape(slot.lane)}" cx="${slot.point.x}" cy="${slot.point.y}" r="4" fill="${debugColor}" fill-opacity="0.55"/>`);
+    }
+    for (const pin of group.pins) {
+      result.push(`<rect data-bundle-pin="true" x="${pin.x - 3}" y="${pin.y - 3}" width="6" height="6" fill="${debugColor}" fill-opacity="0.55"/>`);
+    }
+    if (group.convergence) result.push(`<circle data-merge-convergence="true" cx="${group.convergence.x}" cy="${group.convergence.y}" r="4" fill="${debugColor}" fill-opacity="0.55"/>`);
+    if (group.mergePin) result.push(`<circle data-merge-pin="true" cx="${group.mergePin.x}" cy="${group.mergePin.y}" r="4" fill="${debugColor}" fill-opacity="0.55"/>`);
+    for (const run of group.runs) {
+      result.push(`<line data-authorized-shared-run="true" x1="${run.first.x}" y1="${run.first.y}" x2="${run.second.x}" y2="${run.second.y}" stroke="${debugColor}" stroke-width="10" stroke-opacity="0.16"/>`);
     }
     result.push("</g>");
   }
   return result.join("");
+}
+
+export function serializeSvgScene(scene) {
+  return {
+    schema: "kvisl.solved-svg-scene",
+    version: "0.1.0",
+    width: scene.width,
+    height: scene.height,
+    tokens: scene.tokens,
+    diagnostics: scene.diagnostics,
+    root: scene.root.path,
+    objects: scene.objects.map((object) => ({
+      id: object.id,
+      path: object.path,
+      kind: object.kind,
+      roles: object.roles,
+      classes: object.classes,
+      shape: object.shape,
+      label: object.label,
+      style: object.style,
+      box: object.box,
+      fontSize: object.fontSize,
+      renderLines: object.renderLines,
+      frame: object.frame,
+      parent: object.parent?.path ?? null,
+      children: object.children.map((child) => child.path),
+      ports: [...object.ports.entries()].map(([name, port]) => [name, {
+        point: port.point,
+        marker: port.marker,
+        physicalSide: port.physicalSide,
+        style: port.style,
+      }]),
+    })),
+    lines: scene.lines.map((line) => ({
+      id: line.id,
+      route: line.route,
+      routeLabels: line.routeLabels,
+      style: line.style,
+      heads: line.heads,
+    })),
+    solvedDividers: solvedDividers(scene),
+    solvedRoutingRegions: solvedRoutingRegions(scene),
+    solvedSharingDebug: solvedSharingDebug(scene),
+  };
+}
+
+export function renderSvgScene(model, options = {}) {
+  if (model.schema !== "kvisl.solved-svg-scene" || model.version !== "0.1.0") {
+    throw new Error(`unsupported solved SVG scene ${model.schema ?? "<missing>"}@${model.version ?? "<missing>"}`);
+  }
+  const objects = model.objects.map((object) => ({ ...object, ports: new Map(object.ports) }));
+  const byPath = new Map(objects.map((object) => [object.path, object]));
+  for (const object of objects) {
+    object.parent = object.parent ? byPath.get(object.parent) : null;
+    object.children = object.children.map((child) => byPath.get(child));
+  }
+  return renderSvg({
+    width: model.width,
+    height: model.height,
+    tokens: model.tokens,
+    diagnostics: model.diagnostics,
+    root: byPath.get(model.root),
+    objects,
+    lines: model.lines,
+    solvedDividers: model.solvedDividers,
+    solvedRoutingRegions: model.solvedRoutingRegions,
+    solvedSharingDebug: model.solvedSharingDebug,
+  }, options);
 }
 
 export function renderSvg(scene, options = {}) {

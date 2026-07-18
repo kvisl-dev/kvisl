@@ -10,10 +10,10 @@ The examples on this page use the library in [`examples/uml/uml.tsx`](../example
 
 ```console
 $ npx kvisl render examples/uml/class-diagram.tsx \
-    -o order-domain.excalidraw
+    -o order-domain.svg
 ```
 
-The result is an editable Excalidraw document. The same source can target SVG or another painter without changing UML semantics.
+The current package renders the result as SVG. The same source can target the planned editable Excalidraw painter or another backend without changing UML semantics.
 
 ## Class diagrams
 
