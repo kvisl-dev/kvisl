@@ -14,6 +14,14 @@ function color(value, scene, fallback) {
   return scene.tokens[value] ?? value;
 }
 
+function canvasColor(scene, fallback = "#ffffff") {
+  return color(scene.root?.style?.fill, scene, fallback);
+}
+
+function fontFamily(style, fallback = "ui-rounded, 'Comic Sans MS', sans-serif") {
+  return style?.fontFamily ?? fallback;
+}
+
 function dash(style) {
   if (Array.isArray(style.dash)) return ` stroke-dasharray="${style.dash.join(" ")}"`;
   if (style.dash === "dashed") return ' stroke-dasharray="10 7"';
@@ -119,14 +127,14 @@ function drawObjectText(object, scene) {
     const decoration = line.role === "uml-instance-name" ? ' text-decoration="underline"' : "";
     const italic = object.classes.includes("abstract") && line.role === "uml-class-name" ? ' font-style="italic"' : "";
     const text = line.role === "uml-stereotype" ? `«${line.text}»` : line.text;
-    result.push(`<text x="${x}" y="${y}" text-anchor="${anchor}" fill="${escape(colorValue)}" font-family="ui-rounded, 'Comic Sans MS', sans-serif" font-size="${fontSize}" font-weight="${weight}"${decoration}${italic}>${escape(text)}</text>`);
+    result.push(`<text x="${x}" y="${y}" text-anchor="${anchor}" fill="${escape(colorValue)}" font-family="${escape(fontFamily(object.style))}" font-size="${fontSize}" font-weight="${weight}"${decoration}${italic}>${escape(text)}</text>`);
     y += fontSize * 1.35;
     previousWasDivider = false;
   }
   return result.join("");
 }
 
-function arrowGeometry(tip, previous, head, stroke) {
+function arrowGeometry(tip, previous, head, stroke, backdrop) {
   const geometry = headGeometry(head);
   if (!geometry.kind || geometry.kind === "none") return "";
   const dx = tip.x - previous.x;
@@ -140,11 +148,11 @@ function arrowGeometry(tip, previous, head, stroke) {
   const back = { x: tip.x - ux * geometry.shoulderDepth, y: tip.y - uy * geometry.shoulderDepth };
   if (geometry.kind.includes("diamond")) {
     const far = { x: tip.x - ux * geometry.depth, y: tip.y - uy * geometry.depth };
-    const fill = geometry.kind.includes("filled") ? stroke : "white";
+    const fill = geometry.kind.includes("filled") ? stroke : backdrop;
     return `<polygon points="${tip.x},${tip.y} ${back.x + px * halfWidth},${back.y + py * halfWidth} ${far.x},${far.y} ${back.x - px * halfWidth},${back.y - py * halfWidth}" fill="${escape(fill)}" stroke="${escape(stroke)}" stroke-width="2"/>`;
   }
   if (geometry.kind.includes("triangle")) {
-    return `<polygon points="${tip.x},${tip.y} ${back.x + px * halfWidth},${back.y + py * halfWidth} ${back.x - px * halfWidth},${back.y - py * halfWidth}" fill="white" stroke="${escape(stroke)}" stroke-width="2"/>`;
+    return `<polygon points="${tip.x},${tip.y} ${back.x + px * halfWidth},${back.y + py * halfWidth} ${back.x - px * halfWidth},${back.y - py * halfWidth}" fill="${escape(backdrop)}" stroke="${escape(stroke)}" stroke-width="2"/>`;
   }
   return `<path d="M ${back.x + px * halfWidth} ${back.y + py * halfWidth} L ${tip.x} ${tip.y} L ${back.x - px * halfWidth} ${back.y - py * halfWidth}" fill="none" stroke="${escape(stroke)}" stroke-width="2" stroke-linejoin="round"/>`;
 }
@@ -155,8 +163,9 @@ function drawLine(line, scene) {
   const width = line.style.strokeWidth ?? 2;
   const points = line.route.map((point) => `${point.x},${point.y}`).join(" ");
   const heads = normalizedHeads(line.heads);
-  const firstHead = arrowGeometry(line.route[0], line.route[1], heads[0], stroke);
-  const lastHead = arrowGeometry(line.route.at(-1), line.route.at(-2), heads[1], stroke);
+  const backdrop = canvasColor(scene);
+  const firstHead = arrowGeometry(line.route[0], line.route[1], heads[0], stroke, backdrop);
+  const lastHead = arrowGeometry(line.route.at(-1), line.route.at(-2), heads[1], stroke, backdrop);
   return `<g data-line="${escape(line.id)}"><polyline points="${points}" fill="none" stroke="${escape(stroke)}" stroke-width="${width}" stroke-linejoin="round" stroke-linecap="round"${dash(line.style)}/>${firstHead}${lastHead}</g>`;
 }
 
@@ -170,7 +179,7 @@ function drawLineLabels(line, scene) {
     const firstBaseline = centerY - lines.length * lineHeight / 2 + 13;
     const stroke = color(line.style.stroke, scene, "#334155");
     const transform = label.angle ? ` transform="rotate(${label.angle} ${centerX} ${centerY})"` : "";
-    return `<g data-line-label="${escape(line.id)}"${transform}>${lines.map((text, index) => `<text x="${centerX}" y="${firstBaseline + index * lineHeight}" text-anchor="middle" font-family="ui-rounded, sans-serif" font-size="13" fill="${escape(stroke)}" stroke="#ffffff" stroke-opacity=".92" stroke-width="3.5" stroke-linejoin="round" paint-order="stroke fill">${escape(text)}</text>`).join("")}</g>`;
+    return `<g data-line-label="${escape(line.id)}"${transform}>${lines.map((text, index) => `<text x="${centerX}" y="${firstBaseline + index * lineHeight}" text-anchor="middle" font-family="${escape(fontFamily(line.style, "ui-rounded, sans-serif"))}" font-size="13" fill="${escape(stroke)}" stroke="${escape(canvasColor(scene))}" stroke-opacity=".92" stroke-width="3.5" stroke-linejoin="round" paint-order="stroke fill">${escape(text)}</text>`).join("")}</g>`;
   }).join("");
 }
 
@@ -182,9 +191,9 @@ function drawPorts(scene) {
       const stroke = color(port.style.stroke ?? object.style.stroke, scene, "#334155");
       const kind = typeof port.marker === "string" ? port.marker : port.marker?.name;
       if (kind?.includes("provided") || kind === "circle") {
-        result.push(`<circle cx="${port.point.x}" cy="${port.point.y}" r="6" fill="white" stroke="${escape(stroke)}" stroke-width="2"/>`);
+        result.push(`<circle cx="${port.point.x}" cy="${port.point.y}" r="6" fill="${escape(canvasColor(scene))}" stroke="${escape(stroke)}" stroke-width="2"/>`);
       } else {
-        result.push(`<rect x="${port.point.x - 5}" y="${port.point.y - 5}" width="10" height="10" fill="white" stroke="${escape(stroke)}" stroke-width="2"/>`);
+        result.push(`<rect x="${port.point.x - 5}" y="${port.point.y - 5}" width="10" height="10" fill="${escape(canvasColor(scene))}" stroke="${escape(stroke)}" stroke-width="2"/>`);
       }
     }
   }
@@ -236,7 +245,7 @@ export function renderSvg(scene, options = {}) {
 <svg xmlns="http://www.w3.org/2000/svg" width="${scene.width}" height="${scene.height}" viewBox="0 0 ${scene.width} ${scene.height}" role="img" aria-label="${escape(scene.root.id)}">
   <title>${escape(scene.root.id)}</title>
   <desc>${escape(diagnostics || "Kvísl layouter prototype preview")}</desc>
-  ${options.transparent ? "" : `<rect width="100%" height="100%" fill="${escape(options.background ?? "#ffffff")}"/>`}
+  ${options.transparent ? "" : `<rect width="100%" height="100%" fill="${escape(options.background ?? canvasColor(scene))}"/>`}
   <g id="boundaries">${containers.map((object) => drawShape(object, scene)).join("")}</g>
 ${options.debugRouting ? `  <g id="routing-regions">${drawRoutingRegions(scene)}</g>\n` : ""}  <g id="corridor-dividers">${drawDividers(scene)}</g>
   <g id="lines">${scene.lines.map((line) => drawLine(line, scene)).join("")}</g>

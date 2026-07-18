@@ -124,6 +124,8 @@ function parsePlacement(value) {
 function selectorMatches(selector, entity) {
   const step = selector?.steps?.at(-1);
   if (!step) return false;
+  if (step.kind && step.kind !== entity.kind) return false;
+  if (step.shape && step.shape !== entity.shape) return false;
   if (step.id && step.id !== entity.id) return false;
   if (step.roles?.some((role) => !entity.roles.includes(role))) return false;
   if (step.classes?.some((name) => !entity.classes.includes(name))) return false;

@@ -51,6 +51,10 @@ export function cls(name) {
   return { steps: [{ classes: [name] }] };
 }
 
+export function kind(name) {
+  return { steps: [{ kind: name }] };
+}
+
 export function within(outer, inner) {
   return { steps: [...outer.steps, ...inner.steps], combinators: ["descendant"] };
 }

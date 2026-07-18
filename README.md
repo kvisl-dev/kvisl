@@ -69,6 +69,29 @@ diagram.tsx
     -> Excalidraw, SVG, Canvas, or another painter
 ```
 
+## CSS
+
+Kvísl separates structure from presentation through CSS-style tokens and typed rules. Selectors match stable entity kinds, roles, classes, shapes, and IDs; the cascade may change paint and metric defaults, but it cannot change objects, ports, lines, routing intent, layout strategy, or identity.
+
+The rendering below uses the exact same [`ModelplaneFleetInferenceDiagram`](examples/modelplane-fleet-inference/diagram.tsx) component as the reference fixture. The alternate entry supplies only the [`neonInfrastructureTheme`](examples/modelplane-fleet-inference/neon-infrastructure-theme.ts): no object, port, line, segment, corridor, constraint, or layout declaration is duplicated. A regression test asserts that every solved object box, route, and label position is identical between both renders.
+
+```tsx
+import { ModelplaneFleetInferenceDiagram } from "./diagram";
+import { neonInfrastructureTheme } from "./neon-infrastructure-theme";
+
+export default (
+  <ModelplaneFleetInferenceDiagram styles={neonInfrastructureTheme} />
+);
+```
+
+<p align="center">
+  <a href="examples/modelplane-fleet-inference/neon-infrastructure.tsx">
+    <img alt="Modelplane fleet inference rendered with a neon infrastructure CSS theme" src="experiments/layouter/output/modelplane-fleet-inference-neon.svg" width="95%">
+  </a>
+</p>
+
+Regenerate this non-debug rendering with `npm run layout:css-example`. The stylesheet remains typed TS data because the core contract is `RuleIR` and `TokenSetIR`; a standalone text stylesheet syntax is intentionally not required by the model.
+
 ## Authoring
 
 Composition looks like this:

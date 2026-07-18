@@ -277,6 +277,23 @@ test("solving the same diagram is deterministic", async () => {
   assert.equal(first.svg, second.svg);
 });
 
+test("a CSS-style theme changes presentation without changing Modelplane geometry", async () => {
+  const baseEntry = path.join(repo, "examples", "modelplane-fleet-inference", "diagram.tsx");
+  const themedEntry = path.join(repo, "examples", "modelplane-fleet-inference", "neon-infrastructure.tsx");
+  const base = await solveFile(baseEntry);
+  const themed = await solveFile(themedEntry);
+  const boxes = (scene) => scene.objects.map((object) => [object.path, object.box]);
+  const routes = (scene) => scene.lines.map((line) => [line.id, line.route, line.routeLabels.map((label) => label.box)]);
+
+  assert.equal(themed.scene.root.style.fill, "canvas");
+  assert.equal(themed.scene.objectByPath.get("actors/client").style.fill, "surface");
+  assert.deepEqual(boxes(themed.scene), boxes(base.scene));
+  assert.deepEqual(routes(themed.scene), routes(base.scene));
+  assert.doesNotMatch(themed.svg, /id="routing-regions"/);
+  assert.match(themed.svg, /<rect width="100%" height="100%" fill="#100d2e"\/>/);
+  assert.match(themed.svg, /font-family="Inter, ui-sans-serif, system-ui, sans-serif"/);
+});
+
 test("route-aware alignment preserves declared space-between distribution", async () => {
   const entry = path.join(repo, "examples", "agent-substrate", "diagram.tsx");
   const { scene } = await solveFile(entry);

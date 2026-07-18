@@ -32,7 +32,7 @@ import {
   rule,
 } from "@kvisl/core";
 
-const styles = [
+const baseStyles = [
   rule(role("serving-cluster"), { fill: "near-white", stroke: "structural-gray" }),
   rule(role("control-plane"), { fill: "near-white", stroke: "structural-gray" }),
   rule(role("inference-fleet"), { fill: "near-white", stroke: "structural-gray" }),
@@ -274,8 +274,13 @@ function ControlPlane() {
   );
 }
 
-export default (
-  <Diagram id="modelplane-fleet-inference" theme="excalidraw-handdrawn" styles={styles}>
+export function ModelplaneFleetInferenceDiagram({ styles = [] }) {
+  return (
+  <Diagram
+    id="modelplane-fleet-inference"
+    theme="excalidraw-handdrawn"
+    styles={[...baseStyles, ...styles]}
+  >
     <Title>Modelplane fleet inference architecture</Title>
     <Subtitle>
       Orange shows control-plane reconciliation; purple shows runtime inference routing.
@@ -407,4 +412,7 @@ export default (
       v0.1 implemented: GKE/EKS/BYO; Traefik control gateway; Envoy/GAIE workload gateways; Deployment/LWS; DRA; HF → RWX ModelCache. Early limits: equal-weight routing; no capacity scoring, anti-affinity policy, or transient failover. Design/stub: DynamoBackend, Grove / ModelExpress / DGD; one Modelplane API, no user-facing orchestrator switch.
     </Note>
   </Diagram>
-);
+  );
+}
+
+export default <ModelplaneFleetInferenceDiagram />;
