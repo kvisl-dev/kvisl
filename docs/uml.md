@@ -17,7 +17,7 @@ The result is an editable Excalidraw document. The same source can target SVG or
 
 ## Class diagrams
 
-![Order domain class diagram](assets/uml-class-diagram.svg)
+[![Order domain class diagram rendered from the UML component library](../experiments/layouter/output/uml-class.svg)](../examples/uml/class-diagram.tsx)
 
 A class is an ordinary object with a rectangle primitive and structured content groups:
 
@@ -103,11 +103,11 @@ Several generalizations can attach to the same named port on a superclass. The c
 
 This is not special inheritance routing. It is the same named-port join and merged path used elsewhere in Kvísl, with a UML head supplied by the library.
 
-![Two generalizations joining into one hollow-triangle trunk at a named port](assets/uml-generalization-trunk.svg)
+[![Two generalizations joining into one hollow-triangle trunk in the generated class diagram](../experiments/layouter/output/uml-class.svg)](../examples/uml/class-diagram.tsx)
 
 ## Sequence diagrams
 
-![Place an order sequence diagram](assets/uml-sequence-diagram.svg)
+[![Place an order sequence diagram](../experiments/layouter/output/uml-sequence.svg)](../examples/uml/sequence-diagram.tsx)
 
 Sequence diagrams need a higher-level component because time is an authoring concept, not a core axis. Inside `Interaction`, JSX source order defines temporal order:
 
@@ -152,7 +152,7 @@ Sequence diagrams need a higher-level component because time is an authoring con
 - an activation becomes an object under an `extent` constraint between two occurrences;
 - a combined fragment becomes a frame object plus an `inside` constraint over its occurrences.
 
-![Interaction declarations expanding into core objects, lines, and constraints](assets/interaction-expansion.svg)
+[![Interaction declarations expanded and solved as core objects, lines, and constraints](../experiments/layouter/output/uml-sequence.svg)](../examples/uml/sequence-diagram.tsx)
 
 There is no `SequenceDiagramIR`, time coordinate, activation primitive, or fragment primitive in the core.
 
@@ -205,6 +205,21 @@ The example library covers the principal structural and behavioral families:
 | State machine | `UmlState`, pseudostates, transitions | nested shaped objects, guards, hierarchy-crossing lines |
 
 See the [complete UML example index](../examples/uml/README.md) and its individual TSX models.
+
+<table>
+  <tr><th>Component</th><th>Deployment</th><th>Activity</th></tr>
+  <tr>
+    <td><a href="../examples/uml/component-diagram.tsx"><img alt="Generated UML component diagram" src="../experiments/layouter/output/uml-component.svg" width="100%"></a></td>
+    <td><a href="../examples/uml/deployment-diagram.tsx"><img alt="Generated UML deployment diagram" src="../experiments/layouter/output/uml-deployment.svg" width="100%"></a></td>
+    <td><a href="../examples/uml/activity-diagram.tsx"><img alt="Generated UML activity diagram" src="../experiments/layouter/output/uml-activity.svg" width="100%"></a></td>
+  </tr>
+  <tr><th>Package</th><th>Use case</th><th>State machine</th></tr>
+  <tr>
+    <td><a href="../examples/uml/package-diagram.tsx"><img alt="Generated UML package diagram" src="../experiments/layouter/output/uml-package.svg" width="100%"></a></td>
+    <td><a href="../examples/uml/use-case-diagram.tsx"><img alt="Generated UML use-case diagram" src="../experiments/layouter/output/uml-use-case.svg" width="100%"></a></td>
+    <td><a href="../examples/uml/state-machine-diagram.tsx"><img alt="Generated UML state-machine diagram" src="../experiments/layouter/output/uml-state-machine.svg" width="100%"></a></td>
+  </tr>
+</table>
 
 ## Core versus library responsibility
 

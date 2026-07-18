@@ -23,6 +23,14 @@ async function exampleFiles() {
     .map((file) => path.join(root, file));
 }
 
+async function documentationDiagramFiles() {
+  const root = path.join(repo, "docs", "diagrams");
+  return (await readdir(root))
+    .filter((file) => file.endsWith(".tsx"))
+    .sort()
+    .map((file) => path.join(root, file));
+}
+
 function assertOrthogonal(routePoints, lineId) {
   for (let index = 1; index < routePoints.length; index += 1) {
     const first = routePoints[index - 1];
@@ -91,6 +99,23 @@ test("every repository diagram produces a finite orthogonal SVG preview", async 
       [],
       `${path.relative(repo, file)} places line labels on container decor`,
     );
+  }
+});
+
+test("every documentation diagram is executable by the local prototype", async () => {
+  const files = await documentationDiagramFiles();
+  assert.equal(files.length, 6);
+  for (const file of files) {
+    const { scene, svg } = await solveFile(file);
+    const errors = scene.diagnostics.filter((diagnostic) => diagnostic.severity === "error");
+    assert.deepEqual(errors, [], `${path.relative(repo, file)} has projection or solve errors`);
+    assert.ok(Number.isFinite(scene.width) && scene.width > 0);
+    assert.ok(Number.isFinite(scene.height) && scene.height > 0);
+    assert.match(svg, /^<\?xml version="1\.0"/);
+    for (const line of scene.lines) {
+      assert.ok(line.route.length >= 2, `${path.relative(repo, file)} did not route ${line.id}`);
+      assertOrthogonal(line.route, line.id);
+    }
   }
 });
 

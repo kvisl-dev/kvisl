@@ -1,4 +1,4 @@
-> **Pre-Prototype — only design and docs**
+> **Experimental prototype — language design, documentation, and layouter**
 
 <p align="center">
   <img alt="Kvísl Script" src="contrib/logo-readme.svg" width="507">
@@ -12,7 +12,7 @@ The long-term target is a model detailed enough to describe a complete distribut
 
 ## Flagship example
 
-[![Agent Substrate component design](examples/agent-substrate/original-adaptive.svg)](examples/agent-substrate/diagram.tsx)
+[![Agent Substrate component design rendered from Kvísl TSX](experiments/layouter/output/agent-substrate.svg)](examples/agent-substrate/diagram.tsx)
 
 The [Agent Substrate model](examples/agent-substrate/diagram.tsx) is the kind of architecture diagram Kvísl is built to create: visually rich, deeply nested, and crossed by connections that do not flatten its hierarchy. Its source describes components, containment, ports, layout intent, and meaningful routing regions rather than drawing coordinates. An agent can expand, restructure, and refine it over many iterations while Kvísl recomputes the concrete layout and routes.
 
@@ -54,6 +54,14 @@ Authors describe containment, layout, ports, lines, constraints, and routing reg
 
 Margins, padding bands, and gaps between layout siblings form implicit routing regions. Named corridors refine those regions with spacing, pressure, ordering, or a visible divider.
 
+<p align="center">
+  <a href="docs/diagrams/routing-corridors.tsx">
+    <img alt="Kvísl routing-corridor example with the canonical channel mesh shown in translucent red" src="docs/generated/routing-corridors-debug.svg" width="78%">
+  </a>
+</p>
+
+The translucent red cells are the local renderer's debug view of the same canonical corridor mesh used for routing. They are generated from the linked Kvísl source, not painted as documentation artwork.
+
 ### Renderer-neutral pipeline
 
 TSX is evaluated once and normalized into a versioned, language-neutral Logical IR. Independent TypeScript, Go, and Rust solvers or renderers can consume that IR.
@@ -68,6 +76,12 @@ diagram.tsx
     -> Solved IR
     -> Excalidraw, SVG, Canvas, or another painter
 ```
+
+<p align="center">
+  <a href="docs/diagrams/render-pipeline.tsx">
+    <img alt="Kvísl source flowing through Logical, Projection, and Solved IR to several painters" src="docs/generated/render-pipeline.svg" width="92%">
+  </a>
+</p>
 
 ## CSS
 
@@ -90,7 +104,7 @@ export default (
   </a>
 </p>
 
-Regenerate this non-debug rendering with `npm run layout:css-example`. The stylesheet remains typed TS data because the core contract is `RuleIR` and `TokenSetIR`; a standalone text stylesheet syntax is intentionally not required by the model.
+Regenerate this rendering together with every other repository diagram using `npm run build`. The stylesheet remains typed TS data because the core contract is `RuleIR` and `TokenSetIR`; a standalone text stylesheet syntax is intentionally not required by the model.
 
 ## Authoring
 
@@ -178,6 +192,16 @@ The language and implementation contracts are documented separately:
 - [`examples/`](examples/) contains complete architecture and UML models.
 
 A grammar change must update every affected fixture so the language stays tested against real design drawings rather than toy flowcharts.
+
+### Dogfooding the documentation
+
+The architecture, feature, UML, debug-routing, and alternate-style graphics linked from the README and guides are rendered from repository TSX with the local evaluator, layouter, router, and SVG painter. Their sources live in [`docs/diagrams/`](docs/diagrams/) and [`examples/`](examples/); generated documentation assets live in [`docs/generated/`](docs/generated/), and the complete example gallery lives in [`experiments/layouter/output/`](experiments/layouter/output/).
+
+```console
+npm run build
+```
+
+That one command regenerates normal and routing-debug example galleries, documentation diagrams, and the alternate CSS render. Original drawings under `examples/` remain visual acceptance references and are deliberately never overwritten.
 
 ## Reference fixtures
 

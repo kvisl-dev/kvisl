@@ -70,7 +70,7 @@ Rows, columns, grids, overlays, layered layouts, and constraints express relativ
 
 Every container has a local frame that can be rotated by `0`, `90`, `180`, or `270` degrees. A component can therefore be embedded in another flow direction without rewriting its internals.
 
-![The same pipeline component rendered upright and rotated 90 degrees](assets/orientation-rotation.svg)
+[![The same pipeline component rendered upright and rotated 90 degrees](generated/orientation.svg)](diagrams/orientation.tsx)
 
 ### Lines made of logical segments
 
@@ -87,7 +87,7 @@ Lines may cross any number of containment boundaries. They do not have to enumer
 
 The gaps between layout siblings and the padding inside containers form the routing plane. A line routed through that whitespace reserves space, and layout reacts to the route. A named corridor refines an existing gap or padding band with capacity, track spacing, ordering, packing pressure, or a visible divider.
 
-![Gaps and padding bands are routable regions](assets/whitespace-routing.svg)
+[![The canonical channel mesh behind routable gaps and padding bands](generated/routing-corridors-debug.svg)](diagrams/routing-corridors.tsx)
 
 This makes a route such as “leave this subsystem vertically, travel across the higher-level gap, and enter that subsystem from below” a structural request rather than a list of bends.
 
@@ -101,7 +101,7 @@ renderer default < theme < library < document < inline style
 
 This lets a UML library define notation, a theme define a visual language, and a document override either without copying styles into every component. Rules may affect presentation and metric defaults, but never topology or object existence. Named tokens — the custom-property analog — resolve through the same layers, so a document can swap a theme's palette or spacing scale without touching any rule.
 
-![Five cascade layers and the resolved style of one object](assets/rule-cascade.svg)
+[![The Modelplane fixture rendered with an alternate typed-rule theme](../experiments/layouter/output/modelplane-fleet-inference-neon.svg)](../examples/modelplane-fleet-inference/neon-infrastructure.tsx)
 
 ### Views and adaptive detail
 
@@ -109,7 +109,13 @@ A component may own several hidden render views. Views preserve the component's 
 
 View selection uses media-query-like first-fit semantics. The renderer evaluates views in declaration order and materializes the first one whose condition, footprint, and active policy are viable. An outside-in `maximum-that-fits` policy can therefore choose a detailed view on a large canvas and a compact view on a constrained page.
 
-![First-fit view selection at a wide and a narrow allocation](assets/view-selection.svg)
+<table>
+  <tr><th>Wide allocation</th><th>Narrow allocation</th></tr>
+  <tr>
+    <td><a href="diagrams/adaptive-service.tsx"><img alt="Detailed view chosen for a wide allocation" src="generated/adaptive-service-wide.svg" width="100%"></a></td>
+    <td><a href="diagrams/adaptive-service.tsx"><img alt="Summary view chosen for a narrow allocation" src="generated/adaptive-service-narrow.svg" width="100%"></a></td>
+  </tr>
+</table>
 
 Unselected view branches are not visible to ordinary paths. Stable component ports remain the normal way to connect across changing views.
 
@@ -128,13 +134,15 @@ TSX source
   -> SVG, Excalidraw, Canvas, or another target
 ```
 
+[![The Kvísl rendering pipeline expressed and rendered as a Kvísl diagram](generated/render-pipeline.svg)](diagrams/render-pipeline.tsx)
+
 TSX is evaluated once. Go, Rust, and TypeScript consumers operate on versioned, language-neutral intermediate representations rather than re-running author code.
 
 ## Visual ambition
 
 A single model can contain nested scopes, repeated components, long hierarchy-crossing routes, routing buses, merged trunks, conditional detail, annotations, dividers, images, and multiple visual roles.
 
-[![Modelplane fleet inference architecture](../examples/modelplane-fleet-inference/original.png)](../examples/modelplane-fleet-inference/diagram.tsx)
+[![Modelplane fleet inference architecture rendered from Kvísl TSX](../experiments/layouter/output/modelplane-fleet-inference.svg)](../examples/modelplane-fleet-inference/diagram.tsx)
 
 The linked source formulates this Modelplane architecture without authored pixel positions. See the [example index](../examples/README.md) for more complete models.
 
@@ -154,7 +162,7 @@ It is probably unnecessary for a disposable sketch, a small flowchart, or a draw
 
 ## Does the world need this?
 
-That is the question this documentation exists to answer, before a solver and renderers are built. The design bets on three things no existing tool combines:
+That is the question this documentation exists to answer before the prototype becomes a production toolchain. The design bets on three things no existing tool combines:
 
 1. **Components with ports instead of global IDs** — reusable, nestable, rotatable subsystems whose callers never see internal names;
 2. **Whitespace routing** — corridors, shared trunks, and hierarchy-crossing routes as logical structure instead of hand-maintained polylines;

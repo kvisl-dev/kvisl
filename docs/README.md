@@ -2,7 +2,13 @@
 
 Kvísl Script, or Kvísl for short, is a composable modelling language for technical design diagrams. These guides cover authoring TSX models, routing and ports, adaptive views, rendering, and domain libraries such as UML.
 
-**These guides are a reality check.** The language and data model are designed; a first normalizer slice runs; solver and renderers do not exist yet. Before building them, we want an honest answer to one question: *does the world need this?* Read the [overview](overview.md), skim one [complete example](../examples/README.md), and tell us — see [the questions we are asking](overview.md#does-the-world-need-this).
+**These guides dogfood the prototype.** Their architecture, UML, feature, adaptive-view, alternate-style, and routing-debug images are generated from repository TSX by the local evaluator, layouter, router, and SVG painter. The prototype remains experimental; the generated drawings make its current strengths and limitations reviewable against complete models instead of prose alone.
+
+```console
+npm run build
+```
+
+This one command regenerates every linked documentation diagram, both example galleries, and the alternate CSS render. Documentation sources live in [`docs/diagrams/`](diagrams/), generated assets in [`docs/generated/`](generated/), and complete example sources in [`examples/`](../examples/). Original reference drawings are visual acceptance inputs and are never overwritten.
 
 ## Start here
 

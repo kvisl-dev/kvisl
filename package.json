@@ -5,6 +5,8 @@
   "type": "module",
   "description": "Composable modelling language for design diagrams — normalizer slice",
   "scripts": {
+    "build": "node tools/build-diagrams.mjs",
+    "docs:build": "node tools/build-diagrams.mjs",
     "layout:examples": "node experiments/layouter/render-all.mjs",
     "layout:examples:debug": "node experiments/layouter/render-all.mjs --debug-routing",
     "layout:css-example": "node experiments/layouter/render.mjs examples/modelplane-fleet-inference/neon-infrastructure.tsx --output experiments/layouter/output/modelplane-fleet-inference-neon.svg",

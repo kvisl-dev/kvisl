@@ -158,7 +158,7 @@ Add a segment only when a particular part of the route carries meaning:
 
 The segment requests a run through the whitespace between two layout siblings. The router still chooses its bends and docking geometry. Because lines reserve space by default, the gap expands if the label and route tracks need more room.
 
-![A line using a reserved parent padding corridor](assets/routing-corridor.svg)
+[![A line using reserved corridor space, with the router's channel mesh exposed](generated/routing-corridors-debug.svg)](diagrams/routing-corridors.tsx)
 
 A named corridor can refine a gap or padding band with ordering, capacity, spacing, pressure, allowed sharing, or a labeled divider. A route may also use `padding(container, side)` directly; inside a reusable component, `padding(self, "left")` refers to the component's own root without knowing its external ID.
 
@@ -180,7 +180,7 @@ Lines attached to the same named port form one topological join. The port decide
 
 `merge` draws a common trunk, `bundle` keeps close parallel strokes, `separate` splits immediately after the common dock, and `auto` leaves the choice to the router. Branching is as late as possible by default and may be constrained to a corridor or gap.
 
-![Merge, bundle, and separate at one named port](assets/port-sharing-modes.svg)
+[![Merge, bundle, and separate at one named port](generated/port-sharing.svg)](diagrams/port-sharing.tsx)
 
 An endpoint that names only an object, rather than a port, gets a private line-owned dock:
 
@@ -189,8 +189,6 @@ An endpoint that names only an object, rather than a port, gets a private line-o
 ```
 
 Two such endpoints do not join accidentally even if the router places them at the same point. Name a port when shared attachment identity matters.
-
-![Named ports, port groups, and private line-owned docks](assets/attachment-identities.svg)
 
 Port groups coordinate several distinct named ports. Their `merge`, `bundle`, `free`, and `separate` affinities are illustrated in [Routing, corridors, and ports](routing-and-ports.md#port-groups-are-not-named-port-joins).
 
@@ -261,6 +259,14 @@ Views are hidden meta branches. Declaration order is preference order, and the r
 
 `PortPlacement` maps the same canonical `request` port onto an anchor in each template. External lines stay attached while the rendered internals change.
 
+<table>
+  <tr><th>Detailed view selected for a wide allocation</th><th>Summary selected for a narrow allocation</th></tr>
+  <tr>
+    <td><a href="diagrams/adaptive-service.tsx"><img alt="Detailed service view" src="generated/adaptive-service-wide.svg" width="100%"></a></td>
+    <td><a href="diagrams/adaptive-service.tsx"><img alt="Summary service view" src="generated/adaptive-service-narrow.svg" width="100%"></a></td>
+  </tr>
+</table>
+
 Render for a constrained page:
 
 ```console
@@ -297,6 +303,8 @@ Every container interprets directions in its local frame:
 
 The local row becomes a physical column. Local left/right ports, corridors, and routes rotate with it; text remains upright by default. `0`, `90`, `180`, and `270` are supported orientations.
 
+[![The same pipeline component in zero-degree and ninety-degree local frames](generated/orientation.svg)](diagrams/orientation.tsx)
+
 ## Inspect intermediate results
 
 The single render command is the normal path. The CLI also exposes the pipeline when a model or solver choice needs explanation:
@@ -313,6 +321,8 @@ $ kvisl paint solved.yaml --format excalidraw --output architecture.excalidraw
 - Solved IR adds local-frame geometry and provenance for painters.
 
 All three are versioned and language-neutral so TypeScript, Go, and Rust tools can consume the same model.
+
+[![The complete renderer-neutral pipeline, authored and rendered with Kvísl](generated/render-pipeline.svg)](diagrams/render-pipeline.tsx)
 
 ## What the author controls
 
