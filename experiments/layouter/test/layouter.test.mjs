@@ -39,6 +39,21 @@ function assertOrthogonal(routePoints, lineId) {
   }
 }
 
+function assertNoReverseExcursion(routePoints, lineId) {
+  for (let index = 1; index < routePoints.length - 1; index += 1) {
+    const before = routePoints[index - 1];
+    const middle = routePoints[index];
+    const after = routePoints[index + 1];
+    const horizontal = before.y === middle.y && middle.y === after.y;
+    const vertical = before.x === middle.x && middle.x === after.x;
+    if (!horizontal && !vertical) continue;
+    const between = horizontal
+      ? middle.x >= Math.min(before.x, after.x) && middle.x <= Math.max(before.x, after.x)
+      : middle.y >= Math.min(before.y, after.y) && middle.y <= Math.max(before.y, after.y);
+    assert.ok(between, `${lineId} immediately retraces a collinear segment at route point ${index}`);
+  }
+}
+
 test("every repository diagram produces a finite orthogonal SVG preview", async () => {
   const files = await exampleFiles();
   assert.equal(files.length, 14);
@@ -104,7 +119,7 @@ test("every repository diagram produces a finite orthogonal SVG preview", async 
 
 test("every documentation diagram is executable by the local prototype", async () => {
   const files = await documentationDiagramFiles();
-  assert.equal(files.length, 6);
+  assert.equal(files.length, 14);
   for (const file of files) {
     const { scene, svg } = await solveFile(file);
     const errors = scene.diagnostics.filter((diagnostic) => diagnostic.severity === "error");
@@ -116,6 +131,124 @@ test("every documentation diagram is executable by the local prototype", async (
       assert.ok(line.route.length >= 2, `${path.relative(repo, file)} did not route ${line.id}`);
       assertOrthogonal(line.route, line.id);
     }
+  }
+});
+
+test("a TSX port handle resolves to its bound component-internal named port", async () => {
+  const entry = path.join(repo, "docs", "diagrams", "getting-started-reusable.tsx");
+  const { scene } = await solveFile(entry);
+  const line = scene.lines[0];
+
+  assert.equal(line.to.object.path, "system/checkout-service/api");
+  assert.equal(line.to.port.id, "request");
+  assert.equal(line.to.port.owner, line.to.object);
+  assert.deepEqual(scene.diagnostics.filter((diagnostic) => diagnostic.severity === "error"), []);
+});
+
+test("layout orientation changes flow direction without rotating child geometry", async () => {
+  const entry = path.join(repo, "docs", "diagrams", "orientation.tsx");
+  const { scene } = await solveFile(entry);
+  const horizontal = ["parse", "validate", "store"].map((id) => scene.objectByPath.get(`instances/horizontal/flow/${id}`));
+  const vertical = ["parse", "validate", "store"].map((id) => scene.objectByPath.get(`instances/vertical/flow/${id}`));
+
+  assert.deepEqual(vertical.map((object) => [object.box.width, object.box.height]),
+    horizontal.map((object) => [object.box.width, object.box.height]));
+  assert.ok(horizontal[0].box.x < horizontal[1].box.x && horizontal[1].box.x < horizontal[2].box.x);
+  assert.ok(vertical[0].box.y < vertical[1].box.y && vertical[1].box.y < vertical[2].box.y);
+  assert.ok(vertical.every((object) => Math.abs(object.box.x - vertical[0].box.x) < 0.01));
+  assert.equal(vertical[0].ports.get("in").physicalSide, "top");
+  assert.equal(vertical[0].ports.get("out").physicalSide, "bottom");
+});
+
+test("structured orientation depth remaps nested layouts without rotating their boxes", async () => {
+  const defaultDepth = project({
+    core: "diagram",
+    props: { id: "orientation-depth" },
+    children: [{
+      core: "scope",
+      props: { id: "outer", layout: "column", orientation: 90 },
+      children: [{
+        core: "row",
+        props: { id: "inner" },
+        children: [
+          { core: "node", props: { id: "first", label: "first" }, children: [] },
+          { core: "node", props: { id: "second", label: "second" }, children: [] },
+        ],
+      }],
+    }],
+  });
+  layout(defaultDepth);
+  assert.equal(defaultDepth.objectByPath.get("outer").effectiveLayout, "row");
+  assert.equal(defaultDepth.objectByPath.get("outer/inner").effectiveLayout, "row");
+
+  const entry = path.join(repo, "examples", "coverage", "diagram.tsx");
+  const { scene } = await solveFile(entry);
+  const rotated = scene.objectByPath.get("system/rotated");
+  const pipeline = scene.objectByPath.get("system/rotated/pipeline");
+  const uprightStages = ["ingest", "transform", "publish"]
+    .map((id) => scene.objectByPath.get(`system/upright/${id}`));
+  const rotatedStages = ["ingest", "transform", "publish"]
+    .map((id) => scene.objectByPath.get(`system/rotated/pipeline/${id}`));
+
+  assert.equal(rotated.effectiveLayout, "row");
+  assert.equal(pipeline.effectiveLayout, "column");
+  assert.deepEqual(rotatedStages.map((object) => [object.box.width, object.box.height]),
+    uprightStages.map((object) => [object.box.width, object.box.height]));
+  assert.ok(rotatedStages[0].box.y < rotatedStages[1].box.y && rotatedStages[1].box.y < rotatedStages[2].box.y);
+});
+
+test("UML interaction routing keeps messages straight and lifelines equally deep", async () => {
+  const entry = path.join(repo, "examples", "uml", "sequence-diagram.tsx");
+  const { scene, svg } = await solveFile(entry);
+  const messages = scene.lines.filter((line) => line.roles.includes("uml-message") || line.roles.includes("uml-reply"));
+  assert.ok(messages.every((line) => line.route.length === 2),
+    messages.filter((line) => line.route.length !== 2).map((line) => line.id).join(", "));
+  const lifelines = scene.objects.filter((object) => object.roles.includes("uml-lifeline"));
+  assert.equal(new Set(lifelines.map((object) => object.box.y + object.box.height)).size, 1);
+  assert.doesNotMatch(svg, /<circle[^>]+r="3"/);
+  assert.equal(scene.lines.find((line) => line.id === "reserved").style.dash, "dashed");
+  assert.match(svg, /data-uml-combined-fragment-tab="checkout-flow\/payment-retry"/);
+});
+
+test("UML endpoint labels stay grouped near their docks", async () => {
+  const entry = path.join(repo, "examples", "uml", "class-diagram.tsx");
+  const { scene } = await solveFile(entry);
+  const association = scene.lines.find((line) => line.id === "customer-orders");
+  for (const label of association.routeLabels.filter((candidate) => candidate.endpoint)) {
+    const dock = label.endpoint.point;
+    const distance = Math.abs(label.x - dock.x) + Math.abs(label.y - dock.y);
+    assert.ok(distance < 100, `${label.text} is ${distance}px from its endpoint`);
+  }
+});
+
+test("UML notations and actor associations use their visible geometry", async () => {
+  const component = await solveFile(path.join(repo, "examples", "uml", "component-diagram.tsx"));
+  const deployment = await solveFile(path.join(repo, "examples", "uml", "deployment-diagram.tsx"));
+  const useCase = await solveFile(path.join(repo, "examples", "uml", "use-case-diagram.tsx"));
+
+  assert.match(component.svg, /data-port-marker="required-interface"/);
+  assert.match(component.svg, /data-port-marker="provided-interface"/);
+  assert.match(deployment.svg, /«executionEnvironment»/);
+  assert.match(deployment.svg, /«device»/);
+  for (const line of useCase.scene.lines) {
+    assertNoReverseExcursion(line.route, line.id);
+    for (const endpoint of [line.from, line.to]) {
+      if (!endpoint.object.roles.includes("uml-actor")) continue;
+      assert.ok(endpoint.routingTarget, `${line.id} did not bind its actor figure`);
+      const target = endpoint.routingTarget.box;
+      const onHorizontalBoundary = endpoint.point.x === target.x || endpoint.point.x === target.x + target.width;
+      const onVerticalBoundary = endpoint.point.y === target.y || endpoint.point.y === target.y + target.height;
+      assert.ok(onHorizontalBoundary || onVerticalBoundary, `${line.id} missed its actor figure`);
+    }
+  }
+});
+
+test("UML routes do not contain immediate collinear retraces", async () => {
+  const root = path.join(repo, "examples", "uml");
+  const files = (await readdir(root)).filter((file) => file.endsWith("diagram.tsx")).sort();
+  for (const file of files) {
+    const { scene } = await solveFile(path.join(root, file));
+    for (const line of scene.lines) assertNoReverseExcursion(line.route, `${file}:${line.id}`);
   }
 });
 
@@ -337,11 +470,13 @@ test("Modelplane fixture centers its control-plane label and leaves the external
   assert.equal(request.physicalSide, "top");
 });
 
-test("dock sliding reroutes authored corridor pins instead of preserving a stale jog", async () => {
+test("authored corridor routing preserves its hard pins and a centered target dock", async () => {
   const entry = path.join(repo, "examples", "modelplane-fleet-inference", "diagram.tsx");
   const { scene } = await solveFile(entry);
   const line = scene.lines.find((candidate) => candidate.id === "place-cluster-a");
-  const region = scene.regions.get("gap:$root:4");
+  const region = [...scene.regions.values()].find((candidate) =>
+    candidate.kind === "gap" && candidate.owner === scene.root && candidate.entryLines.has(line));
+  assert.ok(region);
   const track = line.regionTracks.get(region.key);
   const target = line.to.port.anchor;
   const originalCenter = target.box.x + target.box.width / 2;
@@ -350,8 +485,7 @@ test("dock sliding reroutes authored corridor pins instead of preserving a stale
     .find(({ first, second }) => first.y === second.y && first.y === track.allocation.coordinate
       && first.x !== second.x);
 
-  assert.notEqual(line.to.point.x, originalCenter);
-  assert.ok(line.route.every((point) => point.x !== originalCenter));
+  assert.equal(line.to.point.x, originalCenter);
   assert.ok(corridorRun);
   assert.equal(corridorRun.second.x, line.to.point.x);
   assert.ok(line.requiredRoutePins.every((pin) => line.route.some((point) =>
@@ -568,7 +702,7 @@ test("longitudinal corridor tracks form a centered geometry-ordered bundle", asy
     .map((entry) => ({ entry, track: entry.line.regionTracks.get(region.key) }))
     .filter(({ track }) => !track.crossing)
     .sort((first, second) => first.track.index - second.track.index);
-  assert.deepEqual(entries.map(({ entry }) => entry.line.id), ["probe-upright", "audit-upright", "audit-rotated"]);
+  assert.deepEqual(entries.map(({ entry }) => entry.line.id), ["audit-upright", "audit-rotated"]);
   const projected = entries.map(({ entry }) => (entry.line.from.point.x + entry.line.to.point.x) / 2);
   assert.deepEqual(projected, [...projected].sort((first, second) => first - second));
   const geometry = regionGeometry(region);
@@ -668,6 +802,37 @@ test("a named bundle port allocates distinct physical slots under one canonical 
   assert.ok(lines.every((line) => line.from.port === port));
   assert.equal(new Set(lines.map((line) => `${line.route[0].x},${line.route[0].y}`)).size, 3);
   assert.equal(port.terminalSlots.length, 3);
+});
+
+test("named-port sharing preserves terminal order without rectangular route excursions", async () => {
+  const entry = path.join(repo, "docs", "diagrams", "port-sharing.tsx");
+  const { scene } = await solveFile(entry);
+  const byScope = (scope) => scene.lines.filter((line) => line.scope.path === `modes/${scope}`)
+    .sort((first, second) => first.from.point.y - second.from.point.y);
+  const assertMonotone = (line) => {
+    for (const axis of ["x", "y"]) {
+      const start = line.route[0][axis];
+      const end = line.route.at(-1)[axis];
+      const direction = Math.sign(end - start);
+      for (let index = 1; index < line.route.length; index += 1) {
+        const step = line.route[index][axis] - line.route[index - 1][axis];
+        assert.ok(!direction || Math.sign(step) === 0 || Math.sign(step) === direction,
+          `${line.scope.path}/${line.id} reverses on ${axis}`);
+      }
+    }
+  };
+
+  for (const line of scene.lines) assertMonotone(line);
+  const merge = byScope("merge");
+  assert.equal(new Set(merge.map((line) => `${line.to.point.x},${line.to.point.y}`)).size, 1);
+
+  const bundle = byScope("bundle");
+  const separate = byScope("separate");
+  assert.deepEqual(bundle.map((line) => line.to.point.y), [...bundle.map((line) => line.to.point.y)].sort((a, b) => a - b));
+  assert.deepEqual(separate.map((line) => line.to.point.y), [...separate.map((line) => line.to.point.y)].sort((a, b) => a - b));
+  assert.equal(new Set(bundle.map((line) => line.to.point.y)).size, 3);
+  assert.equal(new Set(separate.map((line) => line.to.point.y)).size, 3);
+  assert.ok(separate[1].to.point.y - separate[0].to.point.y > bundle[1].to.point.y - bundle[0].to.point.y);
 });
 
 test("an explicit same-size constraint equalizes the referenced boxes", async () => {

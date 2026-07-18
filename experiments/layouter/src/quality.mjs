@@ -78,6 +78,8 @@ function obstacleObjects(scene) {
   return scene.objects.filter((object) => object.visible
     && object.children.length === 0
     && !object.frame
+    && !object.roles.includes("uml-occurrence")
+    && !object.roles.includes("uml-lifeline-end")
     && !["title", "subtitle", "legend-item"].includes(object.kind));
 }
 
@@ -89,6 +91,8 @@ function routeObjectIntersections(scene, objects) {
     const ignored = new Set([
       line.from?.object,
       line.to?.object,
+      line.from?.routingTarget,
+      line.to?.routingTarget,
       ...line.segments.map((segment) => segment.waypoint).filter(Boolean),
     ]);
     for (let segmentIndex = 1; segmentIndex < line.route.length; segmentIndex += 1) {
@@ -348,8 +352,8 @@ export function layoutContractViolations(scene) {
 
     if (layout === "grid" && container.layoutData) {
       const { columns, columnGaps = [], rowGaps = [] } = container.layoutData;
-      const columnVector = primaryVector("row", container.physicalOrientation);
-      const rowVector = primaryVector("column", container.physicalOrientation);
+      const columnVector = primaryVector("row");
+      const rowVector = primaryVector("column");
       for (let index = 0; index < members.length; index += 1) {
         const column = index % columns;
         const row = Math.floor(index / columns);
@@ -378,7 +382,7 @@ export function layoutContractViolations(scene) {
     }
 
     if (layout !== "row" && layout !== "column") continue;
-    const vector = primaryVector(layout, container.physicalOrientation);
+    const vector = primaryVector(layout);
     if (!vector) continue;
     const intervals = members.map((member) => projectedInterval(member.box, vector));
     const minimumGaps = container.gapSizes ?? [];
@@ -558,7 +562,7 @@ export function escalateLabelReservations(scene, reservations) {
     if (!owner || (layout !== "row" && layout !== "column")) return false;
     const extent = layout === "column" ? "height" : "width";
     const need = box[extent] + 16;
-    for (const index of [owner.siblingIndex - 1, owner.siblingIndex]) {
+    for (const index of [owner.layoutIndex - 1, owner.layoutIndex]) {
       if (index < 0 || index >= flowMembers(parent).length - 1) continue;
       const key = `gap:${parent.path || "$root"}:${index}`;
       raise(key, Math.max(need, (reservations.get(key) ?? 0) + 16));
@@ -629,6 +633,7 @@ export function analyzeScene(scene) {
   const objects = obstacleObjects(scene);
   const routeInteractions = routeRouteInteractions(scene);
   const titleStrips = boundaryLabelStrips(scene);
+  const documentText = scene.objects.filter((object) => ["title", "subtitle", "legend-item"].includes(object.kind));
   return {
     layoutContractViolations: layoutContractViolations(scene),
     unexpectedObjectOverlaps: unexpectedObjectOverlaps(objects),
@@ -643,7 +648,7 @@ export function analyzeScene(scene) {
     // title strip are tolerated
     routeTitleCrossings: routeObjectIntersections(scene, titleStrips).filter((hit) =>
       hit.line.route[hit.segmentIndex].y === hit.line.route[hit.segmentIndex + 1].y),
-    labelDecorOverlaps: labelObjectOverlaps(scene, [...titleStrips, ...containerBorderRings(scene)])
+    labelDecorOverlaps: labelObjectOverlaps(scene, [...documentText, ...titleStrips, ...containerBorderRings(scene)])
       .filter((item) => !labelMayCrossContainerBorder(item.label, item.object)),
   };
 }

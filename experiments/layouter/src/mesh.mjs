@@ -5,11 +5,9 @@ function flowChildren(object) {
 }
 
 function layoutKind(object) {
-  const kind = object.layout?.kind ?? (["scope", "diagram"].includes(object.kind) ? "column" : object.kind);
-  if (Math.abs(object.physicalOrientation ?? 0) % 180 !== 90) return kind;
-  if (kind === "row") return "column";
-  if (kind === "column") return "row";
-  return kind;
+  return object.effectiveLayout
+    ?? object.layout?.kind
+    ?? (["scope", "diagram"].includes(object.kind) ? "column" : object.kind);
 }
 
 function geometry(x, y, width, height, axis) {
@@ -477,7 +475,7 @@ export function buildChannelMesh(scene) {
         const first = members[index - 1];
         const second = members[index];
         const axis = layout === "row" ? "vertical" : "horizontal";
-        const active = activeGaps.get(`${object.path || "$root"}:${first.siblingIndex}`);
+        const active = activeGaps.get(`${object.path || "$root"}:${first.layoutIndex}`);
         cells.push(...siblingGapCells(object, index - 1, first, second, axis, active));
       }
     }

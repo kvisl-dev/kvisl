@@ -168,6 +168,7 @@ export function project(expanded, options = {}) {
   const constraints = [];
   const refinements = [];
   const rules = [];
+  const portHandleBindings = new Map();
   const tokens = { ...DEFAULT_COLORS };
   let generatedId = 0;
 
@@ -271,8 +272,8 @@ export function project(expanded, options = {}) {
       id: node.props.id ?? `$line-${lines.length + 1}`,
       order: lines.length,
       scope,
-      fromRef: refText(from),
-      toRef: refText(to),
+      fromRef: from?.$$portHandle ? from : refText(from),
+      toRef: to?.$$portHandle ? to : refText(to),
       from: null,
       to: null,
       heads: heads ?? "forward",
@@ -293,6 +294,9 @@ export function project(expanded, options = {}) {
 
   function parseObject(node, parent) {
     const id = node.props.id ?? `$${node.core}-${++generatedId}`;
+    const orientation = typeof node.props.orientation === "object"
+      ? node.props.orientation
+      : { degrees: node.props.orientation ?? 0, depth: 1 };
     const object = {
       id,
       path: makePath(parent, id),
@@ -305,7 +309,8 @@ export function project(expanded, options = {}) {
       roles: list(node.props.role),
       classes: list(node.props.className),
       theme: node.props.theme ?? parent?.theme ?? null,
-      orientation: node.props.orientation ?? 0,
+      orientation: orientation.degrees ?? 0,
+      orientationDepth: orientation.depth ?? 1,
       shape: node.props.shape ?? (node.core === "node" ? "rounded-rectangle" : null),
       source: node.props.source ?? null,
       alt: node.props.alt ?? null,
@@ -367,7 +372,20 @@ export function project(expanded, options = {}) {
       }
       if (child.core === "port") {
         if (child.props.ref) refinements.push({ scope: object, props: child.props });
-        else addPort(object, child.props);
+        else {
+          const port = addPort(object, {
+            ...child.props.bind,
+            ...child.props,
+          });
+          if (port && child.props.bind?.$$portHandle) {
+            const previous = portHandleBindings.get(child.props.bind);
+            if (previous && previous !== port) {
+              diagnostics.push({ severity: "error", code: "port-handle-rebound", message: `port handle '${child.props.bind.$$portHandle}' is bound more than once` });
+            } else {
+              portHandleBindings.set(child.props.bind, port);
+            }
+          }
+        }
         continue;
       }
       if (child.core === "port-group") {
@@ -446,6 +464,14 @@ export function project(expanded, options = {}) {
   }
 
   function resolveEndpoint(scope, reference, line, end) {
+    if (reference?.$$portHandle) {
+      const port = portHandleBindings.get(reference);
+      if (!port) {
+        diagnostics.push({ severity: "error", code: "unbound-port-handle", message: `cannot resolve port handle '${reference.$$portHandle}' for line '${line.id}'` });
+        return null;
+      }
+      return { object: port.owner, port, end, reference };
+    }
     const { objectRef, portId } = splitEndpoint(reference);
     const object = resolveObject(scope, objectRef);
     if (!object) {
@@ -534,6 +560,16 @@ export function project(expanded, options = {}) {
     constraint.toObject = one(constraint.to);
     constraint.memberObjects = list(constraint.members).map(one).filter(Boolean);
     if (constraint.kind === "inside" && constraint.containerObject) constraint.containerObject.frame = true;
+  }
+
+  // Layout indexes deliberately exclude anchored and frame-only children.
+  // Routing gaps and measured gaps must use the same normalized sibling set.
+  for (const owner of objects) {
+    let layoutIndex = 0;
+    for (const child of owner.children) {
+      child.layoutIndex = child.anchor || child.frame ? null : layoutIndex;
+      if (child.layoutIndex != null) layoutIndex += 1;
+    }
   }
 
   for (const object of objects) {

@@ -1,6 +1,13 @@
 import { headGeometry, normalizedHeads } from "./heads.mjs";
 import { regionGeometry } from "./mesh.mjs";
 
+const SIDE_VECTOR = {
+  top: { x: 0, y: -1 },
+  right: { x: 1, y: 0 },
+  bottom: { x: 0, y: 1 },
+  left: { x: -1, y: 0 },
+};
+
 function escape(value) {
   return String(value)
     .replaceAll("&", "&amp;")
@@ -63,6 +70,7 @@ function drawActor(object, scene) {
 }
 
 function drawShape(object, scene) {
+  if (object.roles.includes("uml-occurrence") || object.roles.includes("uml-lifeline-end")) return "";
   if (!shouldDrawBoundary(object) && object.kind !== "image") return "";
   const box = object.box;
   const shape = object.shape ?? "rounded-rectangle";
@@ -105,15 +113,29 @@ function drawObjectText(object, scene) {
   const colorValue = color(object.style.color ?? object.style.stroke, scene, "#172033");
   const isTitle = object.kind === "title";
   const isSubtitle = object.kind === "subtitle";
-  const isBoundaryLabel = object.label && object.children.length > 0;
+  const isBoundaryLabel = object.label && (object.children.length > 0 || object.frame);
   const leftAligned = isTitle || isSubtitle || isBoundaryLabel || object.roles.some((role) => role.startsWith("uml-") && ["uml-class", "uml-object", "uml-state"].includes(role));
   const x = leftAligned ? box.x + (isTitle || isSubtitle ? 0 : 13) : box.x + box.width / 2;
   const anchor = leftAligned ? "start" : "middle";
   const visibleLines = object.renderLines.filter((line) => !line.divider);
   const totalHeight = visibleLines.length * fontSize * 1.35;
   const inPackageTab = isBoundaryLabel && object.shape?.includes("package");
-  let y = inPackageTab ? box.y + fontSize + 2 : isBoundaryLabel ? box.y + fontSize + 7 : isTitle || isSubtitle ? box.y + fontSize : box.y + (box.height - totalHeight) / 2 + fontSize;
+  const actorText = object.shape?.includes("actor");
+  const combinedFragment = object.roles.includes("uml-combined-fragment");
+  let y = inPackageTab ? box.y + fontSize + 2
+    : isBoundaryLabel ? box.y + fontSize + 7
+    : isTitle || isSubtitle ? box.y + fontSize
+    : actorText ? box.y + box.height - totalHeight + fontSize - 4
+    : box.y + (box.height - totalHeight) / 2 + fontSize;
   const result = [];
+  if (combinedFragment) {
+    const labelWidth = Math.max(0, ...visibleLines.map((line) => line.measuredWidth ?? 0));
+    const tabWidth = Math.min(box.width - 12, Math.max(96, labelWidth + 26));
+    const tabHeight = fontSize * 1.8 + 4;
+    const notch = 10;
+    const stroke = color(object.style.stroke, scene, "#26364a");
+    result.push(`<path data-uml-combined-fragment-tab="${escape(object.path)}" d="M ${box.x} ${box.y} H ${box.x + tabWidth} V ${box.y + tabHeight - notch} L ${box.x + tabWidth - notch} ${box.y + tabHeight} H ${box.x} Z" fill="${escape(canvasColor(scene))}" stroke="${escape(stroke)}" stroke-width="${object.style.strokeWidth ?? 2}"/>`);
+  }
   let previousWasDivider = false;
   for (const line of object.renderLines) {
     if (line.divider) {
@@ -171,7 +193,8 @@ function drawLine(line, scene) {
 
 function drawLineLabels(line, scene) {
   return line.routeLabels.map((label) => {
-    const lines = String(label.text).split("\n");
+    const renderedText = label.role === "uml-keyword" ? `«${label.text}»` : label.text;
+    const lines = String(renderedText).split("\n");
     const box = label.box;
     const centerX = label.x ?? box.x + box.width / 2;
     const centerY = label.y ?? box.y + box.height / 2;
@@ -191,7 +214,23 @@ function drawPorts(scene) {
       const stroke = color(port.style.stroke ?? object.style.stroke, scene, "#334155");
       const kind = typeof port.marker === "string" ? port.marker : port.marker?.name;
       if (kind?.includes("provided") || kind === "circle") {
-        result.push(`<circle cx="${port.point.x}" cy="${port.point.y}" r="6" fill="${escape(canvasColor(scene))}" stroke="${escape(stroke)}" stroke-width="2"/>`);
+        result.push(`<circle data-port-marker="${escape(kind)}" cx="${port.point.x}" cy="${port.point.y}" r="6" fill="${escape(canvasColor(scene))}" stroke="${escape(stroke)}" stroke-width="2"/>`);
+      } else if (kind?.includes("required")) {
+        const vector = SIDE_VECTOR[port.physicalSide ?? "right"];
+        const perpendicular = { x: -vector.y, y: vector.x };
+        const first = {
+          x: port.point.x + perpendicular.x * 6,
+          y: port.point.y + perpendicular.y * 6,
+        };
+        const second = {
+          x: port.point.x - perpendicular.x * 6,
+          y: port.point.y - perpendicular.y * 6,
+        };
+        const control = {
+          x: port.point.x - vector.x * 8,
+          y: port.point.y - vector.y * 8,
+        };
+        result.push(`<path data-port-marker="${escape(kind)}" d="M ${first.x} ${first.y} Q ${control.x} ${control.y} ${second.x} ${second.y}" fill="none" stroke="${escape(stroke)}" stroke-width="2"/>`);
       } else {
         result.push(`<rect x="${port.point.x - 5}" y="${port.point.y - 5}" width="10" height="10" fill="${escape(canvasColor(scene))}" stroke="${escape(stroke)}" stroke-width="2"/>`);
       }

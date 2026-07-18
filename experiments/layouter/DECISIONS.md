@@ -105,7 +105,7 @@ After the cascade has resolved line paint, the prototype builds one canonical `S
 - an incompatible required `merge` emits a diagnostic and retains the separate cohort lanes in preview geometry rather than painting incompatible coincident strokes;
 - `separate` and `free` produce no shared positive-length geometry.
 
-Every bundle is monotone toward its common end: once a member enters its lane it does not leave and re-enter, and the contiguous lane-block order does not swap along the run. A canonical named port remains one semantic dock block but receives a compact physical terminal-slot block with one slot per effective lane. A requested bundle therefore receives one slot per line; an automatic cohort lane receives one slot shared by its compatible members. A `PortGroup` instead keeps its independent ordered member-port docks and compresses only the adjacent lane block after departure. It does not synthesize same-port terminal slots.
+Every bundle is monotone toward its common end: once a member enters its lane it does not leave and re-enter, and the contiguous lane-block order does not swap along the run. A canonical named port remains one semantic dock block but receives a compact physical terminal-slot block with one slot per effective lane. A requested bundle therefore receives one slot per line; an automatic cohort lane receives one slot shared by its compatible members. A named-port `separate` group receives more widely spaced physical approach slots, one per line, but no permission to share a positive-length run. A `PortGroup` instead keeps its independent ordered member-port docks and compresses only the adjacent lane block after departure. It does not synthesize same-port terminal slots.
 
 Every physical terminal lane reserves its own marker and arrowhead extent, and a headed terminal run remains straight for at least twice the rendered head width before its first bend. The routing-debug painter reads the same `ShareGroup`, cohort lanes, terminal slots, and branch pins used by routing; it never infers sharing again from coincident polylines.
 
@@ -114,6 +114,8 @@ Rationale: coincident incompatible strokes are not a merge, a requested bundle i
 ## D13. Previously routed lines are sparse routing obstacles
 
 The router indexes emitted segments as it proceeds. A new candidate receives a strong penalty for an unrelated collinear run and a smaller penalty for a crossing. Only members of the same effective merged group or the same automatic style-cohort lane are exempt from the collinear penalty; distinct requested-bundle and style-cohort lanes remain obstacles to one another.
+
+During this sequential solve, a compatible member may extend an already authorized terminal run only by touching its outer frontier and continuing collinearly away from the common end. This admits a longer maximal prefix without granting pair-wide overlap permission or allowing a split/rejoin.
 
 Rationale: object avoidance alone can produce visually ambiguous coincident paths. The same cell index keeps this check local and output-sensitive.
 
@@ -162,3 +164,11 @@ A fixed side port exposed on a descendant reserves a longitudinal track in the a
 If a later bounded routing pass slides a dock along its legal side slot, every route derived from the old coordinate is rebuilt from the same symbolic itinerary and allocations. Old soft pins are discarded rather than protected as bends.
 
 Rationale: extending a terminal stub through an inactive gap draws off-center without reserving space. Mutating a dock after routing while retaining old pins creates an avoidable return jog even though both the new dock and the authored corridor are individually correct.
+
+## D20. Orientation remaps layout axes to an explicit frame depth
+
+Orientation is a directional mapping, not a geometric transform of rendered children. `90` and `270` exchange the declaring container's row and column axes; all quarter turns remap local sides, ports, corridor directions, and routes. Child boxes keep their intrinsic width and height, and their contents stay upright.
+
+The numeric form has depth one. It changes the declaring layout and the directional attachment semantics of its direct children, but it stops before the next nested layout is solved. A finite structured depth crosses that many normalized layout/frame boundaries, and `"all"` reaches the complete projected subtree. Depth counts projected structural frames, not JSX wrappers or component-function calls. Nested mappings compose modulo 360 degrees.
+
+Rationale: rotating painted geometry turns wide boxes into tall boxes and makes reusable components depend on presentation transforms. Bounded directional propagation lets an author reflow exactly the intended amount of a component while preserving every object's measured geometry.

@@ -63,6 +63,9 @@ function asList(value) {
 // one record per object; ports/groups/lines/rules attach to their container
 function buildObject(node, parent, diagnostics) {
   const p = node.props;
+  const orientation = typeof p.orientation === "object"
+    ? p.orientation
+    : { degrees: p.orientation ?? 0, depth: 1 };
   const rec = {
     kind: "object",
     id: p.id ?? null,
@@ -70,7 +73,8 @@ function buildObject(node, parent, diagnostics) {
     node,
     roles: asList(p.role),
     classes: asList(p.className),
-    orientation: p.orientation ?? 0,
+    orientation: orientation.degrees ?? 0,
+    orientationDepth: orientation.depth ?? 1,
     strictPorts: p.strictPorts === true,
     label: p.label,
     shape: p.shape,
@@ -294,6 +298,7 @@ export function normalize(rootExpr) {
       roles: rec.roles,
       classes: rec.classes,
       orientation: rec.orientation,
+      ...(rec.orientationDepth !== 1 ? { orientationDepth: rec.orientationDepth } : {}),
       ...(rec.shape ? { primitive: parseShape(rec.shape) } : {}),
       content: rec.content,
       children: [],

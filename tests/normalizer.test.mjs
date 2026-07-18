@@ -26,8 +26,9 @@ test("coverage fixture preserves the headline features", async () => {
   const { ir } = await normalizeFile(path.join(repo, "examples/coverage/diagram.tsx"));
   const entity = (pred) => ir.entities.find(pred);
 
-  // rotation survives normalization
+  // layout orientation and its explicit cascade depth survive normalization
   assert.equal(entity((e) => e.id === "rotated").orientation, 90);
+  assert.equal(entity((e) => e.id === "rotated").orientationDepth, 2);
 
   // both audit lines share one explicit group and pin the same gap region
   const audits = ir.entities.filter((e) => e.kind === "line" && e.share?.source.id === "audit");

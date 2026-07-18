@@ -1,6 +1,6 @@
 import { minimumHeadRun, normalizedHeads } from "./heads.mjs";
 import { buildShareGroups } from "./sharing.mjs";
-import { SIDES, absoluteOrientation, rotateSide } from "./orientation.mjs";
+import { SIDES, absoluteOrientation, layoutOrientation, rotateSide } from "./orientation.mjs";
 
 const SPACING = { none: 0, tiny: 6, small: 12, medium: 20, large: 32, xlarge: 48 };
 const ROUTE_CLEARANCE = 12;
@@ -50,13 +50,17 @@ function regionKey(type, owner, slot) {
 }
 
 export function effectiveLayout(object) {
-  return object.layout?.kind ?? (object.kind === "scope" || object.kind === "diagram" ? "column" : null);
+  const declared = object.layout?.kind ?? (object.kind === "scope" || object.kind === "diagram" ? "column" : null);
+  const orientation = layoutOrientation(object);
+  if ((orientation === 90 || orientation === 270) && declared === "row") return "column";
+  if ((orientation === 90 || orientation === 270) && declared === "column") return "row";
+  return declared;
 }
 
 function directionToward(owner, fromBranch, toBranch) {
   const layout = effectiveLayout(owner);
-  const from = fromBranch.siblingIndex;
-  const to = toBranch.siblingIndex;
+  const from = fromBranch.layoutIndex;
+  const to = toBranch.layoutIndex;
   if (layout === "row" || layout === "grid") return from <= to ? "right" : "left";
   return from <= to ? "bottom" : "top";
 }
@@ -89,15 +93,16 @@ export function lineLabelDemand(line, axis, text = null) {
   const texts = text == null ? lineLabelTexts(line) : [String(text)];
   if (!texts.length) return 0;
   if (axis === "horizontal") return Math.max(...texts.map((text) => Math.max(...text.split("\n").map((part) => part.length)) * 7.4 + 34));
-  return Math.max(...texts.map((text) => text.split("\n").length * 16 + 12));
+  return texts.reduce((sum, text) => sum + text.split("\n").length * 16 + 6, 0)
+    + Math.max(0, texts.length - 1) * 4 + 12;
 }
 
 function physicalGapRegions(first, second, regions, options = {}) {
   if (!first || !second || first.parent !== second.parent) return [];
   const owner = first.parent;
   if (options.implicit && effectiveLayout(owner) === "grid") return [];
-  const firstIndex = first.siblingIndex;
-  const secondIndex = second.siblingIndex;
+  const firstIndex = first.layoutIndex;
+  const secondIndex = second.layoutIndex;
   const start = Math.min(firstIndex, secondIndex);
   const end = Math.max(firstIndex, secondIndex);
   const result = [];
@@ -251,6 +256,7 @@ export function reserveRoutingSpace(scene) {
           lca.reserved.gridColumnGaps[gapIndex] = Math.max(
             lca.reserved.gridColumnGaps[gapIndex] ?? 0,
             reservations.get(key) ?? 0,
+            lineLabelDemand(line, "horizontal"),
             headRun ? headRun + ROUTE_CLEARANCE : 0,
           );
         } else if (fromColumn === toColumn && fromRow !== toRow) {
@@ -261,6 +267,7 @@ export function reserveRoutingSpace(scene) {
           lca.reserved.gridRowGaps[gapIndex] = Math.max(
             lca.reserved.gridRowGaps[gapIndex] ?? 0,
             reservations.get(key) ?? 0,
+            lineLabelDemand(line, "vertical"),
             headRun ? headRun + ROUTE_CLEARANCE : 0,
           );
         }
@@ -410,6 +417,9 @@ export function reserveRoutingSpace(scene) {
 
 function contentLines(object) {
   const result = [];
+  if (object.roles.includes("uml-deployment-node") && object.classes[0]) {
+    result.push({ text: object.classes[0], role: "uml-stereotype" });
+  }
   if (object.label) result.push({ text: object.label, role: "label" });
   for (const entry of object.content) {
     if (entry.group) {
@@ -546,6 +556,7 @@ function measureObject(object, scene) {
   object.contentHeight = content.height + header;
   const members = flowChildren(object);
   const layout = effectiveLayout(object);
+  object.effectiveLayout = layout;
   const baseGap = length(object.style.gap ?? object.layout?.gap, layout ? (object.kind === "legend" ? 8 : 22) : 0, tokens);
   const gaps = Array.from({ length: Math.max(0, members.length - 1) }, (_, index) =>
     baseGap + (object.reserved.gaps[index] ?? 0));
@@ -596,6 +607,10 @@ function measureObject(object, scene) {
     bodyWidth = 8;
     bodyHeight = 20;
   }
+  if (object.shape?.includes("actor")) {
+    bodyWidth = 80;
+    bodyHeight = 76;
+  }
   if (object.shape?.includes("fork") || object.shape?.includes("join")) {
     bodyWidth = 90;
     bodyHeight = 12;
@@ -622,14 +637,13 @@ function measureObject(object, scene) {
   );
   object.frameWidth = Math.max(object.frameWidth, dockSideDemand(object, "top", scene), dockSideDemand(object, "bottom", scene));
   object.frameHeight = Math.max(object.frameHeight, dockSideDemand(object, "left", scene), dockSideDemand(object, "right", scene));
-  const quarterTurn = object.orientation === 90 || object.orientation === 270;
   // floors from stretch, quantization, and same-size act on the physical box
   const floor = object.sizeFloor ?? { width: 0, height: 0 };
-  object.frameWidth = Math.max(object.frameWidth, quarterTurn ? floor.height : floor.width);
-  object.frameHeight = Math.max(object.frameHeight, quarterTurn ? floor.width : floor.height);
+  object.frameWidth = Math.max(object.frameWidth, floor.width);
+  object.frameHeight = Math.max(object.frameHeight, floor.height);
   object.measured = {
-    width: quarterTurn ? object.frameHeight : object.frameWidth,
-    height: quarterTurn ? object.frameWidth : object.frameHeight,
+    width: object.frameWidth,
+    height: object.frameHeight,
   };
 
   let cursor = 0;
@@ -842,12 +856,7 @@ function multiply(first, second) {
 }
 
 function localTransform(object, x, y) {
-  switch (object.orientation) {
-    case 90: return { a: 0, b: 1, c: -1, d: 0, e: x + object.frameHeight, f: y };
-    case 180: return { a: -1, b: 0, c: 0, d: -1, e: x + object.frameWidth, f: y + object.frameHeight };
-    case 270: return { a: 0, b: -1, c: 1, d: 0, e: x, f: y + object.frameWidth };
-    default: return { a: 1, b: 0, c: 0, d: 1, e: x, f: y };
-  }
+  return { a: 1, b: 0, c: 0, d: 1, e: x, f: y };
 }
 
 function point(matrix, x, y) {
@@ -861,12 +870,12 @@ function transformedBox(matrix, width, height) {
   return { x: Math.min(...xs), y: Math.min(...ys), width: Math.max(...xs) - Math.min(...xs), height: Math.max(...ys) - Math.min(...ys) };
 }
 
-function assignGlobal(object, parentMatrix, parentOrientation = 0) {
+function assignGlobal(object, parentMatrix) {
   const matrix = multiply(parentMatrix, localTransform(object, object.localX ?? 0, object.localY ?? 0));
   object.matrix = matrix;
-  object.physicalOrientation = (parentOrientation + object.orientation) % 360;
+  object.physicalOrientation = absoluteOrientation(object);
   object.box = transformedBox(matrix, object.frameWidth, object.frameHeight);
-  for (const child of flowChildren(object)) assignGlobal(child, matrix, object.physicalOrientation);
+  for (const child of flowChildren(object)) assignGlobal(child, matrix);
 }
 
 function anchoredPosition(object, variant = {}) {
@@ -978,12 +987,18 @@ function applyConstraints(scene) {
     }
   }
 
-  for (const lifeline of scene.objects.filter((object) => object.roles.includes("uml-lifeline"))) {
+  const lifelines = scene.objects.filter((object) => object.roles.includes("uml-lifeline"));
+  const temporalObjects = lifelines.flatMap((lifeline) => lifeline.children
+    .filter((child) => child.roles.includes("uml-occurrence")));
+  const commonEndY = temporalObjects.length
+    ? Math.max(...temporalObjects.map((occurrence) => occurrence.box.y + occurrence.box.height)) + 20
+    : null;
+  for (const lifeline of lifelines) {
     const end = lifeline.children.find((child) => child.roles.includes("uml-lifeline-end"));
-    const occurrences = lifeline.children.filter((child) => child.roles.includes("uml-occurrence"));
-    if (!end || !occurrences.length) continue;
-    const minimum = Math.max(...occurrences.map((occurrence) => occurrence.box.y + occurrence.box.height)) + 20;
-    if (end.box.y < minimum) shiftObject(end, 0, minimum - end.box.y);
+    if (!end || commonEndY == null) continue;
+    shiftObject(end, 0, commonEndY - end.box.y);
+    const bottom = end.box.y + end.box.height;
+    lifeline.box.height = bottom - lifeline.box.y + (lifeline.paddingBox?.bottom ?? 0);
   }
 }
 

@@ -7,6 +7,7 @@ import {
 } from "./sharing.mjs";
 
 const CELL = 160;
+const ROUTE_CLEARANCE = 12;
 const SIDE_VECTOR = {
   top: { x: 0, y: -1 },
   right: { x: 1, y: 0 },
@@ -33,7 +34,59 @@ function pointOnSide(box, side, fraction = 0.5) {
 }
 
 function portTarget(endpoint) {
-  return endpoint.port?.anchor ?? endpoint.object;
+  return endpoint.routingTarget ?? endpoint.port?.anchor ?? endpoint.object;
+}
+
+function pointRoutingTarget(object, path, x, y) {
+  return {
+    path,
+    box: { x, y, width: 0, height: 0 },
+    physicalOrientation: object.physicalOrientation ?? 0,
+  };
+}
+
+function bindTemporalRoutingTargets(scene) {
+  const activations = scene.objects.filter((object) => object.roles.includes("uml-activation"));
+  for (const line of scene.lines) {
+    if (!line.roles.includes("uml-message") && !line.roles.includes("uml-reply")) continue;
+    for (const endpoint of [line.from, line.to]) {
+      const occurrence = endpoint?.object;
+      if (!occurrence?.roles.includes("uml-occurrence")) continue;
+      const center = {
+        x: occurrence.box.x + occurrence.box.width / 2,
+        y: occurrence.box.y + occurrence.box.height / 2,
+      };
+      endpoint.routingTarget = activations.find((activation) => activation.parent === occurrence.parent
+        && center.x >= activation.box.x && center.x <= activation.box.x + activation.box.width
+        && center.y >= activation.box.y && center.y <= activation.box.y + activation.box.height)
+        ?? pointRoutingTarget(
+          occurrence,
+          `${occurrence.path}:lifeline`,
+          occurrence.parent.box.x + occurrence.parent.box.width / 2,
+          center.y,
+        );
+    }
+  }
+}
+
+function bindActorRoutingTargets(scene) {
+  for (const line of scene.lines) {
+    for (const endpoint of [line.from, line.to]) {
+      const actor = endpoint?.object;
+      if (!actor?.roles.includes("uml-actor")) continue;
+      actor.routingTarget ??= {
+        path: `${actor.path}:figure`,
+        box: {
+          x: actor.box.x + actor.box.width / 2 - 17,
+          y: actor.box.y + 8,
+          width: 34,
+          height: 61,
+        },
+        physicalOrientation: actor.physicalOrientation ?? 0,
+      };
+      endpoint.routingTarget = actor.routingTarget;
+    }
+  }
 }
 
 function remoteCenter(line, endpoint) {
@@ -57,6 +110,10 @@ function desiredEndpointSide(line, endpoint, target) {
 
 function dockAxis(side) {
   return side === "top" || side === "bottom" ? "x" : "y";
+}
+
+function dockLaneVector(side) {
+  return side === "top" || side === "bottom" ? { x: 1, y: 0 } : { x: 0, y: 1 };
 }
 
 function dockEntryProjection(entry) {
@@ -137,7 +194,7 @@ function placePorts(scene) {
   for (const line of scene.lines) {
     for (const endpoint of [line.from, line.to]) {
       if (!endpoint || endpoint.port) continue;
-      const target = endpoint.object;
+      const target = portTarget(endpoint);
       const side = desiredEndpointSide(line, endpoint, target);
       endpoint.physicalSide = side;
       const key = `${target.path}:${side}`;
@@ -188,8 +245,7 @@ function terminalLaneGap(first, second, minimum) {
   return Math.max(8, minimum, headGap, strokeGap);
 }
 
-function bundleLaneOffsets(group, minimum = 0) {
-  const lanes = group.bundle.lanes;
+function terminalLaneOffsets(lanes, minimum = 0) {
   const positions = [0];
   for (let index = 1; index < lanes.length; index += 1) {
     const first = lanes[index - 1].members.reduce((widest, member) =>
@@ -222,30 +278,43 @@ function orderNamedBundleLanes(group) {
   group.bundle.laneOrder = group.members.map((member) => member.line.id);
 }
 
-// A canonical named bundle port keeps one semantic identity but receives one
-// physical terminal slot per attachment. Slots reserve stroke and arrowhead
-// width at the boundary, so no headed run needs to overlap before fanning out.
-function allocateBundleTerminals(scene) {
+// A canonical named port keeps one semantic identity while bundle and
+// separate policies receive collision-free physical approach slots. Bundle
+// slots form the tightest possible lane block; separate slots use independent
+// spacing because their positive-length paths may never coincide.
+function allocateNamedPortTerminals(scene) {
   for (const group of buildShareGroups(scene).values()) {
-    if (group.mode !== "bundle") continue;
-    if (group.source.kind === "port") orderNamedBundleLanes(group);
-    const minimum = group.source.kind === "port"
-      ? group.source.port.minSpacing ?? 0
-      : 0;
-    group.bundle.offsetByMember = bundleLaneOffsets(group, minimum);
+    if (!["bundle", "separate"].includes(group.mode)) continue;
+    if (group.mode === "bundle" && group.source.kind === "port") orderNamedBundleLanes(group);
+    if (group.mode === "bundle" && group.source.kind !== "port") {
+      group.bundle.offsetByMember = terminalLaneOffsets(group.bundle.lanes, 0);
+      continue;
+    }
     if (group.source.kind !== "port") continue;
+    const lanes = group.mode === "bundle" ? group.bundle.lanes : group.members
+        .sort((first, second) => {
+          const axis = dockAxis(group.source.port.physicalSide);
+          return remoteCenter(first.line, first.endpoint)[axis] - remoteCenter(second.line, second.endpoint)[axis]
+            || first.line.order - second.line.order
+            || first.line.id.localeCompare(second.line.id);
+        })
+        .map((member, laneIndex) => ({ id: `${group.id}:separate:${laneIndex}`, laneIndex, members: [member] }));
+    const minimum = group.mode === "separate"
+      ? Math.max(20, group.source.port.minSpacing ?? 0)
+      : group.source.port.minSpacing ?? 0;
+    const offsetByMember = terminalLaneOffsets(lanes, minimum);
+    if (group.mode === "bundle") group.bundle.offsetByMember = offsetByMember;
 
     const port = group.source.port;
     const target = port.anchor ?? port.owner;
     const side = port.physicalSide;
-    const vector = SIDE_VECTOR[side];
-    const perpendicular = { x: -vector.y, y: vector.x };
+    const laneVector = dockLaneVector(side);
     port.terminalSlots = [];
-    for (const lane of group.bundle.lanes) {
-      const offset = group.bundle.offsetByMember.get(lane.members[0]);
+    for (const lane of lanes) {
+      const offset = offsetByMember.get(lane.members[0]);
       const point = {
-        x: port.point.x + perpendicular.x * offset,
-        y: port.point.y + perpendicular.y * offset,
+        x: port.point.x + laneVector.x * offset,
+        y: port.point.y + laneVector.y * offset,
       };
       const slot = { group, port, lane, point, offset };
       port.terminalSlots.push(slot);
@@ -264,7 +333,7 @@ function allocateBundleTerminals(scene) {
       scene.diagnostics.push({
         severity: "error",
         code: "terminal-slot-capacity",
-        message: `bundle port '${port.owner.path}.${port.id}' cannot fit ${port.terminalSlots.length} required terminal slots on its ${side} side`,
+        message: `named port '${port.owner.path}.${port.id}' cannot fit ${port.terminalSlots.length} required terminal slots on its ${side} side`,
       });
     }
   }
@@ -285,7 +354,7 @@ function preservesDockOrder(siblings, current, axis, target, spacing = 12) {
 // A dock and the box it sits on; endpoint.point and port.point stay the same
 // object identity, so mutating the point in place moves every reference.
 function dockTarget(endpoint) {
-  return endpoint.port?.anchor ?? endpoint.port?.owner ?? endpoint.object;
+  return endpoint.routingTarget ?? endpoint.port?.anchor ?? endpoint.port?.owner ?? endpoint.object;
 }
 
 // Snap the two docks of a line onto one shared coordinate when their sides
@@ -305,7 +374,7 @@ function alignFacingDocks(scene) {
   }
   for (const line of scene.lines) {
     for (const endpoint of [line.from, line.to]) {
-      if (endpoint && !endpoint.port && endpoint.point) register(endpoint.object, endpoint.physicalSide, endpoint.point);
+      if (endpoint && !endpoint.port && endpoint.point) register(dockTarget(endpoint), endpoint.physicalSide, endpoint.point);
     }
   }
 
@@ -657,18 +726,22 @@ function segmentHitsBox(first, second, box, inset = 3) {
   return false;
 }
 
-function simplify(points) {
+function simplify(points, protectedPoints = []) {
+  const protectedPins = Array.isArray(protectedPoints) ? protectedPoints : [];
   const unique = points.filter((item, index) => index === 0 || item.x !== points[index - 1].x || item.y !== points[index - 1].y);
   const result = [];
   for (const item of unique) {
-    const previous = result.at(-1);
-    const before = result.at(-2);
-    const horizontalMiddle = before && previous && before.y === previous.y && previous.y === item.y
-      && previous.x >= Math.min(before.x, item.x) && previous.x <= Math.max(before.x, item.x);
-    const verticalMiddle = before && previous && before.x === previous.x && previous.x === item.x
-      && previous.y >= Math.min(before.y, item.y) && previous.y <= Math.max(before.y, item.y);
-    if (horizontalMiddle || verticalMiddle) result.pop();
     result.push({ x: item.x, y: item.y });
+    while (result.length >= 3) {
+      const before = result.at(-3);
+      const previous = result.at(-2);
+      const current = result.at(-1);
+      const collinear = before.y === previous.y && previous.y === current.y
+        || before.x === previous.x && previous.x === current.x;
+      const protectedPoint = protectedPins.some((pin) => samePoint(pin, previous));
+      if (!collinear || protectedPoint) break;
+      result.splice(-2, 1);
+    }
   }
   return result;
 }
@@ -874,13 +947,22 @@ function sharingPins(scene, objectIndex) {
     const preference = group.branch?.preference ?? "late";
     const factor = preference === "early" ? 0.18 : preference === "balanced" ? 0.45 : 0.72;
     const desired = Math.min(160, (distances.length ? Math.min(...distances) : 48) * factor);
-    const trackLimit = trackDistances.length ? Math.min(...trackDistances) - 12 : Number.POSITIVE_INFINITY;
+    const trackLimit = trackDistances.length
+      ? Math.min(...trackDistances) - (group.mode === "merge" && group.source.kind === "port-group" ? 0 : ROUTE_CLEARANCE)
+      : Number.POSITIVE_INFINITY;
     const obstacleLimit = rayClearanceAt(scene, start, side, dock.owner, objectIndex) - 8;
-    const distance = Math.max(8, Math.min(desired, trackLimit, obstacleLimit));
+    const terminalDistance = Math.max(ROUTE_CLEARANCE, ...attachments.map(({ line, endpoint }) => {
+      const endIndex = endpoint === line.from ? 0 : 1;
+      return Math.max(endpoint.escapeDistance ?? ROUTE_CLEARANCE, minimumHeadRun(normalizedHeads(line.heads)[endIndex]));
+    }));
+    const minimumDistance = group.mode === "merge" && group.source.kind === "port-group"
+      ? terminalDistance + ROUTE_CLEARANCE
+      : 8;
+    const distance = Math.max(8, Math.min(Math.max(desired, minimumDistance), trackLimit, obstacleLimit));
     if (group.mode === "merge") {
       const pin = { x: start.x + vector.x * distance, y: start.y + vector.y * distance };
       if (group.source.kind === "port-group") {
-        const convergenceDistance = Math.max(8, Math.min(18, distance / 2));
+        const convergenceDistance = Math.min(distance, terminalDistance);
         const convergence = {
           x: start.x + vector.x * convergenceDistance,
           y: start.y + vector.y * convergenceDistance,
@@ -907,15 +989,15 @@ function sharingPins(scene, objectIndex) {
       continue;
     }
 
-    const perpendicular = { x: -vector.y, y: vector.x };
+    const laneVector = dockLaneVector(side);
     group.bundle.branchDistance = distance;
     group.bundle.pinByLine = new Map();
     for (const member of attachments) {
       const offset = group.bundle.offsetByMember?.get(member)
         ?? (member.laneIndex - (attachments.length - 1) / 2) * Math.max(8, dock.minSpacing);
       const pin = {
-        x: start.x + vector.x * distance + perpendicular.x * offset,
-        y: start.y + vector.y * distance + perpendicular.y * offset,
+        x: start.x + vector.x * distance + laneVector.x * offset,
+        y: start.y + vector.y * distance + laneVector.y * offset,
       };
       member.line.bundlePins.push({ endpoint: member.endpoint, pin, group });
       group.bundle.pinByLine.set(member.line, pin);
@@ -1008,8 +1090,8 @@ function isDirectGapCrossing(line, region) {
   const fromBranch = branchBelow(region.owner, line.from?.object);
   const toBranch = branchBelow(region.owner, line.to?.object);
   if (!fromBranch || !toBranch || fromBranch === toBranch) return false;
-  const start = Math.min(fromBranch.siblingIndex, toBranch.siblingIndex);
-  const end = Math.max(fromBranch.siblingIndex, toBranch.siblingIndex);
+  const start = Math.min(fromBranch.layoutIndex, toBranch.layoutIndex);
+  const end = Math.max(fromBranch.layoutIndex, toBranch.layoutIndex);
   return region.index >= start && region.index < end;
 }
 
@@ -1028,8 +1110,8 @@ function orderedPins(line, start, end) {
     } else if (segment.region?.kind === "gap") {
       const [first, second] = segment.region.between;
       if (first?.parent && first.parent === second?.parent) {
-        const startIndex = Math.min(first.siblingIndex, second.siblingIndex);
-        const endIndex = Math.max(first.siblingIndex, second.siblingIndex);
+        const startIndex = Math.min(first.layoutIndex, second.layoutIndex);
+        const endIndex = Math.max(first.layoutIndex, second.layoutIndex);
         for (let gap = startIndex; gap < endIndex; gap += 1) {
           setExplicitIndex(`gap:${first.parent.path || "$root"}:${gap}`, index);
         }
@@ -1122,11 +1204,11 @@ function orderedPins(line, start, end) {
   const fromPins = sharingPins
     .filter((sharingPin) => sharingPin.endpoint === line.from)
     .sort((first, second) => (first.sequence ?? 0) - (second.sequence ?? 0))
-    .map((sharingPin) => sharingPin.pin);
+    .map((sharingPin) => ({ ...sharingPin.pin, sharingGroup: sharingPin.group }));
   const toPins = sharingPins
     .filter((sharingPin) => sharingPin.endpoint !== line.from)
     .sort((first, second) => (second.sequence ?? 0) - (first.sequence ?? 0))
-    .map((sharingPin) => sharingPin.pin);
+    .map((sharingPin) => ({ ...sharingPin.pin, sharingGroup: sharingPin.group }));
   pins.unshift(...fromPins);
   pins.push(...toPins);
   return pins;
@@ -1135,8 +1217,8 @@ function orderedPins(line, start, end) {
 function physicalGapContains(reference, region) {
   return reference.between?.[0]?.parent === region.owner
     && reference.between?.[1]?.parent === region.owner
-    && region.index >= Math.min(reference.between[0].siblingIndex, reference.between[1].siblingIndex)
-    && region.index < Math.max(reference.between[0].siblingIndex, reference.between[1].siblingIndex);
+    && region.index >= Math.min(reference.between[0].layoutIndex, reference.between[1].layoutIndex)
+    && region.index < Math.max(reference.between[0].layoutIndex, reference.between[1].layoutIndex);
 }
 
 function objectDepth(object) {
@@ -1170,7 +1252,7 @@ function nestedAuthoredRole(line, region) {
   return objectDepth(region.owner) === shallowest ? "outer" : "nested";
 }
 
-function escapePoint(endpoint, distance = endpoint.routeEscapeDistance ?? endpoint.escapeDistance ?? 14) {
+function escapePoint(endpoint, distance = endpoint.routeEscapeDistance ?? endpoint.escapeDistance ?? ROUTE_CLEARANCE) {
   const vector = SIDE_VECTOR[endpoint.physicalSide] ?? { x: 0, y: 0 };
   return { x: endpoint.point.x + vector.x * distance, y: endpoint.point.y + vector.y * distance };
 }
@@ -1178,7 +1260,7 @@ function escapePoint(endpoint, distance = endpoint.routeEscapeDistance ?? endpoi
 function endpointStub(line, endpoint) {
   const endIndex = endpoint === line.from ? 0 : 1;
   const minimumRun = minimumHeadRun(normalizedHeads(line.heads)[endIndex]);
-  const escapeDistance = Math.max(endpoint.escapeDistance ?? 14, minimumRun);
+  const escapeDistance = Math.max(endpoint.escapeDistance ?? ROUTE_CLEARANCE, minimumRun);
   endpoint.routeEscapeDistance = escapeDistance;
   return [endpoint.point, escapePoint(endpoint, escapeDistance)];
 }
@@ -1187,9 +1269,12 @@ function endpointStub(line, endpoint) {
 // need no exemption: a route doubling back across its own source is a real
 // collision the score should see.
 function ignoredObjects(line, index) {
-  return line.space === "overlay"
-    ? new Set(index.objects)
-    : new Set(line.segments.map((segment) => segment.waypoint).filter(Boolean));
+  if (line.space === "overlay") return new Set(index.objects);
+  const ignored = new Set(line.segments.map((segment) => segment.waypoint).filter(Boolean));
+  for (const endpoint of [line.from, line.to]) {
+    if (endpoint?.routingTarget && endpoint.routingTarget !== endpoint.object) ignored.add(endpoint.object);
+  }
+  return ignored;
 }
 
 function routeLine(line, index, routeIndex) {
@@ -1202,7 +1287,18 @@ function routeLine(line, index, routeIndex) {
   // an entry point at the incoming coordinate and an exit point toward the
   // next target, so the lateral travel happens inside the reserved region —
   // that is what the corridor's space was reserved for
-  const rawPins = orderedPins(line, start, end);
+  const ordered = orderedPins(line, start, end);
+  const rawPins = ordered.filter((pin, pinIndex) => {
+    if (!pin.soft || pin.required) return true;
+    const previous = pinIndex ? ordered[pinIndex - 1] : start;
+    const next = ordered[pinIndex + 1];
+    if (!next?.sharingGroup) return true;
+    const horizontal = previous.y === pin.y && pin.y === next.y
+      && pin.x >= Math.min(previous.x, next.x) && pin.x <= Math.max(previous.x, next.x);
+    const vertical = previous.x === pin.x && pin.x === next.x
+      && pin.y >= Math.min(previous.y, next.y) && pin.y <= Math.max(previous.y, next.y);
+    return !horizontal && !vertical;
+  });
   const nextTravelByIndex = new Array(rawPins.length);
   let followingTravel = end;
   for (let index = rawPins.length - 1; index >= 0; index -= 1) {
@@ -1284,7 +1380,16 @@ function routeLine(line, index, routeIndex) {
     const piece = orthogonal(waypoints[i - 1], waypoints[i], index, ignored, routeIndex, line);
     route.push(...(route.length ? piece.slice(1) : piece));
   }
-  line.route = simplify(route);
+  const required = line.requiredRoutePins ?? [];
+  const loopFree = [];
+  for (const routePoint of route) {
+    const previousIndex = loopFree.findLastIndex((candidate) => samePoint(candidate, routePoint));
+    const loopContainsRequiredPin = previousIndex >= 0 && loopFree.slice(previousIndex + 1)
+      .some((candidate) => required.some((pin) => samePoint(candidate, pin)));
+    if (previousIndex >= 0 && !loopContainsRequiredPin) loopFree.splice(previousIndex + 1);
+    else loopFree.push(routePoint);
+  }
+  line.route = simplify(loopFree, required);
   materializeSharedPins(line);
 }
 
@@ -1441,14 +1546,21 @@ function simplifyKeepingPins(line, points) {
   const unique = points.filter((item, index) => index === 0 || item.x !== points[index - 1].x || item.y !== points[index - 1].y);
   const result = [];
   for (const item of unique) {
-    const previous = result.at(-1);
-    const before = result.at(-2);
-    const horizontalMiddle = before && previous && before.y === previous.y && previous.y === item.y
-      && previous.x >= Math.min(before.x, item.x) && previous.x <= Math.max(before.x, item.x);
-    const verticalMiddle = before && previous && before.x === previous.x && previous.x === item.x
-      && previous.y >= Math.min(before.y, item.y) && previous.y <= Math.max(before.y, item.y);
-    if ((horizontalMiddle || verticalMiddle) && !isPinPoint(line, previous)) result.pop();
     result.push({ x: item.x, y: item.y });
+    while (result.length >= 3) {
+      const before = result.at(-3);
+      const previous = result.at(-2);
+      const current = result.at(-1);
+      const horizontal = before.y === previous.y && previous.y === current.y;
+      const vertical = before.x === previous.x && previous.x === current.x;
+      if (!horizontal && !vertical) break;
+      const between = horizontal
+        ? previous.x >= Math.min(before.x, current.x) && previous.x <= Math.max(before.x, current.x)
+        : previous.y >= Math.min(before.y, current.y) && previous.y <= Math.max(before.y, current.y);
+      const required = (line.requiredRoutePins ?? []).some((pin) => samePoint(pin, previous));
+      if (required || between && isPinPoint(line, previous)) break;
+      result.splice(-2, 1);
+    }
   }
   return result;
 }
@@ -1507,7 +1619,7 @@ function slideDocks(scene, index) {
   }
   for (const line of scene.lines) {
     for (const endpoint of [line.from, line.to]) {
-      if (endpoint && !endpoint.port && endpoint.point) register(endpoint.object, endpoint.physicalSide, endpoint.point);
+      if (endpoint && !endpoint.port && endpoint.point) register(dockTarget(endpoint), endpoint.physicalSide, endpoint.point);
     }
   }
 
@@ -1584,8 +1696,12 @@ function routeSegments(route) {
   return result.sort((first, second) => tier(first) - tier(second) || second.length - first.length || first.index - second.index);
 }
 
-function labelSize(text) {
-  const lines = String(text).split("\n");
+function displayedLabelText(label) {
+  return label.role === "uml-keyword" ? `«${label.text}»` : label.text;
+}
+
+function labelSize(label) {
+  const lines = String(displayedLabelText(label)).split("\n");
   return { width: Math.max(...lines.map((line) => line.length)) * 7.4 + 10, height: lines.length * 16 + 6 };
 }
 
@@ -1919,8 +2035,27 @@ function placeAllLabels(scene, objectIndex) {
   for (const line of scene.lines) {
     line.routeLabels = [];
     const segments = routeSegments(line.route);
+    const grouped = [];
+    const groupByKey = new Map();
     for (const spec of labelSpecs(line)) {
-      const size = labelSize(spec.text);
+      const endpointIndex = spec.endpoint === line.from ? 0 : spec.endpoint === line.to ? 1 : null;
+      const centerGroup = endpointIndex == null && spec.placement === "center" && !spec.authoredSegment;
+      const key = endpointIndex == null ? centerGroup ? "center" : Symbol("label") : `endpoint:${endpointIndex}`;
+      if (!groupByKey.has(key)) {
+        const group = [];
+        groupByKey.set(key, group);
+        grouped.push(group);
+      }
+      groupByKey.get(key).push(spec);
+    }
+
+    for (const specs of grouped) {
+      const spec = specs[0];
+      const sizes = specs.map(labelSize);
+      const size = {
+        width: Math.max(...sizes.map((item) => item.width)),
+        height: sizes.reduce((sum, item) => sum + item.height, 0) + Math.max(0, sizes.length - 1) * 4,
+      };
       const initialCandidates = spec.endpoint
         ? endpointLabelCandidates(spec.endpoint, spec, size, 0)
         : [
@@ -1947,16 +2082,27 @@ function placeAllLabels(scene, objectIndex) {
           return (layout === "row" || layout === "column") && boxesOverlap(candidate, ring.box, 2);
         }));
       const rejectedAuthoredCandidate = locallyBlocked ?? authoredAxisCandidates[0] ?? null;
-      const placed = {
-        ...spec,
-        ...chosen,
-        rejectedAuthoredCandidate,
-        x: chosen.x + chosen.width / 2,
-        y: chosen.y + chosen.height / 2,
-        box: { x: chosen.x, y: chosen.y, width: chosen.width, height: chosen.height },
-      };
-      line.routeLabels.push(placed);
-      labelIndex.insert({ box: placed.box, line, label: placed });
+      let cursorY = chosen.y;
+      specs.forEach((item, index) => {
+        const itemSize = sizes[index];
+        const box = {
+          x: chosen.x + (chosen.width - itemSize.width) / 2,
+          y: cursorY,
+          width: itemSize.width,
+          height: itemSize.height,
+        };
+        const placed = {
+          ...item,
+          ...chosen,
+          rejectedAuthoredCandidate,
+          x: box.x + box.width / 2,
+          y: box.y + box.height / 2,
+          box,
+        };
+        line.routeLabels.push(placed);
+        labelIndex.insert({ box, line, label: placed });
+        cursorY += itemSize.height + 4;
+      });
     }
   }
   scene.labelIndex = labelIndex;
@@ -1993,11 +2139,18 @@ export function labelMayCrossContainerBorder(label, ring) {
 }
 
 export function route(scene) {
-  const obstacles = scene.objects.filter((object) => object.visible && object.children.length === 0 && !object.frame && !["title", "subtitle", "legend-item"].includes(object.kind));
+  bindTemporalRoutingTargets(scene);
+  bindActorRoutingTargets(scene);
+  const obstacles = scene.objects.filter((object) => object.visible
+    && object.children.length === 0
+    && !object.frame
+    && !object.roles.includes("uml-occurrence")
+    && !object.roles.includes("uml-lifeline-end")
+    && !["title", "subtitle", "legend-item"].includes(object.kind));
   placePorts(scene);
   alignFacingDocks(scene);
   buildShareGroups(scene);
-  allocateBundleTerminals(scene);
+  allocateNamedPortTerminals(scene);
   buildChannelMesh(scene);
   const index = new SpatialIndex([...obstacles, ...scene.channelResidents]);
   allocateRegionTracks(scene);
@@ -2024,6 +2177,9 @@ export function route(scene) {
   }
   for (const line of scene.lines) materializeSharedPins(line);
   materializeAuthorizedSharedRuns(scene);
-  placeAllLabels(scene, index);
+  const labelObstacles = scene.objects.filter((object) => object.visible
+    && !object.frame
+    && (object.children.length === 0 || ["title", "subtitle", "legend-item"].includes(object.kind)));
+  placeAllLabels(scene, new SpatialIndex(labelObstacles));
   return scene;
 }

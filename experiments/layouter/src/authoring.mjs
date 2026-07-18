@@ -35,6 +35,15 @@ export const When = marker("when");
 
 export const self = Object.freeze({ $$self: true });
 
+let nextPortHandle = 0;
+
+export function port(options = {}) {
+  return Object.freeze({
+    $$portHandle: `port-handle-${++nextPortHandle}`,
+    ...options,
+  });
+}
+
 export function gap(a, b) {
   return { $$region: "gap", between: [a, b] };
 }

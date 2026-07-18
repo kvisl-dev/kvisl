@@ -258,6 +258,52 @@ function runContains(run, segment) {
   return segmentStart >= runStart && segmentEnd <= runEnd;
 }
 
+function runsCoverSegment(runs, segment) {
+  if (!runs.length) return false;
+  const horizontal = segment.first.y === segment.second.y;
+  const axis = horizontal ? "x" : "y";
+  const fixed = horizontal ? "y" : "x";
+  const start = Math.min(segment.first[axis], segment.second[axis]);
+  const end = Math.max(segment.first[axis], segment.second[axis]);
+  const intervals = runs
+    .filter((run) => (run.first.y === run.second.y) === horizontal
+      && Math.abs(run.first[fixed] - segment.first[fixed]) <= 0.001)
+    .map((run) => [Math.min(run.first[axis], run.second[axis]), Math.max(run.first[axis], run.second[axis])])
+    .sort((first, second) => first[0] - second[0] || first[1] - second[1]);
+  let covered = start;
+  for (const interval of intervals) {
+    if (interval[1] < covered - 0.001) continue;
+    if (interval[0] > covered + 0.001) return false;
+    covered = Math.max(covered, interval[1]);
+    if (covered >= end - 0.001) return true;
+  }
+  return false;
+}
+
+// While routes are solved sequentially, a later member may extend the
+// already-authorized terminal prefix of its lane. This is not a rejoin: the
+// overlap touches the prefix's outer end and grows it monotonically away from
+// the common port. The final topology pass replaces this provisional
+// permission with the actual maximal common terminal runs.
+function extendsTerminalRun(run, segment) {
+  const runHorizontal = run.first.y === run.second.y;
+  const segmentHorizontal = segment.first.y === segment.second.y;
+  if (runHorizontal !== segmentHorizontal) return false;
+  const axis = runHorizontal ? "x" : "y";
+  const fixed = runHorizontal ? "y" : "x";
+  if (Math.abs(run.first[fixed] - segment.first[fixed]) > 0.001) return false;
+  const direction = Math.sign(run.second[axis] - run.first[axis]);
+  if (!direction) return false;
+  const terminal = run.first[axis];
+  const frontier = run.second[axis];
+  const start = Math.min(segment.first[axis], segment.second[axis]);
+  const end = Math.max(segment.first[axis], segment.second[axis]);
+  if (direction > 0) {
+    return start >= terminal - 0.001 && start <= frontier + 0.001 && end > frontier + 0.001;
+  }
+  return end <= terminal + 0.001 && end >= frontier - 0.001 && start < frontier - 0.001;
+}
+
 // Sharing permission is local solved topology, not a line-pair exemption.
 // Once two routes leave their authorized common run, later coincidence is an
 // ordinary forbidden overlap and therefore cannot become a hidden rejoin.
@@ -272,10 +318,12 @@ export function segmentsMayShareGeometry(firstLine, secondLine, firstSegment, se
     const sameLane = group.mode === "merge"
       || (group.mode === "bundle" && firstMembership.lane === secondMembership.lane);
     if (!sameLane) continue;
-    if ((group.allowedSharedRuns ?? []).some((run) => {
+    const allowedRuns = (group.allowedSharedRuns ?? []).filter((run) => {
       const members = run.members ?? group.members.map((member) => member.line);
-      return members.includes(firstLine) && members.includes(secondLine) && runContains(run, overlap);
-    })) return true;
+      return members.includes(firstLine) && members.includes(secondLine);
+    });
+    if (allowedRuns.some((run) => runContains(run, overlap)) || runsCoverSegment(allowedRuns, overlap)) return true;
+    if (group.source.kind === "port" && allowedRuns.some((run) => extendsTerminalRun(run, overlap))) return true;
   }
   return false;
 }

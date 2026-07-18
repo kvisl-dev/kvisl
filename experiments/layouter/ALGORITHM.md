@@ -141,7 +141,7 @@ The projected object containment tree is indexed with:
 - Euler entry/exit ranges for ancestor tests;
 - a lowest-common-ancestor index;
 - level-ancestor or binary-lifting support;
-- local-to-parent orientation transforms;
+- local-to-parent directional mappings with explicit remaining frame depth;
 - heavy paths for compressed path updates and queries.
 
 Linear preprocessing with constant-time LCA is possible; an `O(N log N)` binary-lifting implementation is also inside the contract. A line endpoint pair can then be assigned to its least common ancestor without walking the complete ancestor chain.
@@ -211,6 +211,12 @@ Every solved or provisionally solved container exposes a summary to its parent:
 
 The parent never needs the child's internal track coordinates to place siblings. It needs the box, portal intervals, and routing demand. This is the main composition boundary for both scale and incremental solving.
 
+### 5.6 Layout membership and frame depth
+
+Every container derives one ordered list of placeable layout members after anchors, frames, lines, corridors, rules, and constraints have been excluded. This normalized member index is the only sibling index used by layout gaps, mesh regions, route projection, label demand, and quality checks. Raw JSX child positions are provenance only; they MUST NOT create phantom gaps or move a route to a different corridor.
+
+Orientation depth is evaluated over the same normalized layout/frame tree. The declaring container always receives its own mapping. Depth one also maps the physical sides and directional attachments of its direct children, but does not change the layout strategy of a nested child frame. A finite larger depth decrements only when another projected layout/frame boundary is crossed; `"all"` never expires. The accumulated mapping composes modulo 360 degrees and never swaps a child's measured width and height.
+
 ## 6. End-to-end pipeline
 
 ```text
@@ -245,7 +251,7 @@ The renderer planner has already selected and materialized views. The solver res
 - marker, stroke, roughness, and label clearances that consume geometry;
 - `PortPlacement` anchors in the selected views;
 - endpoint alternatives and truncation points chosen during materialization;
-- local orientations composed only as transforms, while retaining local directional vocabulary.
+- local orientations composed as bounded directional mappings, while retaining local directional vocabulary and upright child geometry.
 
 Text is measured before routing because an end label may enlarge a dock group and a segment label may enlarge a channel. Painterly jitter does not participate in feasibility; the solver reserves a deterministic conservative clearance derived from the style.
 
@@ -399,7 +405,7 @@ For each object side, the solver forms dock blocks:
 
 Required port-group and explicit order constraints form a partial order. A port group is one contiguous super-block; `fixed` member order is hard, while free or preferred order may be chosen geometrically. Its distinct port points remain the terminal docks: bundling compresses their outgoing lane block but does not replace them with same-port sub-slots. Remaining docks are ordered by the median remote track rank or remote endpoint projection, with source order and canonical identity only as stabilizers. This ordering minimizes endpoint inversions before coordinates are assigned. Later facing-dock alignment and dock sliding must preserve it. End-label, marker, stroke, and arrowhead boxes are part of the block extent.
 
-If a side has exactly one block and no local constraint requires movement, its slot is centered exactly. A canonical named port remains one semantic block regardless of attachment count. An effective named-port bundle allocates one physical terminal slot per effective lane around that canonical point: a requested bundle has one slot per semantic line, while an automatic multi-style bundle has one slot per style cohort. These are solved sub-slots, not new ports or dock identities.
+If a side has exactly one block and no local constraint requires movement, its slot is centered exactly. A canonical named port remains one semantic block regardless of attachment count. An effective named-port bundle allocates one compact physical terminal slot per effective lane around that canonical point: a requested bundle has one slot per semantic line, while an automatic multi-style bundle has one slot per style cohort. A named-port `separate` group allocates one more widely spaced approach slot per line so terminal strokes and heads remain independent. These are solved sub-slots, not new ports or dock identities.
 
 Slots are packed along the side with a one-dimensional sweep and priority queue. If the side is too short, the object receives a larger minimum width or height. A fixed maximum that cannot contain its required docks is a hard conflict or a view rejection, never an overlap accepted by the painter.
 
@@ -526,7 +532,7 @@ If a formerly adjacent symbolic pair has no positive-length solved portal, the s
 
 The symbolic itinerary is lowered into concrete local geometry:
 
-1. choose the exact dock coordinate within its allocated side slot; for a named-port bundle, choose its compact physical slot for the member's effective lane, while a port-group member keeps its independent port dock;
+1. choose the exact dock coordinate within its allocated side slot; for a named-port bundle, choose its compact physical slot for the member's effective lane; for named-port `separate`, choose its independently spaced approach slot; a port-group member keeps its independent port dock;
 2. create an orthogonal escape stub normal to the side for every physical lane; when the end has a head, the terminal run before the first bend is at least twice the rendered head width (a 2:1 length-to-width reserve);
 3. select the allocated track center in each gap or padding band;
 4. create stable boundary portals where the itinerary crosses containers;
@@ -546,6 +552,8 @@ Dock sliding is a bounded endpoint decision, not a post-processing mutation. Mov
 The terminal head reserve is a hard geometric invariant, not an aesthetic score. Every effective bundle lane retains its physical slot, straight terminal run, and head; simplification may not collapse requested lanes or distinct style cohorts at the dock. Simplification, dock sliding, bundling, and bounded refinement may lengthen that straight terminal run but must never insert a bend inside its 2:1 reserve. Head geometry has one shared source of truth for routing and painting, so a painter-side head-size change updates terminal-slot separation and the required route reserve with it. When that terminal run occupies a sibling gap, measurement reserves the run plus ordinary route-to-object clearance; the router must not manufacture the space by entering a neighboring object.
 
 For each bounded topology candidate, feasibility is evaluated lexicographically before aesthetics: object collisions, forbidden shared runs, and hard-region violations dominate crossings; crossings dominate bends; bends dominate Manhattan length. Equal-length orthogonal candidates prefer a single crossing of an explicit gap and preserve the endpoint's normal departure before entering that gap. After realization, a fixed number of local windows may replace a polyline stretch only when no hard pin is removed and the complete candidate score strictly improves. No pass runs until convergence.
+
+Sequential routing MAY extend an authorized terminal trunk or cohort lane only at its current outer frontier, collinearly and away from the common end. This provisional permission is monotone: it cannot create a disconnected rejoin. After all members are solved, the provisional frontier is replaced by their actual maximal common terminal prefix.
 
 Label placement uses another interval sweep along each track. A label first tries its requested or automatic position, then the nearest free position on the same run. If its already-reserved box cannot fit longitudinally, the associated gap length increases and the affected prefix coordinates are recomputed. The route topology and cross-sectional track allocation do not change.
 
