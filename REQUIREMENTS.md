@@ -46,7 +46,7 @@ Condition vocabulary MUST be extensible without requiring a new core diagram typ
 
 A level-of-detail-capable renderer MUST provide an outside-in materialization strategy. It starts with the requested canvas, page, tile, or viewport, allocates space to outer components, and recursively instantiates the first eligible view that fits each allocation. It then repeats the process inside the instantiated branch. If a selected branch violates footprint, readability, routing, or hard layout constraints, the renderer MUST discard that projection instance and continue with the next view in declaration order. Given identical model, target, conditions, policy, capabilities, and solver version, materialization MUST be deterministic.
 
-The authoring model MUST leave room for responsive meta branches comparable to print styles, media queries, and container queries on the web. Target-dependent conditions MUST be represented as typed, serializable data evaluated during renderer materialization, never as arbitrary JavaScript callbacks executed by Go or Rust renderers. Conditions MAY inspect a bounded rendering context such as medium, page format, viewport class, allocated inline or block size, purpose, semantic state, and renderer capabilities. They MUST NOT inspect unconstrained mutable process state.
+The authoring model MUST leave room for responsive meta branches comparable to print styles, media queries, and container queries on the web. Target-dependent conditions MUST be represented as typed, serializable data evaluated during renderer materialization, never as arbitrary JavaScript callbacks re-run by later toolchain stages. Conditions MAY inspect a bounded rendering context such as medium, page format, viewport class, allocated inline or block size, purpose, semantic state, and renderer capabilities. They MUST NOT inspect unconstrained mutable process state.
 
 The same condition model SHOULD later apply to nested `When`/`Switch` meta branches and to conditional lines or segments. This permits responsive structure and conditional paths without turning Kvísl into another general-purpose programming language. Conditions depending on allocated size require deterministic outside-in iteration or fallback; implementations MUST detect non-converging selection cycles.
 
@@ -78,11 +78,28 @@ In particular, the surface MUST provide:
 - symmetric lines built from segments, most implicit, some explicitly pinned and labeled;
 - shared paths controlled by canonical named-port joins, port groups, or explicit line groups, maximal by default;
 - ordering as a soft source-order preference rather than a hard rule;
-- versioned, language-neutral Logical IR for Go, Rust, and other consumers.
+- versioned, serializable Logical IR shared by the TypeScript and JavaScript toolchain stages.
 
 Pixel coordinates MUST NOT be the primary authoring abstraction. Fixed sizes, minimum sizes, and other geometric constraints MAY be supported. Absolute positions MAY eventually be added as an explicitly marked escape hatch, but ordinary diagrams must not require them.
 
-### 1.6 Conformance profiles
+### 1.6 Public toolchain goal
+
+The reference implementation MUST be a TypeScript and JavaScript toolchain distributed as the `kvisl` npm package. A user with Node.js and npm available MUST be able to render a TSX model without installing another language runtime or native Kvísl executable:
+
+```sh
+npx kvisl render diagram.tsx -o diagram.svg
+npx kvisl render diagram.tsx -o diagram.excalidraw
+```
+
+The `render` command MUST infer SVG or Excalidraw output from the output suffix unless an explicit format option overrides it. The command MUST evaluate the input TSX exactly once, preserve the documented IR stage boundaries, report structured diagnostics, and return a failing exit status when no valid artifact can be produced.
+
+The default human-facing `npx kvisl` output MUST be cheerful, colorful, and immediately scannable. Every progress, success, warning, and error line MUST begin with an emoji that identifies the kind of step before any text or color. At minimum, rendering SHOULD distinguish dependency resolution, TSX transformation, component expansion, normalization, view materialization, layout, routing, painting, and the final artifact. The wording may be friendly, but it MUST remain concise and technically accurate.
+
+Emoji and color are presentation, not machine protocol. Structured diagnostic modes MUST emit schema-valid data without decorative prefixes. Non-interactive output MUST remain stable rather than depend on animated terminal state; color MUST respect standard terminal capability detection and `NO_COLOR`, while the leading emoji remains in human-readable mode unless that mode is explicitly disabled.
+
+The layout and routing implementation MAY remain explicitly experimental while its algorithms and internal APIs evolve. Experimental status does not weaken the model requirements or change the public command shape above. Promotion into a stable package boundary is a later implementation milestone, not a prerequisite for exercising the toolchain through `npx kvisl`.
+
+### 1.7 Conformance profiles
 
 The requirements group into three profiles so that implementations can be built and claimed incrementally:
 
@@ -117,7 +134,25 @@ export default <Diagram id="system">{/* ... */}</Diagram>;
 
 After component expansion, the root value MUST yield exactly one `Diagram`. Several independent diagrams in one file MAY later be supported by an explicit document or page component.
 
-### 2.3 Components
+### 2.3 Internet-composable module resolution
+
+Dependencies MUST remain ordinary imports in TypeScript and TSX. Kvísl MUST NOT require a separate module-declaration file or introduce a custom import grammar. The reference frontend MUST support:
+
+- the `@kvisl/core` authoring API and automatic JSX runtime supplied by the exact CLI version, without requiring a project-local installation;
+- relative and absolute local module specifiers;
+- ordinary bare npm package specifiers resolved by Node.js conventions;
+- Deno-compatible `https:` URL imports;
+- Deno-compatible `npm:` and `jsr:` specifiers.
+
+URL modules MAY themselves use relative URL imports, which MUST resolve against the importing module's final canonical URL. Redirects, media types, transitive dependencies, and content hashes MUST be recorded. Scheme-less strings such as `github.com/owner/repository/file.tsx` MUST NOT silently acquire network semantics; a remote module uses an explicit supported specifier, normally an HTTPS URL, `npm:`, or `jsr:`.
+
+The reference frontend runs on Node.js and esbuild; supporting this specifier vocabulary MUST NOT require an installed Deno runtime. Compatibility refers to the import spelling and resolution behavior, not to Deno host APIs inside a component.
+
+Fetched modules MUST be cached by immutable content identity and covered by a reproducibility lock artifact. That lock is generated resolution state, not a dependency declaration: the imports in TSX remain the source of the module graph. Offline execution MUST succeed when every locked dependency is present in the cache and MUST otherwise produce a diagnostic rather than silently substitute different content.
+
+Remote modules are executable TypeScript or JavaScript and therefore follow the same trust policy as local component code. Fetch permission and evaluation permission MUST remain distinct so that restricted or review-oriented tooling can resolve, inspect, and lock a module without granting it ambient process capabilities.
+
+### 2.4 Components
 
 A component MUST be semantically treatable as a pure mapping from properties and children to a diagram expression:
 
@@ -138,7 +173,7 @@ A library MAY use declaration components whose JSX result is a deterministic, se
 
 The runtime SHOULD evaluate components deterministically and, where possible, without unrestricted access to the clock, randomness, network, environment variables, or file system. A first implementation MAY be less restrictive for trusted local modules, but the semantic result MUST still be defined as reproducible.
 
-### 2.4 Expression values
+### 2.5 Expression values
 
 The JSX contract MUST normalize at least the following values:
 
@@ -154,7 +189,7 @@ Fragments, nested arrays, and `null` or `false` produced by conditions MUST be s
 
 Unknown DOM or HTML elements MUST be errors. TSX has no DOM semantics in Kvísl.
 
-### 2.5 Keys and IDs
+### 2.6 Keys and IDs
 
 A JSX `key` MAY support stable expansion of repeated expressions. `key` and diagram `id` MUST remain separate concepts:
 
@@ -372,7 +407,7 @@ A component or scope MAY own several `View` declarations. Every view MUST have a
 </Scope>
 ```
 
-Here `context()` and the comparison helpers construct typed, serializable condition values; they are not callbacks. The renderer creates the context for each component instance, walks the views in declaration order, and instantiates the first one whose `requires` condition holds and whose footprint fits — exactly the first-match semantics of a media query. A view without `requires` is the unconditional tail of the list. The exact convenience syntax remains open, but its normalized form MUST be language-neutral.
+Here `context()` and the comparison helpers construct typed, serializable condition values; they are not callbacks. The renderer creates the context for each component instance, walks the views in declaration order, and instantiates the first one whose `requires` condition holds and whose footprint fits — exactly the first-match semantics of a media query. A view without `requires` is the unconditional tail of the list. The exact convenience syntax remains open, but its normalized form MUST be stable across the TypeScript and JavaScript stages.
 
 The declarations `compact/card` and `internals/internal-layout/api` are branch-local template identities, not ordinary paths below `cluster`. Their materialized render instances receive renderer-local instance keys derived from the owning component instance, selected view, template-local identity, render target, and projection generation. Reusing a view template MUST NOT reuse one mutable render object across component instances.
 
@@ -408,7 +443,7 @@ The renderer-context condition model MUST support Boolean composition (`all`, `a
 - requested purpose, audience, detail policy, and semantic state;
 - renderer and solver capabilities.
 
-Unknown context keys or operators MUST be namespaced extensions. Conditions MUST be pure, deterministic, serializable, and safe to evaluate in TypeScript, Go, and Rust. JavaScript functions, closures, DOM queries, and arbitrary CSS evaluation MUST NOT enter Logical IR.
+Unknown context keys or operators MUST be namespaced extensions. Conditions MUST be pure, deterministic, serializable, and safe to evaluate in every TypeScript or JavaScript toolchain stage. JavaScript functions, closures, DOM queries, and arbitrary CSS evaluation MUST NOT enter Logical IR.
 
 After a view wins, the same context MUST be available to conditional adjustments inside its template. The model SHOULD permit `when` on view-template entities, lines, and segments, plus explicit `When` or `Switch` meta containers for larger alternatives. A conditional line or segment exists in Projection IR only when its condition holds. Removing it MUST still preserve port-cardinality and required-connectivity invariants or produce a diagnostic.
 
@@ -872,7 +907,7 @@ Provenance, absolute source paths, and component stacks SHOULD be stored in a se
 
 A Logical IR consumer MUST determine from the schema version and required features whether it can process a document completely. Unsupported semantic requirements MUST NOT be ignored silently.
 
-Independent Go, Rust, and TypeScript implementations MUST be able to read the same Logical IR and renderer-materialized Projection IR. They MAY use different layout and routing algorithms as long as they satisfy hard constraints or report unsatisfiability with an understandable explanation.
+Independent TypeScript or JavaScript stages MUST be able to read the same Logical IR and renderer-materialized Projection IR. Alternative layout and routing implementations MAY coexist as long as they satisfy hard constraints or report unsatisfiability with an understandable explanation.
 
 A renderer planner MUST materialize the required meta branches into renderer-neutral Projection IR without evaluating TSX components again. It MUST create the render context used by view conditions, template conditionals, and conditional rules. A solver consumes that projection and SHOULD produce renderer-neutral Solved IR. A target painter may then produce Excalidraw, SVG, Canvas, or other output.
 
@@ -884,18 +919,18 @@ Renderer-planner and solver interfaces MUST NOT assume a fixed page rectangle. T
 
 A render target MUST be able to request `maximum-that-fits` with an outside-in strategy. The renderer planner and solver MUST cooperate over declared view templates, renderer-created context, view conditions, conditional adjustments, target dimensions, minimum readability, routing space, and capabilities. Projection IR records every materialized view instance and its selection explanation (which views were policy-filtered, condition-failed, footprint-failed, or solver-rejected); Solved IR retains that provenance and enough information to explain fallback decisions. Explicitly forced views are hard requirements; an impossible forced view MUST produce a diagnostic rather than silently substitute another view.
 
-Projection IR MUST be versioned and serializable for debugging, caching, cross-language solvers, and deterministic tests. It MUST distinguish stable logical entity keys, view-template entity keys, and target-local render-instance keys.
+Projection IR MUST be versioned and serializable for debugging, caching, replaceable solvers, and deterministic tests. It MUST distinguish stable logical entity keys, view-template entity keys, and target-local render-instance keys.
 
 Different projections of one model — infinite canvas, single poster, tiled pages, and focused subsystem views — MUST preserve semantic identity and connectivity. Presentation clipping, pagination, collapsing, and filtering MUST NOT silently delete or reinterpret the underlying model.
 
-## 17. Reference fixtures and grammar examples before implementation
+## 17. Design-first reference fixtures and grammar examples
 
 The supplied reference drawings under [`examples/`](examples/) are visual requirements fixtures, not post-implementation demos. Each visual fixture MUST contain:
 
 - `original.png`: the visual reference provided before implementation;
 - `diagram.tsx`: a complete logical formulation in the proposed authoring language.
 
-No core API, normalizer, solver, or renderer implementation should begin until every current reference can be expressed in TSX without pixel coordinates. The fixture TSX files are intentionally allowed to precede the implementation and therefore are not expected to compile yet.
+The fixture TSX files were deliberately authored before their implementation and now serve as executable design and conformance inputs. No grammar, model, normalizer, solver, or renderer change is complete until every affected reference remains expressible and evaluable without authored pixel coordinates, or the fixture and its documented expectation are intentionally revised together.
 
 The fixtures define required semantic and layout capabilities. They do not require pixel-identical output. A conforming result MUST preserve containment, major relative placement, visible content, line connectivity, segment labels, route hierarchy, path sharing, boundaries, and style roles closely enough that the reference remains recognizably the same drawing.
 
@@ -945,7 +980,7 @@ The first grammar and IR version MUST cover at least these golden scenarios:
 20. A note anchored `inside-bottom-left` of a scope stays inside that scope's border, outside its content flow.
 21. TSX normalizes deterministically to the same Logical IR.
 22. JSON and YAML representations read back to the same Logical IR.
-23. Go and Rust consumers read the same IR and recognize the same core features.
+23. From a packed npm artifact, `npx kvisl render` evaluates one TSX entry with local, npm, and locked HTTPS dependencies and produces both SVG and editable Excalidraw output solely from the requested output suffix.
 24. Every reference fixture normalizes without absolute positions or unresolved TSX port handles.
 25. Every reference fixture preserves its named scopes, nodes, resolved endpoints, labels, and pinned segments through serialization.
 26. A generated model can nest reusable components to a depth greater than any built-in grammar assumption; only an explicit implementation resource limit may reject it.

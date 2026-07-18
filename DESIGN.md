@@ -6,7 +6,7 @@ This document describes the implementation architecture and plumbing required to
 
 - [REQUIREMENTS.md](REQUIREMENTS.md) states what the system must support.
 - [MODEL.md](MODEL.md) defines the conceptual model and Logical IR.
-- [`examples/`](examples/) contains the pre-implementation conformance fixtures.
+- [`examples/`](examples/) contains the executable visual conformance fixtures and their original acceptance references.
 
 If this document conflicts with either the requirements or the model on language semantics, the other document wins. This document owns process boundaries, package boundaries, execution, serialization plumbing, embedding, diagnostics, caching, and test architecture.
 
@@ -15,9 +15,10 @@ If this document conflicts with either the requirements or the model on language
 The implementation must provide:
 
 - one normative TSX evaluation and normalization path;
-- a versioned, language-neutral boundary after normalization;
+- a versioned, serializable data boundary after normalization;
 - independently replaceable solvers and renderers;
-- usable Node.js, standalone Go, and IR-consuming Rust integration paths;
+- one TypeScript and JavaScript stack runnable through the npm-distributed `kvisl` command;
+- `npx kvisl render diagram.tsx -o diagram.svg` and `.excalidraw` as the primary end-to-end surface;
 - deterministic and diagnosable builds;
 - controlled evaluation of untrusted or semi-trusted TSX;
 - caching and incremental interfaces suitable for very large models;
@@ -86,7 +87,7 @@ The normalizer owns component-expression lowering, reference resolution, default
 
 ### 3.5 Schema package
 
-The schema package owns version identifiers, machine-readable schemas, feature declarations, compatibility rules, canonical serialization, and generated TypeScript, Go, and Rust types.
+The schema package owns version identifiers, machine-readable schemas, feature declarations, compatibility rules, canonical serialization, and TypeScript types used across the JavaScript implementation.
 
 ### 3.6 Renderer planners
 
@@ -96,19 +97,23 @@ A renderer planner consumes Logical IR plus target options and renderer capabili
 
 Solvers consume Projection IR and emit Solved IR. A trivial projection may be used for a model with no meta branches. Multiple implementations may coexist. A solver must advertise supported schema versions and optional features.
 
+The current layout and routing solver remains under [`experiments/layouter/`](experiments/layouter/) while its geometry model and internal APIs evolve. The public CLI may call it through a narrow internal adapter, but importing experimental modules does not make those modules stable API. Promotion into a regular package is a later decision and is not required for the npm command to render the conformance fixtures.
+
 ### 3.8 Painters and public renderers
 
 A target painter consumes Solved IR and produces a target format. A public renderer packages a renderer planner, compatible solver integration, and a painter behind one API. It does not evaluate TSX, expand components, or reinterpret unsupported requirements silently.
 
 ## 4. TSX transformation and bundling
 
-esbuild is the primary transformation and bundling implementation. It provides a maintained TSX parser, fast builds, a JavaScript API, and a native Go API.
+esbuild is the primary transformation and bundling implementation. It provides a maintained TSX parser, fast builds, and a JavaScript API suitable for the Node.js frontend.
 
 The transform must use automatic JSX mode with the Kvísl JSX runtime as its import source. It must preserve source maps through bundling so that runtime and normalization diagnostics map back to original TSX modules.
 
+The compiler resolves `@kvisl/core` and `@kvisl/core/jsx-runtime` to the authoring API and JSX runtime shipped with that exact CLI build. This keeps a one-file diagram runnable through `npx kvisl` without a project-local Kvísl installation and prevents frontend/runtime version skew.
+
 Bundling is responsible for:
 
-- resolving the entry module and its local imports;
+- resolving the entry module, local imports, npm packages, and supported remote imports;
 - including component libraries allowed by the host;
 - rewriting JSX to the custom runtime;
 - producing a JavaScript format supported by the selected evaluator;
@@ -118,6 +123,23 @@ Bundling is responsible for:
 
 esbuild transforms TypeScript syntax but does not type-check it. Development tooling should offer `tsc --noEmit` as a separate optional check. Runtime correctness and normalization validation must not depend on the user having run `tsc`.
 
+### 4.1 Deno-compatible remote specifiers without Deno
+
+The compiler frontend extends esbuild resolution with the established module-specifier vocabulary used by Deno: absolute `https:` imports plus `npm:` and `jsr:` specifiers. It also preserves ordinary local and bare npm imports. This is resolver compatibility, not a Deno execution host: the public command runs on Node.js, and neither users nor the npm package need an installed Deno runtime.
+
+The resolver must:
+
+- resolve a relative import in a remote module against that module's final canonical URL;
+- follow bounded redirects and record both requested and final origins;
+- reject unsupported schemes and scheme-less strings that would otherwise be ambiguous with package names;
+- preserve media type and source-map provenance through transformation;
+- hash every fetched source and include the complete transitive graph in the dependency manifest;
+- reuse a content-addressed local cache and verify locked hashes before evaluation;
+- support offline builds when the locked graph is already cached;
+- keep fetching and executing permissions separate under the active trust policy.
+
+Imports are the dependency declarations. No Kvísl `.mod` file or second module grammar exists. A generated lock artifact records exact resolutions and hashes but does not duplicate the authored graph. The exact lock filename and serialization format may be chosen with the CLI packaging work, provided updates are explicit and deterministic.
+
 ## 5. JavaScript evaluation
 
 ### 5.1 Module contract
@@ -126,29 +148,7 @@ The bundled module must produce exactly one normalizable root value, normally th
 
 ### 5.2 Node.js host
 
-The initial reference frontend should run in Node.js because it offers the shortest path to correct JavaScript and source-map behavior. The public compiler API must not expose Node-specific objects in its results.
-
-### 5.3 Standalone Go host
-
-A standalone Go executable can evaluate TSX without an installed Node.js runtime:
-
-```text
-diagram.tsx
-    -> esbuild Go API
-    -> bundled JavaScript
-    -> embedded evaluator such as goja
-    -> embedded JSX runtime and normalizer bundle
-    -> Logical IR
-    -> Go solver or renderer
-```
-
-esbuild performs transformation only. The embedded JavaScript evaluator executes the bundle. The runtime and normalizer JavaScript should be built into the Go binary as versioned embedded assets.
-
-The Go host must expose cancellation, memory and execution budgets, a controlled module resolver, diagnostic callbacks, and deterministic host services.
-
-### 5.4 Rust host
-
-Rust implementations are required to consume versioned Logical IR or Solved IR. Direct TSX evaluation in Rust is optional and is not part of the first core contract. A later Rust frontend may embed a JavaScript engine as long as it produces byte-for-byte equivalent canonical Logical IR for the same frontend version and input.
+The normative frontend runs in Node.js because `npx` supplies the intended installation-free command surface and Node provides direct JavaScript, npm, and source-map integration. The CLI, compiler, normalizer, planners, experimental solver, and painters remain TypeScript or JavaScript. Public compiler results use serializable Kvísl values rather than exposing Node-specific objects.
 
 ## 6. Evaluation isolation
 
@@ -167,7 +167,7 @@ Restricted evaluation should provide only deterministic runtime services require
 - no network access unless explicitly supplied by the host;
 - no arbitrary native module loading.
 
-An embedded JavaScript engine is not automatically a security boundary. The threat model and evaluator-specific escape analysis must be documented before accepting hostile input.
+A Node.js worker, `vm` context, or bundled evaluator is not automatically a security boundary. The threat model and evaluator-specific escape analysis must be documented before accepting hostile input.
 
 ## 7. Component expansion and JSX expression handling
 
@@ -210,9 +210,9 @@ Failure to produce Logical IR must still return structured diagnostics and disco
 
 Normalization phases and semantic validation rules are defined by the requirements and model. The implementation should make phases observable in traces, but phase-local internal data structures are not interchange formats.
 
-## 9. Language-neutral IR boundary
+## 9. Serializable IR boundary
 
-Logical IR, Projection IR, and Solved IR must have explicit schema identifiers and versions. The schema package should generate or verify matching types for TypeScript, Go, and Rust to prevent handwritten drift.
+Logical IR, Projection IR, and Solved IR must have explicit schema identifiers and versions. The schema package should generate or verify the TypeScript types used by all implementation stages to prevent handwritten drift.
 
 The boundary must support:
 
@@ -361,7 +361,24 @@ Incremental and full execution must converge on canonical-equivalent results for
 
 ## 16. CLI and embedding surfaces
 
-The first CLI should provide commands equivalent to:
+The npm package must expose a `kvisl` executable so a packed or published package supports these canonical commands:
+
+```sh
+npx kvisl render diagram.tsx -o diagram.svg
+npx kvisl render diagram.tsx -o diagram.excalidraw
+```
+
+`render` infers the target painter from the output suffix; an explicit `--format` may override inference. Both forms use one frontend and one evaluation of the entry module. SVG and Excalidraw are painters behind the same Projection and Solved IR stages, not separate compilation paths.
+
+The package manifest must include the executable through `bin`, publish every runtime dependency and required asset, declare its supported Node.js versions, and exclude repository-only fixtures and generated galleries unless deliberately shipped. A release smoke test must run the packed tarball rather than resolving source files from the repository:
+
+```sh
+npm pack
+npx --package ./kvisl-<version>.tgz kvisl render diagram.tsx -o diagram.svg
+npx --package ./kvisl-<version>.tgz kvisl render diagram.tsx -o diagram.excalidraw
+```
+
+Additional stage-oriented commands may expose the pipeline without competing with the primary surface:
 
 ```text
 kvisl check diagram.tsx
@@ -369,17 +386,15 @@ kvisl normalize diagram.tsx --output logical.yaml
 kvisl materialize logical.yaml --target a4 --output projection.yaml
 kvisl solve projection.yaml --output solved.yaml
 kvisl paint solved.yaml --format excalidraw --output diagram.excalidraw
-kvisl render logical.yaml --target a4 --format excalidraw --output diagram.excalidraw
-kvisl build diagram.tsx --format svg --output diagram.svg
 ```
 
-Commands must support machine-readable diagnostics, stdin/stdout where meaningful, explicit schema and feature selection, cancellation, and reproducible-output modes.
+Commands must support machine-readable diagnostics, stdin/stdout where meaningful, explicit schema and feature selection, cancellation, reproducible-output modes, and nonzero exit status when the requested artifact cannot be produced.
 
-Embedding APIs in TypeScript and Go should mirror the same stage boundaries rather than expose one opaque `build()` function only.
+Embedding APIs in TypeScript and JavaScript should mirror the same stage boundaries rather than expose one opaque `build()` function only.
 
 ## 17. Testing and conformance plumbing
 
-The fixtures under [`examples/`](examples/) are golden inputs. Once implementations exist, each fixture should produce:
+The fixtures under [`examples/`](examples/) are golden inputs. Every implemented pipeline stage should process every applicable fixture and produce:
 
 - canonical Logical IR;
 - provenance with stable source mappings;
@@ -392,12 +407,14 @@ Required test layers are:
 
 - JSX-runtime expression tests;
 - component-expansion and normalization tests;
-- renderer-context, view-scoring, conditional-materialization, and endpoint-alternative tests;
+- renderer-context, first-fit view-selection, conditional-materialization, and endpoint-alternative tests;
 - schema validation and canonical serialization tests;
 - JSON/YAML round-trip tests;
-- cross-language TypeScript/Go/Rust consumer tests;
+- local, bare npm, `npm:`, `jsr:`, and HTTPS module-resolution tests;
+- redirect, transitive URL import, cache, lock-integrity, and offline-resolution tests;
 - solver constraint and determinism tests;
 - renderer structural and visual regression tests;
+- packed-tarball `npx kvisl render` smoke tests for SVG and Excalidraw;
 - restricted-evaluator security tests;
 - cancellation, budget, and malformed-input tests;
 - large generated-model and incremental invalidation tests.
@@ -408,24 +425,17 @@ Tests must compare semantics before pixels. Visual regression thresholds are ren
 
 ```text
 packages/
+  cli/
   expression/
   jsx-runtime/
   authoring/
   compiler/
   normalizer/
   schema/
-  solver-typescript/
+  renderer-svg/
   renderer-excalidraw/
-go/
-  compiler/
-  solver/
-  renderer/
-rust/
-  schema/
-  solver/
-  renderer/
-cmd/
-  kvisl/
+experiments/
+  layouter/
 examples/
 ```
 
@@ -438,21 +448,21 @@ normalizer -> expression representation + schema
 compiler frontend -> JSX runtime + authoring API + normalizer
 solvers -> schema
 renderers -> schema
-CLI and hosts -> compiler frontend + solvers + renderers
+CLI -> compiler frontend + solver adapter + renderers
 ```
 
 Solvers and renderers must not become dependencies of the authoring runtime or normalizer.
 
 ## 19. Delivery sequence
 
-1. Freeze the first Logical, Projection, and Solved IR schemas and generate TypeScript, Go, and Rust bindings.
-2. Implement the custom JSX runtime and Node.js compiler frontend.
+1. Freeze the first Logical, Projection, and Solved IR schemas and generate their TypeScript contracts.
+2. Package the custom JSX runtime, Node.js/esbuild frontend, and a public `kvisl` npm executable.
 3. Normalize every reference fixture to canonical Logical IR.
-4. Add deterministic renderer context, view scoring, and Projection IR materialization.
-5. Add a minimal deterministic solver and the first Excalidraw or SVG painter.
-6. Embed the frontend in Go through esbuild and goja.
-7. Add cross-language consumers and compatibility tests.
-8. Add viewport, tiling, caching, and incremental invalidation.
+4. Keep the current layouter experimental while connecting it through a private solver adapter and exercising it against every reference fixture.
+5. Complete the SVG and editable Excalidraw painters behind the same `render` command.
+6. Add Deno-compatible URL, `npm:`, and `jsr:` resolution with a content-addressed cache and reproducibility lock.
+7. Prove the installation-free surface with packed-tarball `npx` tests for both output formats.
+8. Add deterministic renderer context, first-fit Projection IR materialization, viewport, tiling, caching, and incremental invalidation.
 9. Harden restricted evaluation and publish the threat model.
 
 This sequence is an implementation plan, not a change to model semantics. Any model or grammar change remains governed by [REQUIREMENTS.md](REQUIREMENTS.md), [MODEL.md](MODEL.md), and the reference fixtures.
