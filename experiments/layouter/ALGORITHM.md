@@ -76,8 +76,8 @@ Soft objectives include, in descending default priority:
 
 1. preserve hard feasibility and semantic attachment;
 2. avoid object-line intersections;
-3. preserve source order and the existing incremental solution;
-4. reduce crossings;
+3. preserve required order and the existing incremental solution;
+4. reduce crossings, using source order only as a stabilizer where order is free;
 5. reduce bends and route length;
 6. keep bundles and shared trunks coherent;
 7. reduce occupied corridor width according to pressure;
@@ -86,6 +86,8 @@ Soft objectives include, in descending default priority:
 The order is renderer policy, not new authoring semantics. A target may tune weights, but it must not turn a preference into a hidden hard constraint.
 
 The reference solver guarantees a deterministic feasible result for the polynomial constraint profile described here or a structured diagnostic. It does not guarantee a globally minimal number of crossings, bends, total area, or total route length.
+
+When an example has an authored `original.png`, that drawing is the binding visual acceptance reference for the experiment. The solver may generalize the mechanism, but it may not redefine an intentional route, title placement, grouping, or whitespace decision merely because another drawing would also be valid. Automated quality checks enforce structural invariants; comparison with the original decides whether the resulting composition is the intended one.
 
 ## 4. Solver invariants
 
@@ -108,6 +110,8 @@ A line may connect arbitrary depths and cross arbitrary containment boundaries. 
 ### 4.4 Port placement is a routing result
 
 Fixed port sides constrain routing. Automatic port sides and all unspecified perimeter positions are selected from route direction, remote order, group order, labels, marker size, and side capacity. The algorithm never places all ports independently and then asks routing to repair the result.
+
+A side containing one unconstrained dock block places that block at the side midpoint. It may move only when an actual local obstacle, explicit order, group extent, label extent, or route constraint requires displacement. Distant objects on the same ray are not by themselves a reason to move a dock.
 
 ### 4.5 Reservations are monotone within one solve attempt
 
@@ -161,6 +165,8 @@ Every container produces a local routing mesh from its layout topology:
 - corridor residents split a channel locally but do not create a detached routing plane.
 
 The mesh stores adjacency, local axis, capacity, minimum/preferred spacing, pressure, divider occupancy, residents, and route prohibitions. It contains only structural neighbors. It must not contain one visibility edge for every mutually visible object pair.
+
+Every regional incidence is classified as either a **longitudinal track** or a **perpendicular crossing**. A longitudinal incidence consumes a track slot and contributes track thickness. A perpendicular hierarchy or gap crossing needs an intersection point and a bounded crossing band, but it does not consume a parallel track and must not displace longitudinal traffic from the region center. Several crossing-only incidences through the same padding band share one bounded crossing allowance rather than multiplying container padding by line count.
 
 For unconstrained rectangular siblings, a vertical/horizontal decomposition or nearest-neighbor sweep produces a linear-size mesh in `O(k log k)` time for `k` members. Row, column, grid, tree, and layered layouts produce their mesh directly in linear time.
 
@@ -257,6 +263,8 @@ At each relevant container, the line becomes one local quotient interaction betw
 - or a child/boundary and an explicit local region.
 
 This is how a line can ignore semantic hierarchy while the solver remains hierarchical. A route that exits two levels, crosses a parent gap, and re-enters three levels elsewhere is one semantic line but a small sequence of local obligations joined by stable portal identities.
+
+An explicit gap between the two endpoint branches normally describes one perpendicular crossing. It becomes longitudinal occupancy only when the ordered itinerary requires distinct axial entry and exit positions, or when a bundle/share block requires a common longitudinal track. A leaf port side controls departure from the leaf object; an explicit gap or ancestor padding segment controls traversal at that ancestor level. Propagating a leaf side through every ancestor is forbidden when it contradicts the authored higher-level region.
 
 ## 10. Phase D: choose layout topology and member order
 
@@ -371,7 +379,9 @@ For each object side, the solver forms dock blocks:
 - adjacent sub-slots for `bundle` geometry;
 - a single trunk slot for a merged join.
 
-Required port-group and explicit order constraints form a partial order. Remaining docks are ordered by the median remote track rank, with source order and canonical identity as stabilizers. End-label and marker boxes are part of the block extent.
+Required port-group and explicit order constraints form a partial order. A port group is one contiguous super-block; `fixed` member order is hard, while free or preferred order may be chosen geometrically. Remaining docks are ordered by the median remote track rank or remote endpoint projection, with source order and canonical identity only as stabilizers. This ordering minimizes endpoint inversions before coordinates are assigned. Later facing-dock alignment and dock sliding must preserve it. End-label and marker boxes are part of the block extent.
+
+If a side has exactly one block and no local constraint requires movement, its slot is centered exactly. A canonical named port remains one block regardless of attachment count, so geometric ordering never breaks join identity or creates one dock per attached line.
 
 Slots are packed along the side with a one-dimensional sweep and priority queue. If the side is too short, the object receives a larger minimum width or height. A fixed maximum that cannot contain its required docks is a hard conflict or a view rejection, never an overlap accepted by the painter.
 
@@ -417,6 +427,8 @@ For independent unit-track intervals, the sweep is `O(k log k)` for `k` interval
 
 Several corridor refinements of one region are allocated in rank order. Capacity is checked after sharing has reduced the demand. A capacity overflow cannot be repaired by drawing through an object.
 
+Perpendicular crossings are excluded before interval coloring. The reference prototype may obtain that classification with one provisional route, measure actual axial occupancy, and reroute once; production solvers should derive it directly from the compact itinerary where possible. A crossing is never inserted into the ordered longitudinal track list. After ordering, one longitudinal track is placed exactly on the corridor centerline; several tracks form a symmetric block around it. Corridor rank is considered first, then geometric endpoint projection, with identity only as a deterministic final tie-breaker.
+
 ### 14.3 Pressure and required thickness
 
 The required region thickness is the sum of:
@@ -428,6 +440,8 @@ The required region thickness is the sum of:
 - marker, arrowhead, and label protrusions that occupy the region.
 
 Preferred separation is then compacted toward the required minimum according to pressure. The exact pressure scale remains a model decision, but every permitted mapping must be monotone: increasing pressure cannot increase preferred width, and no pressure may reduce a hard minimum.
+
+Content padding, crossing allowance, track thickness, and route-to-object clearance are separate quantities. The prototype uses one bounded crossing band for a crossing-only padding region and reserves an additional inner clearance for an authored longitudinal padding track. A track centerline must therefore remain separated from child content even when ordinary content padding is visually compact. Container title strips are independent reserved decor and may not be used as routing lanes.
 
 ### 14.4 Crossing estimates without pair enumeration
 
@@ -456,6 +470,8 @@ Containers are processed bottom-up. Their minimum sizes combine:
 - inside anchors and boundary labels;
 - required frame/inside dependencies that are now geometrically known.
 
+Visible container titles reserve a consistent strip at the start of the local content flow. The reference architecture fixtures place them left-aligned. The strip must coexist with children, nested frames, and routing bands; centering a title over otherwise usable routing space is not an automatic improvement.
+
 Row and column sizes are prefix sums. Grid sizes are row/column maxima plus gutter reservations. Tree, layered, and radial strategies use their topology-specific contours or ranks. Sparse difference constraints solve required axis separations. A cycle of positive required separations is unsatisfiable.
 
 No iterative route search is needed when a corridor widens: the itinerary and track assignment stay fixed, so member coordinates simply move apart.
@@ -481,9 +497,17 @@ The symbolic itinerary is lowered into concrete local geometry:
 9. emit provenance for every fragment;
 10. lift logical paint relations to fragments and compute a stable topological order.
 
+Region pins constrain only the dimension the region semantically owns. A longitudinal track fixes its cross-axis coordinate but remains movable along the track; a perpendicular crossing fixes the region intersection while allowing the adjacent branch run to choose the shortest legal axial position. Authored waypoints and explicit branch points remain fully hard. This distinction prevents an implicit padding crossing from becoming an accidental two-axis waypoint that creates a return jog.
+
+For each bounded topology candidate, feasibility is evaluated lexicographically before aesthetics: object collisions, forbidden shared runs, and hard-region violations dominate crossings; crossings dominate bends; bends dominate Manhattan length. Equal-length orthogonal candidates prefer a single crossing of an explicit gap and preserve the endpoint's normal departure before entering that gap. After realization, a fixed number of local windows may replace a polyline stretch only when no hard pin is removed and the complete candidate score strictly improves. No pass runs until convergence.
+
 Label placement uses another interval sweep along each track. A label first tries its requested or automatic position, then the nearest free position on the same run. If its already-reserved box cannot fit longitudinally, the associated gap length increases and the affected prefix coordinates are recomputed. The route topology and cross-sectional track allocation do not change.
 
+Candidate generation is local and bounded. Besides fixed offsets, the solver may query a bounded spatial neighborhood and derive exact perpendicular clearances and along-run positions from nearby obstacle edges. This avoids missing a narrow legal slot without searching the canvas or changing dock order. Candidates are rejected when they overlap object geometry, unrelated routes, labels, title strips, or container border decor.
+
 Overlay lines use the existing mesh and spatial index but contribute no earlier width reservation. They may accept overlap penalties that reserving lines may not.
+
+Crossing bridges, gaps, and line jumps are painter adornments, not default route topology. They are enumerated only when explicitly enabled by the painter profile and are off by default. The solver must not introduce a jump merely because two legal lines cross.
 
 Required paint-order cycles are diagnostics. Soft relations are removed in stable lowest-weight order until the graph is acyclic; canonical identity chooses among otherwise equal fragments. This phase is sparse in the number of fragments and authored paint relations and does not compare every fragment pair.
 
@@ -497,6 +521,8 @@ The feasibility solve has no open-ended convergence loop. The reference schedule
 4. one bottom-up size pass and one top-down coordinate pass;
 5. at most one automatic-side correction for a locally infeasible endpoint;
 6. optional compaction that preserves all minima and topology.
+
+The current prototype realizes the crossing/track distinction with one provisional routing pass, one deterministic classification pass, and at most one reroute. It then performs two bounded route-improvement sweeps, a route-aware dock slide that preserves dock order, and two further bounded improvement sweeps. These are versioned constants, not convergence conditions. Each local replacement examines a fixed candidate family and a bounded route window.
 
 A side correction invalidates only the endpoint's local route suffix, its side packing, and affected channel intervals. It does not restart unrelated containers.
 
@@ -631,7 +657,17 @@ Before implementation, the algorithm should be tested on generated families in a
 
 Performance tests should record `I`, `J`, `G`, `X`, peak active intervals, dirty containers, and attempted views. Wall time without these counters cannot reveal an accidental quadratic phase.
 
-The four main visual fixtures remain quality gates. In particular, the solver must reproduce their hierarchy-crossing lines, deep ports, shared fan-out/fan-in, padding-band routes, corridor ordering, labels, and reserved whitespace without fixture-specific algorithms.
+The four main visual fixtures and their `original.png` files remain binding quality gates. In particular, the solver must reproduce their hierarchy-crossing lines, deep ports, shared fan-out/fan-in, padding-band routes, corridor ordering, labels, left-aligned container titles, and reserved whitespace without fixture-specific algorithms. A generated drawing is not accepted merely because it has zero collisions: unexpected dock displacement, inflated padding, off-center corridor use, endpoint inversions, or an avoidable return jog are regressions against the original composition.
+
+Focused regression metrics should include:
+
+- exact midpoint placement for unconstrained single docks;
+- zero endpoint-order inversions for free same-side dock sets, while preserving fixed port-group order;
+- independent measurements for content padding, route clearance, and track centerline distance;
+- symmetric corridor track coordinates after excluding perpendicular crossings;
+- Manhattan route length and backtrack distance for routes with no obstacle-forced detour;
+- zero overlap of labels with objects, unrelated routes, other labels, title strips, and container decor;
+- deterministic equality of repeated solved output.
 
 ## 24. Research basis
 
