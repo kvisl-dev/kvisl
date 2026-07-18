@@ -79,3 +79,31 @@ test("routing debug paints channel-mesh cells as inset ten-percent red rectangle
   assert.equal((debug.match(/fill="#ef4444" fill-opacity="0\.1"/g) ?? []).length, 2);
   assert.match(debug, /data-routing-region="mesh:gap:system:0" data-region-kind="gap" data-materialized="true" data-authored="true" x="141" y="33" width="22" height="110"/);
 });
+
+test("routing debug exposes share groups, bundle lanes, terminal slots, and branch pins", () => {
+  const scene = sceneWithLabel({ text: "bundle", box: { x: 80, y: 62, width: 42, height: 22 }, angle: 0 });
+  const line = scene.lines[0];
+  const lane = { id: "port:hub:shared:lane:0", members: [] };
+  const member = { line, laneIndex: 0, bundleLane: lane };
+  lane.members.push(member);
+  const point = { x: 20, y: 90 };
+  const pin = { x: 60, y: 90 };
+  const port = { terminalSlots: [{ lane, point }] };
+  const group = {
+    id: "port:hub:shared",
+    mode: "bundle",
+    source: { kind: "port", port },
+    members: [member],
+    bundle: { lanes: [lane], pinByLine: new Map([[line, pin]]) },
+  };
+  scene.shareGroups = new Map([[group.id, group]]);
+
+  const regular = renderSvg(scene, { transparent: true });
+  const debug = renderSvg(scene, { transparent: true, debugRouting: true });
+  assert.doesNotMatch(regular, /id="sharing-debug"/);
+  assert.match(debug, /id="sharing-debug"/);
+  assert.match(debug, /data-share-group="port:hub:shared" data-share-mode="bundle" data-share-lanes="1"/);
+  assert.match(debug, /data-bundle-lane="port:hub:shared:lane:0"/);
+  assert.match(debug, /data-terminal-slot="port:hub:shared:lane:0"/);
+  assert.match(debug, /data-bundle-pin="true"/);
+});

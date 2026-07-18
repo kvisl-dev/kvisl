@@ -1,6 +1,7 @@
 import { effectiveLayout, lineLabelDemand } from "./layout.mjs";
 import { boundaryLabelStrips } from "./mesh.mjs";
 import { containerBorderRings, labelMayCrossContainerBorder } from "./route.mjs";
+import { buildShareGroups, segmentsMayShareGeometry } from "./sharing.mjs";
 
 const CELL = 160;
 
@@ -150,19 +151,6 @@ function labelLabelOverlaps(scene) {
   return result;
 }
 
-function sharedGeometryAllowed(first, second) {
-  if (first.share?.group && first.share.group === second.share?.group) {
-    const mode = first.share.mode ?? second.share.mode ?? "auto";
-    if (mode === "merge" || mode === "auto") return true;
-  }
-  const firstPorts = [first.from?.port, first.to?.port].filter(Boolean);
-  const secondPorts = new Set([second.from?.port, second.to?.port].filter(Boolean));
-  return firstPorts.some((port) => {
-    const mode = port.sharing?.mode ?? "auto";
-    return secondPorts.has(port) && (mode === "merge" || mode === "auto");
-  });
-}
-
 function segmentInteraction(first, second) {
   const firstHorizontal = first.first.y === first.second.y;
   const secondHorizontal = second.first.y === second.second.y;
@@ -204,7 +192,8 @@ function routeRouteInteractions(scene) {
         if (previous.line === line) continue;
         const interaction = segmentInteraction(segment, previous);
         if (interaction?.kind === "crossing") crossings.push({ ...interaction, first: previous, second: segment });
-        if (interaction?.kind === "overlap" && !sharedGeometryAllowed(previous.line, line)) {
+        if (interaction?.kind === "overlap"
+          && !segmentsMayShareGeometry(previous.line, line, previous, segment)) {
           unexpectedOverlaps.push({ ...interaction, first: previous, second: segment });
         }
       }
@@ -429,6 +418,15 @@ function segmentCrossesLabel(first, second, box) {
   return false;
 }
 
+function labelCoversAuthorizedSharedRun(line, segment, box) {
+  for (let index = 1; index < line.route.length; index += 1) {
+    const own = { first: line.route[index - 1], second: line.route[index] };
+    if (segmentCrossesLabel(own.first, own.second, box)
+      && segmentsMayShareGeometry(line, segment.line, own, segment)) return true;
+  }
+  return false;
+}
+
 // Labels may cover their own stroke, and explicitly shareable lines may run
 // together. Every other route remains readable instead of disappearing under
 // another line's opaque label background.
@@ -446,10 +444,9 @@ export function labelRouteOverlaps(scene) {
   for (const line of scene.lines) {
     for (const label of line.routeLabels) {
       for (const segment of index.query(label.box)) {
-        if (segment.line === line || sharedGeometryAllowed(line, segment.line)) continue;
-        if (segmentCrossesLabel(segment.first, segment.second, label.box)) {
-          overlaps.push({ line, label, otherLine: segment.line, segmentIndex: segment.segmentIndex });
-        }
+        if (segment.line === line || !segmentCrossesLabel(segment.first, segment.second, label.box)) continue;
+        if (labelCoversAuthorizedSharedRun(line, segment, label.box)) continue;
+        overlaps.push({ line, label, otherLine: segment.line, segmentIndex: segment.segmentIndex });
       }
     }
   }
@@ -628,6 +625,7 @@ export function escalateLabelReservations(scene, reservations) {
 }
 
 export function analyzeScene(scene) {
+  buildShareGroups(scene);
   const objects = obstacleObjects(scene);
   const routeInteractions = routeRouteInteractions(scene);
   const titleStrips = boundaryLabelStrips(scene);

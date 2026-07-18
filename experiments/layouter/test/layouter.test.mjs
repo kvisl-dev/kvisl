@@ -640,29 +640,34 @@ test("explicit padding pins reserve a physical routing band", async () => {
   assert.ok(cluster.reserved.padding.right >= region.thickness);
 });
 
-test("a named merge port produces one shared positive-length prefix", async () => {
+test("an automatic named port merges compatible lines and bundles an incompatible style", async () => {
   const entry = path.join(repo, "examples", "machine-thought-os", "diagram.tsx");
   const { scene } = await solveFile(entry);
   const scheduler = scene.objectByPath.get("kernel/execution/scheduler");
   const port = scheduler.ports.get("children");
   const lines = scene.lines.filter((line) => line.from?.port === port);
   assert.equal(lines.length, 3);
-  const prefixes = lines.map((line) => line.route.slice(0, 2));
-  assert.deepEqual(prefixes[1], prefixes[0]);
-  assert.deepEqual(prefixes[2], prefixes[0]);
-  assert.notDeepEqual(prefixes[0][0], prefixes[0][1]);
+  const [first, second, independent] = lines;
+  const firstMembership = first.shareMemberships.find((membership) => membership.group.source.port === port);
+  const secondMembership = second.shareMemberships.find((membership) => membership.group.source.port === port);
+  const independentMembership = independent.shareMemberships.find((membership) => membership.group.source.port === port);
+  assert.equal(firstMembership.lane, secondMembership.lane);
+  assert.notEqual(firstMembership.lane, independentMembership.lane);
+  assert.ok(firstMembership.group.allowedSharedRuns.length > 0);
+  assert.notDeepEqual(first.route[0], first.route[1]);
+  assert.notDeepEqual(independent.route[0], first.route[0]);
 });
 
-test("a named bundle port keeps separate adjacent strokes after the dock", async () => {
+test("a named bundle port allocates distinct physical slots under one canonical port", async () => {
   const entry = path.join(repo, "examples", "machine-thought-os", "diagram.tsx");
   const { scene } = await solveFile(entry);
   const state = scene.objectByPath.get("kernel/execution/shared-state");
   const port = state.ports.get("children");
   const lines = scene.lines.filter((line) => line.from?.port === port);
   assert.equal(lines.length, 3);
-  assert.deepEqual(lines[1].route[0], lines[0].route[0]);
-  assert.deepEqual(lines[2].route[0], lines[0].route[0]);
-  assert.equal(new Set(lines.map((line) => `${line.route[1].x},${line.route[1].y}`)).size, 3);
+  assert.ok(lines.every((line) => line.from.port === port));
+  assert.equal(new Set(lines.map((line) => `${line.route[0].x},${line.route[0].y}`)).size, 3);
+  assert.equal(port.terminalSlots.length, 3);
 });
 
 test("an explicit same-size constraint equalizes the referenced boxes", async () => {

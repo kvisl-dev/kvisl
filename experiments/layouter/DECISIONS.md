@@ -4,7 +4,7 @@ Status: Accepted for the experiment
 
 These decisions make the first layout experiment concrete. They do not amend the Kvísl language model. Where the experiment exposes a model ambiguity, the result belongs in a later explicit update to [`MODEL.md`](../../MODEL.md).
 
-“Accepted” means the experiment has chosen the behavior; it is not an implementation-completeness marker. The current prototype still emits a fused preview scene rather than versioned Projection and Solved IR, so D7 and D9 cannot yet be represented as their final contracts. D16 and D17 have direct mesh regression coverage. D18 has canonical cells, region bindings, portal intervals, and shared debug geometry, but complete itinerary-adjacent `TrackRun` allocation remains partial: compatible regional allocations currently share interval intersections without yet deriving every maximal run from consecutive portal-connected cell incidences. The reference complexity target is likewise unproven until the performance counters and generated fixtures in `ALGORITHM.md` section 23 exist.
+“Accepted” means the experiment has chosen the behavior; it is not an implementation-completeness marker. The current prototype still emits a fused preview scene rather than versioned Projection and Solved IR, so D7 and D9 cannot yet be represented as their final contracts. D12 has a canonical post-cascade `ShareGroup` representation with regression coverage for style cohorts, required-merge diagnostics, requested bundles, monotone lanes, terminal slots, and its debug overlay. D16 and D17 have direct mesh regression coverage. D18 has canonical cells, region bindings, portal intervals, and shared debug geometry, but complete itinerary-adjacent `TrackRun` allocation remains partial: compatible regional allocations currently share interval intersections without yet deriving every maximal run from consecutive portal-connected cell incidences. The reference complexity target is likewise unproven until the performance counters and generated fixtures in `ALGORITHM.md` section 23 exist.
 
 ## D1. Port sides are an ordered set
 
@@ -36,7 +36,7 @@ Pressure is in the closed interval `0..1`.
 - `1` uses minimum track spacing.
 - Intermediate values interpolate linearly: `min + (1 - pressure) * (preferred - min)`.
 
-Pressure may bias an automatic sharing choice toward a bundle or merge. It never violates minimum spacing, capacity, or an explicit sharing prohibition.
+Pressure compacts the spacing of an already selected bundle toward its minimum. It never fuses requested bundle lanes, crosses style-cohort boundaries, or violates minimum spacing, capacity, or an explicit sharing prohibition. Automatic compatible members may merge only through the canonical share-group decision of D12, not as a later pressure shortcut.
 
 ## D4. The reference route geometry is orthogonal
 
@@ -95,15 +95,25 @@ A line label contributes space to one selected gap or explicitly named padding/c
 
 Rationale: charging the full label width to every traversed band compounds through nesting and makes otherwise compact diagrams arbitrarily wide. A label is painted once and therefore reserves one local interval.
 
-## D12. Named merge and bundle ports have different geometry
+## D12. One canonical ShareGroup owns effective sharing geometry
 
-Lines at a `merge` port share one positive-length dock trunk before branching. Lines at a `bundle` port share only the canonical dock point, fan into adjacent lanes immediately, and remain separate strokes. Line-level bundles occupying one explicit gap receive adjacent tracks there.
+After the cascade has resolved line paint, the prototype builds one canonical `ShareGroup` for every active named-port join, non-free `PortGroup`, and explicit line share group. Each member receives a normalized shared-piece stroke signature; at a canonical named-port end, the terminal head kind also participates because incompatible heads need distinct physical slots. The group's requested mode and these signatures determine one effective representation that every later reservation, routing, quality, and debug phase consumes:
 
-Rationale: coincident polylines are not a visual implementation of a bundle. The distinction must remain visible even in the minimal SVG painter.
+- an explicitly requested `bundle` has exactly one lane per semantic line, even when several lines have identical styles;
+- an automatic group with one style cohort merges to one lane and one positive-length trunk;
+- an automatic group with several style cohorts becomes a bundle with one lane per cohort; compatible members in one cohort may merge within that lane, while different cohort lanes remain visibly distinct;
+- an incompatible required `merge` emits a diagnostic and retains the separate cohort lanes in preview geometry rather than painting incompatible coincident strokes;
+- `separate` and `free` produce no shared positive-length geometry.
+
+Every bundle is monotone toward its common end: once a member enters its lane it does not leave and re-enter, and the contiguous lane-block order does not swap along the run. A canonical named port remains one semantic dock block but receives a compact physical terminal-slot block with one slot per effective lane. A requested bundle therefore receives one slot per line; an automatic cohort lane receives one slot shared by its compatible members. A `PortGroup` instead keeps its independent ordered member-port docks and compresses only the adjacent lane block after departure. It does not synthesize same-port terminal slots.
+
+Every physical terminal lane reserves its own marker and arrowhead extent, and a headed terminal run remains straight for at least twice the rendered head width before its first bend. The routing-debug painter reads the same `ShareGroup`, cohort lanes, terminal slots, and branch pins used by routing; it never infers sharing again from coincident polylines.
+
+Rationale: coincident incompatible strokes are not a merge, a requested bundle is not permission to fuse compatible members, and several physical slots must not multiply canonical port identity. A single normalized state prevents reservation, routing, quality checks, and debug output from disagreeing about which geometry may be shared.
 
 ## D13. Previously routed lines are sparse routing obstacles
 
-The router indexes emitted segments as it proceeds. A new candidate receives a strong penalty for an unrelated collinear run and a smaller penalty for a crossing. A declared merge is exempt from the collinear penalty.
+The router indexes emitted segments as it proceeds. A new candidate receives a strong penalty for an unrelated collinear run and a smaller penalty for a crossing. Only members of the same effective merged group or the same automatic style-cohort lane are exempt from the collinear penalty; distinct requested-bundle and style-cohort lanes remain obstacles to one another.
 
 Rationale: object avoidance alone can produce visually ambiguous coincident paths. The same cell index keeps this check local and output-sensitive.
 
@@ -137,11 +147,13 @@ Rationale: painting base padding and a reserved track as two cells invents a sec
 
 The prototype builds the channel mesh before routing and binds every active logical region to canonical cell identities. A cell has one rectangle. Adjacency records the positive-length shared boundary as a portal interval. Track allocations cite cell identities, one cross-axis coordinate, and axial spans.
 
-`region.geometry` and per-cell `routingGeometry` shadow rectangles are forbidden. Longitudinal tracks use facing core cells; perpendicular crossings may use connected access cells. Compatible, itinerary-adjacent collinear allocations of one line share a coordinate from the intersection of their legal intervals. Only an empty intersection at a recorded portal or junction creates an intentional transition; spatially compatible regions that are not consecutive in the itinerary do not form a run.
+`region.geometry` and per-cell `routingGeometry` shadow rectangles are forbidden. Longitudinal tracks use facing core cells; perpendicular crossings may use connected access cells. Compatible, itinerary-adjacent collinear allocations of one line or effective share lane use a coordinate from the intersection of their legal intervals. Only an empty intersection at a recorded portal or junction creates an intentional transition; spatially compatible regions that are not consecutive in the itinerary do not form a run.
 
 Direct parent/child cells connect only at real shared boundaries. Padding cells leave through their own side, and corner junctions leave only through their declared outward sides.
 
-Rationale: a debug mesh reconstructed independently from routing can look correct while the line follows different coordinates. One topology makes centering, transitions, debug output, and performance assertions inspectable against the same data.
+The debug scene also exposes the canonical D12 state: share-group source and effective mode, ordered cohort or per-line lanes, physical same-port terminal slots, and branch pins. These overlays cite the same objects consumed by allocation and realization.
+
+Rationale: a debug mesh or sharing overlay reconstructed independently from routing can look correct while the line follows different coordinates. One topology and one `ShareGroup` state make centering, transitions, lane continuity, terminal slots, debug output, and performance assertions inspectable against the same data.
 
 ## D19. Endpoint access is a track, and dock movement invalidates geometry
 

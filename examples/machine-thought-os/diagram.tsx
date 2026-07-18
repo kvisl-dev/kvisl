@@ -111,7 +111,7 @@ export default (
             id="children"
             side="right"
             cardinality="many"
-            sharing={{ mode: "merge", branch: { preference: "late" } }}
+            sharing={{ mode: "auto", branch: { preference: "late" } }}
           />
         </Node>
 
@@ -147,7 +147,7 @@ export default (
             id="children"
             side="left"
             cardinality="many"
-            sharing={{ mode: "merge", branch: { preference: "late" } }}
+            sharing={{ mode: "auto", branch: { preference: "late" } }}
           />
           <Port id="parent" side="top" />
         </Node>
@@ -170,8 +170,8 @@ export default (
 
       <Line from="execution/interpreter.scheduler" to="execution/scheduler.interpreter" style={{ stroke: colors.ink }} />
 
-      {/* fan-out merges into one trunk and branches late; the dashed
-          branch to the deferred child leaves the solid shared piece */}
+      {/* compatible solid paths merge and branch late; the differently
+          styled deferred path remains a neighboring bundle lane */}
       {[
         ["a", "execution/work/next-pass/child-a.schedule", false],
         ["b", "execution/work/next-pass/child-b.schedule", false],

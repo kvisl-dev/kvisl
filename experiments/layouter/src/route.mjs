@@ -1,6 +1,10 @@
-import { minimumHeadRun, normalizedHeads } from "./heads.mjs";
+import { headGeometry, minimumHeadRun, normalizedHeads } from "./heads.mjs";
 import { buildChannelMesh, regionGeometry } from "./mesh.mjs";
 import { rotateSide } from "./orientation.mjs";
+import {
+  buildShareGroups,
+  segmentsMayShareGeometry,
+} from "./sharing.mjs";
 
 const CELL = 160;
 const SIDE_VECTOR = {
@@ -172,6 +176,100 @@ function placePorts(scene) {
   }
 }
 
+function terminalHeadWidth(member) {
+  if (!member.endpoint) return 0;
+  const endIndex = member.endpoint === member.line.from ? 0 : 1;
+  return headGeometry(normalizedHeads(member.line.heads)[endIndex]).width;
+}
+
+function terminalLaneGap(first, second, minimum) {
+  const headGap = (terminalHeadWidth(first) + terminalHeadWidth(second)) / 2;
+  const strokeGap = ((first.line.style?.strokeWidth ?? 2) + (second.line.style?.strokeWidth ?? 2)) / 2 + 4;
+  return Math.max(8, minimum, headGap, strokeGap);
+}
+
+function bundleLaneOffsets(group, minimum = 0) {
+  const lanes = group.bundle.lanes;
+  const positions = [0];
+  for (let index = 1; index < lanes.length; index += 1) {
+    const first = lanes[index - 1].members.reduce((widest, member) =>
+      terminalHeadWidth(member) > terminalHeadWidth(widest) ? member : widest);
+    const second = lanes[index].members.reduce((widest, member) =>
+      terminalHeadWidth(member) > terminalHeadWidth(widest) ? member : widest);
+    positions.push(positions.at(-1) + terminalLaneGap(first, second, minimum));
+  }
+  const center = (positions[0] + positions.at(-1)) / 2;
+  return new Map(lanes.flatMap((lane, index) => lane.members.map((member) => [member, positions[index] - center])));
+}
+
+function orderNamedBundleLanes(group) {
+  const port = group.source.port;
+  const axis = dockAxis(port.physicalSide);
+  const projection = (lane) => lane.members.reduce((sum, member) => sum + remoteCenter(member.line, member.endpoint)[axis], 0) / lane.members.length;
+  group.bundle.lanes.sort((first, second) => projection(first) - projection(second)
+    || first.members[0].line.order - second.members[0].line.order
+    || first.id.localeCompare(second.id));
+  group.bundle.lanes.forEach((lane, laneIndex) => {
+    lane.laneIndex = laneIndex;
+    lane.members.sort((first, second) => first.line.order - second.line.order || first.line.id.localeCompare(second.line.id));
+    for (const member of lane.members) {
+      member.laneIndex = laneIndex;
+      member.membership.laneIndex = laneIndex;
+      member.membership.laneCount = group.bundle.lanes.length;
+    }
+  });
+  group.members = group.bundle.lanes.flatMap((lane) => lane.members);
+  group.bundle.laneOrder = group.members.map((member) => member.line.id);
+}
+
+// A canonical named bundle port keeps one semantic identity but receives one
+// physical terminal slot per attachment. Slots reserve stroke and arrowhead
+// width at the boundary, so no headed run needs to overlap before fanning out.
+function allocateBundleTerminals(scene) {
+  for (const group of buildShareGroups(scene).values()) {
+    if (group.mode !== "bundle") continue;
+    if (group.source.kind === "port") orderNamedBundleLanes(group);
+    const minimum = group.source.kind === "port"
+      ? group.source.port.minSpacing ?? 0
+      : 0;
+    group.bundle.offsetByMember = bundleLaneOffsets(group, minimum);
+    if (group.source.kind !== "port") continue;
+
+    const port = group.source.port;
+    const target = port.anchor ?? port.owner;
+    const side = port.physicalSide;
+    const vector = SIDE_VECTOR[side];
+    const perpendicular = { x: -vector.y, y: vector.x };
+    port.terminalSlots = [];
+    for (const lane of group.bundle.lanes) {
+      const offset = group.bundle.offsetByMember.get(lane.members[0]);
+      const point = {
+        x: port.point.x + perpendicular.x * offset,
+        y: port.point.y + perpendicular.y * offset,
+      };
+      const slot = { group, port, lane, point, offset };
+      port.terminalSlots.push(slot);
+      for (const member of lane.members) {
+        member.endpoint.point = point;
+        member.endpoint.physicalSide = side;
+        member.endpoint.terminalSlot = slot;
+      }
+    }
+
+    const axis = dockAxis(side);
+    const start = target.box[axis];
+    const extent = target.box[axis === "x" ? "width" : "height"];
+    const outside = port.terminalSlots.some((slot) => slot.point[axis] < start || slot.point[axis] > start + extent);
+    if (outside) {
+      scene.diagnostics.push({
+        severity: "error",
+        code: "terminal-slot-capacity",
+        message: `bundle port '${port.owner.path}.${port.id}' cannot fit ${port.terminalSlots.length} required terminal slots on its ${side} side`,
+      });
+    }
+  }
+}
+
 const OPPOSITE_SIDE = { left: "right", right: "left", top: "bottom", bottom: "top" };
 
 function preservesDockOrder(siblings, current, axis, target, spacing = 12) {
@@ -217,6 +315,10 @@ function alignFacingDocks(scene) {
     if (!from?.point || !to?.point) continue;
     // named ports with several attachments are join identities; leave them
     if ((from.port?.attachments.length ?? 1) > 1 || (to.port?.attachments.length ?? 1) > 1) continue;
+    // A cohesive PortGroup owns an ordered terminal block. Its independent
+    // member docks must not collapse to the compact lane spacing used only
+    // after the lines have entered their shared bundle or trunk.
+    if ([from.port?.group, to.port?.group].some((group) => group && ["merge", "bundle"].includes(group.affinity))) continue;
     const fromSide = from.physicalSide;
     const toSide = to.physicalSide;
     if (!fromSide || OPPOSITE_SIDE[fromSide] !== toSide) continue;
@@ -571,19 +673,6 @@ function simplify(points) {
   return result;
 }
 
-function linesMayShare(first, second) {
-  if (first.share?.group && first.share.group === second.share?.group) {
-    const mode = first.share.mode ?? second.share.mode ?? "auto";
-    if (mode === "merge" || mode === "auto") return true;
-  }
-  const firstPorts = [first.from?.port, first.to?.port].filter(Boolean);
-  const secondPorts = new Set([second.from?.port, second.to?.port].filter(Boolean));
-  return firstPorts.some((port) => {
-    const mode = port.sharing?.mode ?? "auto";
-    return secondPorts.has(port) && (mode === "merge" || mode === "auto");
-  });
-}
-
 function segmentInteraction(first, second) {
   const firstHorizontal = first.first.y === first.second.y;
   const secondHorizontal = second.first.y === second.second.y;
@@ -629,7 +718,7 @@ function candidateScore(points, index, ignored, routeIndex, line) {
     for (const routed of routeIndex.querySegment(first, second)) {
       if (routed.line === line) continue;
       const interaction = segmentInteraction(candidate, routed);
-      if (interaction === "overlap" && !linesMayShare(line, routed.line)) score += 50000;
+      if (interaction === "overlap" && !segmentsMayShareGeometry(line, routed.line, candidate, routed)) score += 50000;
       if (interaction === "crossing") score += 180;
     }
   }
@@ -686,7 +775,8 @@ function overlappingRun(points, routeIndex, line) {
     const candidate = { first: points[i - 1], second: points[i] };
     for (const routed of routeIndex.querySegment(candidate.first, candidate.second)) {
       if (routed.line === line) continue;
-      if (segmentInteraction(candidate, routed) === "overlap" && !linesMayShare(line, routed.line)) return candidate;
+      if (segmentInteraction(candidate, routed) === "overlap"
+        && !segmentsMayShareGeometry(line, routed.line, candidate, routed)) return candidate;
     }
   }
   return null;
@@ -731,23 +821,44 @@ function rayClearanceAt(scene, start, side, owner, objectIndex) {
   return clearance;
 }
 
-function rayClearance(scene, port, objectIndex) {
-  return rayClearanceAt(scene, port.point, port.physicalSide, port.anchor ?? port.owner, objectIndex);
+function shareGroupDock(group) {
+  if (group.source.kind === "port") {
+    const port = group.source.port;
+    return {
+      point: port.point,
+      side: port.physicalSide,
+      owner: port.anchor ?? port.owner,
+      minSpacing: port.minSpacing ?? 0,
+    };
+  }
+  if (group.source.kind !== "port-group") return null;
+  const ports = group.members.map((member) => member.endpoint?.port).filter(Boolean);
+  const side = ports[0]?.physicalSide;
+  if (!side || ports.some((port) => port.physicalSide !== side)) return null;
+  return {
+    point: {
+      x: ports.reduce((sum, port) => sum + port.point.x, 0) / ports.length,
+      y: ports.reduce((sum, port) => sum + port.point.y, 0) / ports.length,
+    },
+    side,
+    owner: ports[0].anchor ?? ports[0].owner,
+    minSpacing: Math.max(0, ...ports.map((port) => port.minSpacing ?? 0)),
+  };
 }
 
-function sharedPins(scene, objectIndex) {
-  const groups = new Map();
+function sharingPins(scene, objectIndex) {
   for (const line of scene.lines) {
-    for (const endpoint of [line.from, line.to]) {
-      if (!endpoint?.port || endpoint.port.attachments.length < 2) continue;
-      const mode = endpoint.port.sharing?.mode ?? "auto";
-      if (mode === "separate" || mode === "bundle") continue;
-      if (!groups.has(endpoint.port)) groups.set(endpoint.port, endpoint.port.attachments);
-    }
+    line.sharedPins = [];
+    line.bundlePins = [];
   }
-  for (const [port, attachments] of groups) {
-    const start = port.point;
-    const side = port.physicalSide;
+  for (const group of buildShareGroups(scene).values()) {
+    group.allowedSharedRuns = [];
+    if (group.mode === "separate") continue;
+    const dock = shareGroupDock(group);
+    if (!dock) continue;
+    const attachments = group.members;
+    const start = dock.point;
+    const side = dock.side;
     const vector = SIDE_VECTOR[side];
     const distances = attachments.map(({ line, endpoint }) => {
       const remote = remoteCenter(line, endpoint);
@@ -760,16 +871,66 @@ function sharedPins(scene, objectIndex) {
         : { x: start.x, y: track.allocation.coordinate };
       return (location.x - start.x) * vector.x + (location.y - start.y) * vector.y;
     })).filter((distance) => distance > 18);
-    const preference = port.sharing?.branch?.preference ?? "late";
+    const preference = group.branch?.preference ?? "late";
     const factor = preference === "early" ? 0.18 : preference === "balanced" ? 0.45 : 0.72;
     const desired = Math.min(160, (distances.length ? Math.min(...distances) : 48) * factor);
     const trackLimit = trackDistances.length ? Math.min(...trackDistances) - 12 : Number.POSITIVE_INFINITY;
-    const obstacleLimit = rayClearance(scene, port, objectIndex) - 8;
+    const obstacleLimit = rayClearanceAt(scene, start, side, dock.owner, objectIndex) - 8;
     const distance = Math.max(8, Math.min(desired, trackLimit, obstacleLimit));
-    const pin = { x: start.x + vector.x * distance, y: start.y + vector.y * distance };
-    for (const { line, endpoint } of attachments) {
-      line.sharedPins ??= [];
-      line.sharedPins.push({ endpoint, pin });
+    if (group.mode === "merge") {
+      const pin = { x: start.x + vector.x * distance, y: start.y + vector.y * distance };
+      if (group.source.kind === "port-group") {
+        const convergenceDistance = Math.max(8, Math.min(18, distance / 2));
+        const convergence = {
+          x: start.x + vector.x * convergenceDistance,
+          y: start.y + vector.y * convergenceDistance,
+        };
+        group.merge = { convergence, pin };
+        group.allowedSharedRuns.push({
+          first: convergence,
+          second: pin,
+          members: attachments.map((attachment) => attachment.line),
+        });
+        for (const { line, endpoint } of attachments) {
+          line.sharedPins.push({ endpoint, pin: convergence, group, sequence: 0 });
+          line.sharedPins.push({ endpoint, pin, group, sequence: 1 });
+        }
+      } else {
+        group.merge = { pin };
+        group.allowedSharedRuns.push({
+          first: start,
+          second: pin,
+          members: attachments.map((attachment) => attachment.line),
+        });
+        for (const { line, endpoint } of attachments) line.sharedPins.push({ endpoint, pin, group, sequence: 0 });
+      }
+      continue;
+    }
+
+    const perpendicular = { x: -vector.y, y: vector.x };
+    group.bundle.branchDistance = distance;
+    group.bundle.pinByLine = new Map();
+    for (const member of attachments) {
+      const offset = group.bundle.offsetByMember?.get(member)
+        ?? (member.laneIndex - (attachments.length - 1) / 2) * Math.max(8, dock.minSpacing);
+      const pin = {
+        x: start.x + vector.x * distance + perpendicular.x * offset,
+        y: start.y + vector.y * distance + perpendicular.y * offset,
+      };
+      member.line.bundlePins.push({ endpoint: member.endpoint, pin, group });
+      group.bundle.pinByLine.set(member.line, pin);
+    }
+    if (group.source.kind === "port") {
+      for (const lane of group.bundle.lanes) {
+        if (lane.members.length < 2) continue;
+        const slot = lane.members[0].endpoint.terminalSlot;
+        const pin = group.bundle.pinByLine.get(lane.members[0].line);
+        if (slot && pin) group.allowedSharedRuns.push({
+          first: slot.point,
+          second: pin,
+          members: lane.members.map((member) => member.line),
+        });
+      }
     }
   }
 }
@@ -957,10 +1118,17 @@ function orderedPins(line, start, end) {
   });
   groups.sort((first, second) => first.phase - second.phase || first.rank - second.rank);
   const pins = groups.flatMap((group) => group.pins);
-  for (const shared of line.sharedPins ?? []) {
-    if (shared.endpoint === line.from) pins.unshift(shared.pin);
-    else pins.push(shared.pin);
-  }
+  const sharingPins = [...(line.sharedPins ?? []), ...(line.bundlePins ?? [])];
+  const fromPins = sharingPins
+    .filter((sharingPin) => sharingPin.endpoint === line.from)
+    .sort((first, second) => (first.sequence ?? 0) - (second.sequence ?? 0))
+    .map((sharingPin) => sharingPin.pin);
+  const toPins = sharingPins
+    .filter((sharingPin) => sharingPin.endpoint !== line.from)
+    .sort((first, second) => (second.sequence ?? 0) - (first.sequence ?? 0))
+    .map((sharingPin) => sharingPin.pin);
+  pins.unshift(...fromPins);
+  pins.push(...toPins);
   return pins;
 }
 
@@ -1012,31 +1180,7 @@ function endpointStub(line, endpoint) {
   const minimumRun = minimumHeadRun(normalizedHeads(line.heads)[endIndex]);
   const escapeDistance = Math.max(endpoint.escapeDistance ?? 14, minimumRun);
   endpoint.routeEscapeDistance = escapeDistance;
-  const port = endpoint.port;
-  if (port?.sharing?.mode !== "bundle" || port.attachments.length < 2) {
-    return [endpoint.point, escapePoint(endpoint, escapeDistance)];
-  }
-  const attachmentIndex = port.attachments.findIndex((attachment) => attachment.endpoint === endpoint);
-  const offset = (attachmentIndex - (port.attachments.length - 1) / 2) * 8;
-  const vector = SIDE_VECTOR[endpoint.physicalSide] ?? { x: 0, y: 0 };
-  const perpendicular = { x: -vector.y, y: vector.x };
-  if (minimumRun === 0) {
-    const boundary = {
-      x: endpoint.point.x + perpendicular.x * offset,
-      y: endpoint.point.y + perpendicular.y * offset,
-    };
-    return [
-      endpoint.point,
-      boundary,
-      { x: boundary.x + vector.x * escapeDistance, y: boundary.y + vector.y * escapeDistance },
-    ];
-  }
-  const escape = escapePoint(endpoint, escapeDistance);
-  const branch = {
-    x: escape.x + perpendicular.x * offset,
-    y: escape.y + perpendicular.y * offset,
-  };
-  return offset === 0 ? [endpoint.point, escape] : [endpoint.point, escape, branch];
+  return [endpoint.point, escapePoint(endpoint, escapeDistance)];
 }
 
 // Docks sit on the box edge and stubs leave outward, so the endpoint boxes
@@ -1161,6 +1305,103 @@ function materializeSharedPins(line) {
   }
 }
 
+function samePoint(first, second) {
+  return Math.abs(first.x - second.x) < 0.001 && Math.abs(first.y - second.y) < 0.001;
+}
+
+function terminalPath(member) {
+  return member.endpoint === member.line.from ? member.line.route : [...member.line.route].reverse();
+}
+
+function nextWalkerSegment(walker) {
+  while (walker.index < walker.points.length - 1 && samePoint(walker.current, walker.points[walker.index + 1])) {
+    walker.index += 1;
+  }
+  if (walker.index >= walker.points.length - 1) return null;
+  const next = walker.points[walker.index + 1];
+  const dx = next.x - walker.current.x;
+  const dy = next.y - walker.current.y;
+  return {
+    direction: { x: Math.sign(dx), y: Math.sign(dy) },
+    distance: Math.abs(dx) + Math.abs(dy),
+  };
+}
+
+function sameMembers(first, second) {
+  return first.length === second.length && first.every((member) => second.includes(member));
+}
+
+function appendSharedRun(runs, first, second, members) {
+  if (samePoint(first, second)) return;
+  const previous = runs.at(-1);
+  const sameHorizontal = previous && previous.first.y === previous.second.y && first.y === second.y
+    && Math.abs(previous.second.y - first.y) < 0.001;
+  const sameVertical = previous && previous.first.x === previous.second.x && first.x === second.x
+    && Math.abs(previous.second.x - first.x) < 0.001;
+  if (previous && sameMembers(previous.members, members)
+    && samePoint(previous.second, first) && (sameHorizontal || sameVertical)) previous.second = second;
+  else runs.push({ first, second, members });
+}
+
+// The planned branch pin is only a lower bound. Once routes are solved, the
+// canonical state records their actual maximal common terminal prefix. Any
+// coincidence after the first divergence remains unauthorized, so a later
+// split/rejoin is still reported as an overlap.
+function commonTerminalRuns(members) {
+  if (members.length < 2) return [];
+  const walkers = members.map((member) => {
+    const points = terminalPath(member);
+    return { member, points, index: 0, current: points[0] };
+  });
+  if (walkers.some((walker) => !walker.current || !samePoint(walker.current, walkers[0].current))) return [];
+  const runs = [];
+  const pending = [walkers];
+  while (pending.length) {
+    const cohort = pending.pop();
+    const byDirection = new Map();
+    for (const walker of cohort) {
+      const segment = nextWalkerSegment(walker);
+      if (!segment) continue;
+      const key = `${segment.direction.x},${segment.direction.y}`;
+      const branch = byDirection.get(key) ?? { direction: segment.direction, walkers: [], distances: [] };
+      branch.walkers.push(walker);
+      branch.distances.push(segment.distance);
+      byDirection.set(key, branch);
+    }
+    for (const branch of byDirection.values()) {
+      if (branch.walkers.length < 2) continue;
+      const first = { ...branch.walkers[0].current };
+      if (branch.walkers.some((walker) => !samePoint(walker.current, first))) continue;
+      const distance = Math.min(...branch.distances);
+      if (distance <= 0.001) continue;
+      const second = {
+        x: first.x + branch.direction.x * distance,
+        y: first.y + branch.direction.y * distance,
+      };
+      appendSharedRun(runs, first, second, branch.walkers.map((walker) => walker.member.line));
+      for (const walker of branch.walkers) {
+        walker.current = {
+          x: walker.current.x + branch.direction.x * distance,
+          y: walker.current.y + branch.direction.y * distance,
+        };
+        if (samePoint(walker.current, walker.points[walker.index + 1])) walker.index += 1;
+      }
+      pending.push(branch.walkers);
+    }
+  }
+  return runs;
+}
+
+function materializeAuthorizedSharedRuns(scene) {
+  for (const group of scene.shareGroups?.values?.() ?? []) {
+    if (group.source.kind !== "port") continue;
+    const lanes = group.mode === "merge"
+      ? [{ members: group.members }]
+      : group.mode === "bundle" ? group.bundle.lanes : [];
+    group.allowedSharedRuns = lanes.flatMap((lane) => commonTerminalRuns(lane.members));
+  }
+}
+
 function indexRoute(routeIndex, line) {
   for (let index = 1; index < line.route.length; index += 1) {
     const first = line.route[index - 1];
@@ -1275,6 +1516,7 @@ function slideDocks(scene, index) {
     for (const end of ["from", "to"]) {
       const endpoint = line[end];
       if (!endpoint?.point || (endpoint.port?.attachments.length ?? 1) > 1) continue;
+      if (endpoint.port?.group && ["merge", "bundle"].includes(endpoint.port.group.affinity)) continue;
       const side = endpoint.physicalSide;
       if (!side) continue;
       const fromEnd = end === "from";
@@ -1591,19 +1833,6 @@ function labelSpecs(line) {
   return specs;
 }
 
-function labelGeometryMayShare(first, second) {
-  if (first.share?.group && first.share.group === second.share?.group) {
-    const mode = first.share.mode ?? second.share.mode ?? "auto";
-    if (mode === "merge" || mode === "auto") return true;
-  }
-  const firstPorts = [first.from?.port, first.to?.port].filter(Boolean);
-  const secondPorts = new Set([second.from?.port, second.to?.port].filter(Boolean));
-  return firstPorts.some((port) => {
-    const mode = port.sharing?.mode ?? "auto";
-    return secondPorts.has(port) && (mode === "merge" || mode === "auto");
-  });
-}
-
 function labelRouteIndex(scene) {
   const index = new SpatialIndex([]);
   for (const line of scene.lines) {
@@ -1626,6 +1855,16 @@ function labelRouteIndex(scene) {
   return index;
 }
 
+function labelCoversAuthorizedSharedRun(candidate, line, segment) {
+  if (!segmentHitsBox(segment.first, segment.second, candidate, 1)) return false;
+  for (let index = 1; index < line.route.length; index += 1) {
+    const own = { first: line.route[index - 1], second: line.route[index] };
+    if (segmentHitsBox(own.first, own.second, candidate, 1)
+      && segmentsMayShareGeometry(line, segment.line, own, segment)) return true;
+  }
+  return false;
+}
+
 function labelCandidateScore(candidate, line, scene, objectIndex, labelIndex, borderIndex, routeIndex) {
   let score = candidate.rank * 40;
   if (candidate.x < 4 || candidate.y < 4 || candidate.x + candidate.width > scene.width - 4 || candidate.y + candidate.height > scene.height - 4) score += 100000;
@@ -1637,7 +1876,8 @@ function labelCandidateScore(candidate, line, scene, objectIndex, labelIndex, bo
     if (boxesOverlap(candidate, ring.box, 2) && !labelMayCrossContainerBorder(candidate, ring)) score += 60000;
   }
   for (const segment of routeIndex.queryBox(candidate)) {
-    if (segment.line !== line && !labelGeometryMayShare(line, segment.line) && segmentHitsBox(segment.first, segment.second, candidate, 1)) {
+    if (segment.line !== line && segmentHitsBox(segment.first, segment.second, candidate, 1)
+      && !labelCoversAuthorizedSharedRun(candidate, line, segment)) {
       score += 120000;
     }
   }
@@ -1756,10 +1996,12 @@ export function route(scene) {
   const obstacles = scene.objects.filter((object) => object.visible && object.children.length === 0 && !object.frame && !["title", "subtitle", "legend-item"].includes(object.kind));
   placePorts(scene);
   alignFacingDocks(scene);
+  buildShareGroups(scene);
+  allocateBundleTerminals(scene);
   buildChannelMesh(scene);
   const index = new SpatialIndex([...obstacles, ...scene.channelResidents]);
   allocateRegionTracks(scene);
-  sharedPins(scene, index);
+  sharingPins(scene, index);
   const routeAll = () => {
     const routeIndex = new SpatialIndex([]);
     for (const line of scene.lines) {
@@ -1781,6 +2023,7 @@ export function route(scene) {
     improveRoutes(scene, index);
   }
   for (const line of scene.lines) materializeSharedPins(line);
+  materializeAuthorizedSharedRuns(scene);
   placeAllLabels(scene, index);
   return scene;
 }

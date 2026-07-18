@@ -141,6 +141,7 @@ function createPort(owner, props, origin = "explicit") {
     side,
     allowedSides: side === "auto" ? ["top", "right", "bottom", "left"] : Array.isArray(side) ? side : [side],
     cardinality: props.cardinality ?? "many",
+    minSpacing: props.minSpacing ?? 0,
     sharing: props.sharing ?? { mode: "auto" },
     marker: props.marker ?? props.style?.marker ?? "none",
     style: props.style ?? {},
@@ -374,6 +375,7 @@ export function project(expanded, options = {}) {
           id: child.props.id ?? `$port-group-${object.portGroups.length + 1}`,
           affinity: child.props.affinity ?? "free",
           order: child.props.order ?? "prefer-source",
+          branch: child.props.branch ?? null,
           members: [],
         };
         for (const member of child.children.filter((item) => item?.core === "port")) {

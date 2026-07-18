@@ -3,6 +3,7 @@ import { test } from "node:test";
 import { layout } from "../src/layout.mjs";
 import { project } from "../src/project.mjs";
 import { analyzeScene } from "../src/quality.mjs";
+import { buildShareGroups } from "../src/sharing.mjs";
 
 function primitive(core, props = {}, children = []) {
   return { core, props, children };
@@ -57,12 +58,18 @@ function line(id, route, routeLabels = [], share = null) {
   return { id, route, routeLabels, share, segments: [], endLabels: [[], []], labels: [], space: "reserve" };
 }
 
-test("label-route overlap detection ignores the owning and explicitly shared lines", () => {
+test("label-route overlap detection ignores the owning line and its authorized shared run", () => {
   const label = { text: "status", box: { x: 40, y: 40, width: 60, height: 24 } };
   const labeled = line("labeled", [{ x: 20, y: 52 }, { x: 120, y: 52 }], [label], { group: "bus", mode: "merge" });
   const unrelated = line("unrelated", [{ x: 70, y: 20 }, { x: 70, y: 90 }]);
-  const shared = line("shared", [{ x: 80, y: 20 }, { x: 80, y: 90 }], [], { group: "bus", mode: "merge" });
-  const scene = { objects: [], lines: [labeled, unrelated, shared], constraints: [], width: 140, height: 110 };
+  const shared = line("shared", [{ x: 20, y: 52 }, { x: 120, y: 52 }], [], { group: "bus", mode: "merge" });
+  const scene = { objects: [], lines: [labeled, unrelated, shared], constraints: [], diagnostics: [], tokens: {}, width: 140, height: 110 };
+  const group = [...buildShareGroups(scene).values()][0];
+  group.allowedSharedRuns = [{
+    first: { x: 20, y: 52 },
+    second: { x: 120, y: 52 },
+    members: [labeled, shared],
+  }];
 
   const overlaps = analyzeScene(scene).labelRouteOverlaps;
   assert.equal(overlaps.length, 1);

@@ -237,6 +237,45 @@ function drawRoutingRegions(scene) {
     .join("");
 }
 
+function drawSharingDebug(scene) {
+  const result = [];
+  for (const group of scene.shareGroups?.values?.() ?? []) {
+    const color = group.mode === "merge" ? "#2563eb" : group.mode === "bundle" ? "#7c3aed" : "#64748b";
+    const laneCount = group.bundle?.lanes.length ?? (group.mode === "merge" ? 1 : group.members.length);
+    result.push(`<g data-share-group="${escape(group.id)}" data-share-mode="${escape(group.mode)}" data-share-lanes="${laneCount}">`);
+    if (group.mode === "bundle") {
+      for (const lane of group.bundle.lanes) {
+        for (const member of lane.members) {
+          const points = member.line.route.map((point) => `${point.x},${point.y}`).join(" ");
+          result.push(`<polyline data-bundle-lane="${escape(lane.id)}" data-bundle-line="${escape(member.line.id)}" points="${points}" fill="none" stroke="${color}" stroke-width="8" stroke-opacity="0.12"/>`);
+        }
+      }
+      const slots = group.source.kind === "port" ? group.source.port.terminalSlots ?? [] : [];
+      for (const slot of slots) {
+        result.push(`<circle data-terminal-slot="${escape(slot.lane.id)}" cx="${slot.point.x}" cy="${slot.point.y}" r="4" fill="${color}" fill-opacity="0.55"/>`);
+      }
+      const uniquePins = new Map();
+      for (const member of group.members) {
+        const pin = group.bundle.pinByLine?.get(member.line);
+        if (pin) uniquePins.set(`${pin.x},${pin.y}`, pin);
+      }
+      for (const pin of uniquePins.values()) {
+        result.push(`<rect data-bundle-pin="true" x="${pin.x - 3}" y="${pin.y - 3}" width="6" height="6" fill="${color}" fill-opacity="0.55"/>`);
+      }
+    } else if (group.merge?.pin) {
+      if (group.merge.convergence) {
+        result.push(`<circle data-merge-convergence="true" cx="${group.merge.convergence.x}" cy="${group.merge.convergence.y}" r="4" fill="${color}" fill-opacity="0.55"/>`);
+      }
+      result.push(`<circle data-merge-pin="true" cx="${group.merge.pin.x}" cy="${group.merge.pin.y}" r="4" fill="${color}" fill-opacity="0.55"/>`);
+    }
+    for (const run of group.allowedSharedRuns ?? []) {
+      result.push(`<line data-authorized-shared-run="true" x1="${run.first.x}" y1="${run.first.y}" x2="${run.second.x}" y2="${run.second.y}" stroke="${color}" stroke-width="10" stroke-opacity="0.16"/>`);
+    }
+    result.push("</g>");
+  }
+  return result.join("");
+}
+
 export function renderSvg(scene, options = {}) {
   const containers = scene.objects.filter((object) => object.children.length || object.frame).sort((a, b) => depth(a) - depth(b));
   const leaves = scene.objects.filter((object) => !object.children.length && !object.frame);
@@ -247,7 +286,7 @@ export function renderSvg(scene, options = {}) {
   <desc>${escape(diagnostics || "Kvísl layouter prototype preview")}</desc>
   ${options.transparent ? "" : `<rect width="100%" height="100%" fill="${escape(options.background ?? canvasColor(scene))}"/>`}
   <g id="boundaries">${containers.map((object) => drawShape(object, scene)).join("")}</g>
-${options.debugRouting ? `  <g id="routing-regions">${drawRoutingRegions(scene)}</g>\n` : ""}  <g id="corridor-dividers">${drawDividers(scene)}</g>
+${options.debugRouting ? `  <g id="routing-regions">${drawRoutingRegions(scene)}</g>\n  <g id="sharing-debug">${drawSharingDebug(scene)}</g>\n` : ""}  <g id="corridor-dividers">${drawDividers(scene)}</g>
   <g id="lines">${scene.lines.map((line) => drawLine(line, scene)).join("")}</g>
   <g id="objects">${leaves.map((object) => drawShape(object, scene)).join("")}</g>
   <g id="ports">${drawPorts(scene)}</g>

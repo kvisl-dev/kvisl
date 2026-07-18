@@ -1,4 +1,5 @@
 import { minimumHeadRun, normalizedHeads } from "./heads.mjs";
+import { buildShareGroups } from "./sharing.mjs";
 import { SIDES, absoluteOrientation, rotateSide } from "./orientation.mjs";
 
 const SPACING = { none: 0, tiny: 6, small: 12, medium: 20, large: 32, xlarge: 48 };
@@ -82,23 +83,6 @@ function lineLabelTexts(line) {
   for (const segment of line.segments) if (segment.label != null) texts.push(segment.label);
   for (const labels of line.endLabels) for (const label of labels) if (label?.text != null) texts.push(label.text);
   return texts.map(String);
-}
-
-// lines that join at a named merge/auto port or share an explicit merge/auto
-// group travel on ONE track per region — sharing their run at full length
-// instead of riding adjacent tracks
-function lineShareKey(line) {
-  if (line.share?.group != null) {
-    const mode = line.share.mode ?? "auto";
-    if (mode === "merge" || mode === "auto") return `group:${line.share.group}`;
-  }
-  for (const endpoint of [line.from, line.to]) {
-    const port = endpoint?.port;
-    if (!port) continue;
-    const mode = port.sharing?.mode ?? "auto";
-    if (mode === "merge" || mode === "auto") return `port:${(port.anchor ?? port.owner)?.path ?? ""}:${port.id}`;
-  }
-  return null;
 }
 
 export function lineLabelDemand(line, axis, text = null) {
@@ -221,6 +205,7 @@ function explicitRegionConnectsBranches(line, lca, first, second) {
 }
 
 export function reserveRoutingSpace(scene) {
+  buildShareGroups(scene);
   const regions = new Map();
   // corridors start at bare track width; labels only widen a corridor after
   // a solve proved they find no free spot (escalated by the pipeline)
@@ -341,12 +326,13 @@ export function reserveRoutingSpace(scene) {
       }
     }
     const labelDemand = reservations.get(region.key) ?? 0;
-    // Share-eligible authored lines occupy one track. Implicit hierarchy
-    // crossings pass through the band and therefore consume no parallel lane.
+    // Tracks remain distinct until the canonical share topology marks a
+    // common prefix. Globally coalescing a pair in every common region could
+    // make it split and then illegally rejoin.
     const trackIndexByKey = new Map();
     const trackEntries = region.entries.filter((entry) => entry.usage !== "crossing");
     for (const entry of trackEntries) {
-      const key = lineShareKey(entry.line) ?? `line:${entry.line.id}`;
+      const key = `line:${entry.line.id}`;
       if (!trackIndexByKey.has(key)) trackIndexByKey.set(key, trackIndexByKey.size);
       entry.trackKey = key;
     }
@@ -508,6 +494,41 @@ function themeMinimum(object) {
   };
 }
 
+function bundleLaneHeadWidth(lane) {
+  return Math.max(0, ...lane.members.map((member) => {
+    if (!member.endpoint) return 0;
+    const endIndex = member.endpoint === member.line.from ? 0 : 1;
+    return minimumHeadRun(normalizedHeads(member.line.heads)[endIndex]) / 2;
+  }));
+}
+
+function namedPortBundleDemand(port, scene) {
+  const group = scene.shareGroupByPort?.get(port);
+  if (group?.mode !== "bundle" || group.bundle.lanes.length < 2) return 0;
+  let span = 0;
+  for (let index = 1; index < group.bundle.lanes.length; index += 1) {
+    const first = group.bundle.lanes[index - 1];
+    const second = group.bundle.lanes[index];
+    const headGap = (bundleLaneHeadWidth(first) + bundleLaneHeadWidth(second)) / 2;
+    const firstStroke = Math.max(...first.members.map((member) => member.line.style?.strokeWidth ?? 2));
+    const secondStroke = Math.max(...second.members.map((member) => member.line.style?.strokeWidth ?? 2));
+    span += Math.max(8, port.minSpacing ?? 0, headGap, (firstStroke + secondStroke) / 2 + 4);
+  }
+  return span + 28;
+}
+
+function dockSideDemand(object, side, scene) {
+  const ports = [...object.ports.values()].filter((port) => port.allowedSides.length === 1 && port.allowedSides[0] === side);
+  if (!ports.length) return 0;
+  let demand = (ports.length + 1) * 20;
+  for (const group of object.portGroups ?? []) {
+    const members = group.members.filter((port) => ports.includes(port));
+    if (members.length && group.affinity === "separate") demand = Math.max(demand, (members.length + 1) * 28);
+  }
+  for (const port of ports) demand = Math.max(demand, namedPortBundleDemand(port, scene));
+  return demand;
+}
+
 function measureObject(object, scene) {
   for (const child of object.children) measureObject(child, scene);
   const tokens = scene.tokens;
@@ -599,6 +620,8 @@ function measureObject(object, scene) {
     innerHeight + padding.top + padding.bottom,
     length(object.style.minHeight, 0, tokens),
   );
+  object.frameWidth = Math.max(object.frameWidth, dockSideDemand(object, "top", scene), dockSideDemand(object, "bottom", scene));
+  object.frameHeight = Math.max(object.frameHeight, dockSideDemand(object, "left", scene), dockSideDemand(object, "right", scene));
   const quarterTurn = object.orientation === 90 || object.orientation === 270;
   // floors from stretch, quantization, and same-size act on the physical box
   const floor = object.sizeFloor ?? { width: 0, height: 0 };

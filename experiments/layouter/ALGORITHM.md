@@ -216,6 +216,7 @@ The parent never needs the child's internal track coordinates to place siblings.
 ```text
 Projection IR
   -> resolve styles, metrics, text, and active endpoint targets
+  -> normalize canonical ShareGroups and post-cascade style cohorts
   -> index containment and constraints
   -> measure intrinsic objects and endpoint adornments
   -> lift lines into local quotient interaction graphs
@@ -247,6 +248,8 @@ The renderer planner has already selected and materialized views. The solver res
 - local orientations composed only as transforms, while retaining local directional vocabulary.
 
 Text is measured before routing because an end label may enlarge a dock group and a segment label may enlarge a channel. Painterly jitter does not participate in feasibility; the solver reserves a deterministic conservative clearance derived from the style.
+
+Immediately after the cascade, every active named-port join, non-free `PortGroup`, and explicit line share group is normalized into one canonical `ShareGroup`. Its members carry resolved shared-piece stroke signatures, requested mode, effective mode, common-end provenance, and later lane membership. All subsequent phases consume this state; none re-derives sharing from raw endpoint policy or coincident geometry.
 
 If an asset or font required for measurement is unavailable, solving stops or uses an explicitly permitted fallback. It must not silently measure with a host-dependent font.
 
@@ -388,15 +391,15 @@ The current Logical IR encodes `side: "auto"` or a concrete side but does not di
 
 For each object side, the solver forms dock blocks:
 
-- one block for a canonical named port, regardless of attachment count;
+- one semantic block for a canonical named port, regardless of attachment count;
 - one block for each line-owned dock;
-- one contiguous super-block for a port group;
-- adjacent sub-slots for `bundle` geometry;
+- one contiguous super-block of independent member docks for a port group;
+- a compact adjacent terminal-slot block inside a named port when its effective `ShareGroup` is bundled;
 - a single trunk slot for a merged join.
 
-Required port-group and explicit order constraints form a partial order. A port group is one contiguous super-block; `fixed` member order is hard, while free or preferred order may be chosen geometrically. Remaining docks are ordered by the median remote track rank or remote endpoint projection, with source order and canonical identity only as stabilizers. This ordering minimizes endpoint inversions before coordinates are assigned. Later facing-dock alignment and dock sliding must preserve it. End-label and marker boxes are part of the block extent.
+Required port-group and explicit order constraints form a partial order. A port group is one contiguous super-block; `fixed` member order is hard, while free or preferred order may be chosen geometrically. Its distinct port points remain the terminal docks: bundling compresses their outgoing lane block but does not replace them with same-port sub-slots. Remaining docks are ordered by the median remote track rank or remote endpoint projection, with source order and canonical identity only as stabilizers. This ordering minimizes endpoint inversions before coordinates are assigned. Later facing-dock alignment and dock sliding must preserve it. End-label, marker, stroke, and arrowhead boxes are part of the block extent.
 
-If a side has exactly one block and no local constraint requires movement, its slot is centered exactly. A canonical named port remains one block regardless of attachment count, so geometric ordering never breaks join identity or creates one dock per attached line.
+If a side has exactly one block and no local constraint requires movement, its slot is centered exactly. A canonical named port remains one semantic block regardless of attachment count. An effective named-port bundle allocates one physical terminal slot per effective lane around that canonical point: a requested bundle has one slot per semantic line, while an automatic multi-style bundle has one slot per style cohort. These are solved sub-slots, not new ports or dock identities.
 
 Slots are packed along the side with a one-dimensional sweep and priority queue. If the side is too short, the object receives a larger minimum width or height. A fixed maximum that cannot contain its required docks is a hard conflict or a view rejection, never an overlap accepted by the painter.
 
@@ -404,20 +407,30 @@ Two line-owned docks remain distinct even if packing gives them the same visual 
 
 ## 13. Phase G: sharing, trunks, bundles, and branches
 
-Sharing is solved per canonical port join, port group, or explicit share group. It is not discovered by geometric coincidence.
+Sharing is solved from the canonical post-cascade `ShareGroup` built in Phase A. The group source is one canonical port join, one non-free port group, or one explicit share group. It is not discovered by geometric coincidence, and reservations, routing, quality checks, and debug output must not reinterpret its requested mode independently.
+
+The shared-piece compatibility signature contains the resolved visible-stroke properties that make positive-length coincidence meaningful: stroke, stroke width, dash, opacity, and roughness. At a canonical named-port terminal it also includes terminal head kind, because incompatible heads cannot occupy one physical slot. Members with one signature form a style cohort. Requested and effective sharing are then distinct:
+
+- requested `bundle` always creates one effective lane per semantic line; style equality never fuses those lanes;
+- `auto` with one cohort becomes `merge`;
+- `auto` with several cohorts becomes `bundle`, with one lane per cohort; members inside a cohort may merge on that lane while different cohort lanes never overlap;
+- required `merge` with several cohorts emits `incompatible-merge-style`; preview geometry retains the cohort bundle so every line stays inspectable instead of choosing one style;
+- `separate` and `free` retain independent geometry.
 
 The solver orients member itineraries away from the group's common end and inserts their region tokens into a trie:
 
 - `merge` turns the common trie prefix into one positive-length trunk;
-- `bundle` retains parallel strokes in an adjacent track block along the common prefix;
+- `bundle` retains the effective per-line or per-cohort lanes in one adjacent track block along the common prefix;
 - `separate` retains only the zero-length common dock and allocates distinct first tracks;
-- `auto` chooses merge or bundle from style compatibility, pressure, and available capacity.
+- requested `auto` never reaches the trie unresolved: its canonical `ShareGroup` has already selected compatible merge or cohort bundle geometry.
 
 The trie is linear in the summed itinerary length; no pairwise longest-common-prefix comparison is needed.
 
 Default late branching keeps the maximal common prefix. `early` shortens it at the earliest legal branch region; `balanced` chooses a stable middle legal token. A `within` policy restricts the candidate branch tokens to the referenced region. If no legal token exists, a required policy is diagnosed and a preference falls back deterministically.
 
-Explicit segments that pin grouped lines to the same region contribute the same trie token and therefore share there. Shared-piece style compatibility is checked by hashing the resolved trunk-applicable style. An incompatible required merge is a diagnostic; an automatic merge downgrades to a bundle as required by the model.
+Explicit segments that pin grouped lines to the same region contribute the same trie token and therefore coordinate there according to the group's effective lanes. Style compatibility has already been normalized into cohorts; Phase G does not hash styles again.
+
+The common-prefix structure is monotone toward the common end. Once a semantic line enters an effective lane it remains in that lane through the terminal block, and the contiguous lane order is invariant along the run. A cohort may gain compatible members toward the common end, but no member leaves and later re-enters, and no lane swaps with a neighbor. Reordering requires an explicit branch outside the block.
 
 This trie construction is a deterministic hyperedge heuristic. It does not search for a globally minimal rectilinear Steiner tree.
 
@@ -427,7 +440,7 @@ This trie construction is a deterministic hyperedge heuristic. It does not searc
 
 Every selected itinerary produces one or more axial occupancy intervals in a routing region. An interval carries its dock/share block, stroke width, minimum separation, preferred separation, label occupancy, and order constraints.
 
-Merged trunks contribute one interval. Bundles contribute one adjacent multi-track block. Separate lines contribute independent intervals.
+Merged trunks contribute one interval. Bundles contribute one adjacent multi-track block with one interval per effective lane: one per semantic line for requested bundle, one per style cohort for automatic multi-style bundle. Separate lines contribute independent intervals.
 
 ### 14.2 Track-slot allocation
 
@@ -446,9 +459,9 @@ Perpendicular crossings are excluded before interval coloring. The reference pro
 
 ### 14.3 Track runs across cells
 
-One local allocation is not automatically one bend. For every line or share block, the allocator records ordered, portal-adjacent cell incidences and forms maximal collinear track runs. Once Phase I has materialized the cells' rectangles, a run intersects their legal cross-axis intervals. While that intersection remains non-empty, every incidence uses one coordinate: the centered bundle coordinate inside the common interval. An empty intersection closes the run and records one intentional transition at the intervening portal or junction. The polyline realizer may change cross-axis coordinate only at such a recorded transition. Two same-axis regions that are not consecutive in the itinerary must never be joined merely because their intervals overlap.
+One local allocation is not automatically one bend. For every line or share block, the allocator records ordered, portal-adjacent cell incidences and forms maximal collinear track runs. Once Phase I has materialized the cells' rectangles, a run intersects their legal cross-axis intervals. While that intersection remains non-empty, every incidence uses one block-center coordinate inside the common interval; bundle lanes retain their stable offsets around that center. An empty intersection closes the run and records one intentional transition at the intervening portal or junction. The polyline realizer may change the block center only at such a recorded transition and may not change lane order there. Two same-axis regions that are not consecutive in the itinerary must never be joined merely because their intervals overlap.
 
-Bundle members remain a contiguous ordered super-block. The block is centered as a whole and member offsets remain stable across all cells of the run. Per-cell separation constraints are needed only between adjacent ordered blocks, so allocation remains `O(J log J)` rather than comparing every track pair.
+Bundle lanes remain a contiguous ordered super-block. The block is centered as a whole and lane offsets remain stable across all cells of the run. Cohort members that share one automatic lane use its one offset; requested-bundle members never do. The monotone common-end invariant forbids a lane from disappearing and later returning or swapping order at a portal. Per-cell separation constraints are needed only between adjacent ordered blocks, so allocation remains `O(J log J)` rather than comparing every track pair.
 
 ### 14.4 Pressure and required thickness
 
@@ -513,12 +526,12 @@ If a formerly adjacent symbolic pair has no positive-length solved portal, the s
 
 The symbolic itinerary is lowered into concrete local geometry:
 
-1. choose the exact dock coordinate within its allocated side slot;
-2. create an orthogonal escape stub normal to the side; when the end has a head, the terminal run before the first bend is at least twice the rendered head width (a 2:1 length-to-width reserve);
+1. choose the exact dock coordinate within its allocated side slot; for a named-port bundle, choose its compact physical slot for the member's effective lane, while a port-group member keeps its independent port dock;
+2. create an orthogonal escape stub normal to the side for every physical lane; when the end has a head, the terminal run before the first bend is at least twice the rendered head width (a 2:1 length-to-width reserve);
 3. select the allocated track center in each gap or padding band;
 4. create stable boundary portals where the itinerary crosses containers;
 5. join consecutive local tracks with the minimum legal bends;
-6. materialize shared trunks once and branches separately;
+6. materialize merged trunks once, effective bundle lanes in stable order, and branches separately;
 7. place endpoint labels near their dock blocks;
 8. place segment labels in reserved axial intervals, preferring the most prominent run;
 9. emit provenance for every fragment;
@@ -530,7 +543,7 @@ Polyline simplification may remove a collinear region vertex from the emitted po
 
 Dock sliding is a bounded endpoint decision, not a post-processing mutation. Moving a dock invalidates every soft pin and escape point derived from its previous coordinate. The affected route is rebuilt from its unchanged symbolic itinerary and current track allocations before further simplification; stale pin coordinates must not survive as protected bends. Joined ports retain their canonical dock and ordering constraints, so a slide never changes topology or splits a shared port.
 
-The terminal head reserve is a hard geometric invariant, not an aesthetic score. Simplification, dock sliding, bundling, and bounded refinement may lengthen that straight terminal run but must never insert a bend inside it. Head geometry has one shared source of truth for routing and painting, so a painter-side head-size change updates the required route reserve with it. When that terminal run occupies a sibling gap, measurement reserves the run plus ordinary route-to-object clearance; the router must not manufacture the space by entering a neighboring object.
+The terminal head reserve is a hard geometric invariant, not an aesthetic score. Every effective bundle lane retains its physical slot, straight terminal run, and head; simplification may not collapse requested lanes or distinct style cohorts at the dock. Simplification, dock sliding, bundling, and bounded refinement may lengthen that straight terminal run but must never insert a bend inside its 2:1 reserve. Head geometry has one shared source of truth for routing and painting, so a painter-side head-size change updates terminal-slot separation and the required route reserve with it. When that terminal run occupies a sibling gap, measurement reserves the run plus ordinary route-to-object clearance; the router must not manufacture the space by entering a neighboring object.
 
 For each bounded topology candidate, feasibility is evaluated lexicographically before aesthetics: object collisions, forbidden shared runs, and hard-region violations dominate crossings; crossings dominate bends; bends dominate Manhattan length. Equal-length orthogonal candidates prefer a single crossing of an explicit gap and preserve the endpoint's normal departure before entering that gap. After realization, a fixed number of local windows may replace a polyline stretch only when no hard pin is removed and the complete candidate score strictly improves. No pass runs until convergence.
 
@@ -542,7 +555,7 @@ A container title strip remains forbidden as a longitudinal route. A short perpe
 
 Overlay lines use the existing mesh and spatial index but contribute no earlier width reservation. They may accept overlap penalties that reserving lines may not.
 
-A routing-debug render paints the complete channel mesh as a translucent overlay beneath lines and objects: one padding band per side, the four derived corner junctions of every non-empty container padding ring, every row/column sibling gap, and every grid gutter. Local residents such as boundary titles are subtracted from intersecting cells, and the remaining parts retain positive-length edge adjacency. A sibling gap is partitioned into its facing track core and separate access cells instead of being painted as one bounding rectangle. Debug rectangles are inset by one pixel on every edge so adjacent cell boundaries remain visible. The painter iterates the same canonical cell objects and portal intervals used by allocation and route realization; it never reconstructs channel geometry. This is an inspection of solved routing topology, not a new authoring construct: named and unnamed regions have identical geometric semantics, while provenance distinguishes actively materialized regions and regions explicitly refined by a `Corridor` declaration. Corner junctions are internal mesh cells and never become author-addressable `RegionRef` values. Their only hierarchy portals are the two outward-facing container sides recorded by the mesh; they cannot form a side-to-side shortcut around the container interior.
+A routing-debug render paints the complete channel mesh as a translucent overlay beneath lines and objects: one padding band per side, the four derived corner junctions of every non-empty container padding ring, every row/column sibling gap, and every grid gutter. Local residents such as boundary titles are subtracted from intersecting cells, and the remaining parts retain positive-length edge adjacency. A sibling gap is partitioned into its facing track core and separate access cells instead of being painted as one bounding rectangle. Debug rectangles are inset by one pixel on every edge so adjacent cell boundaries remain visible. The painter iterates the same canonical cell objects and portal intervals used by allocation and route realization; it never reconstructs channel geometry. The sharing layer follows the same rule: it paints the canonical `ShareGroup` effective mode, ordered per-line or cohort lanes, same-port terminal slots, and branch pins rather than inferring them from emitted polylines. This is an inspection of solved routing topology, not a new authoring construct: named and unnamed regions have identical geometric semantics, while provenance distinguishes actively materialized regions and regions explicitly refined by a `Corridor` declaration. Corner junctions are internal mesh cells and never become author-addressable `RegionRef` values. Their only hierarchy portals are the two outward-facing container sides recorded by the mesh; they cannot form a side-to-side shortcut around the container interior.
 
 Crossing bridges, gaps, and line jumps are painter adornments, not default route topology. They are enumerated only when explicitly enabled by the painter profile and are off by default. The solver must not introduce a jump merely because two legal lines cross.
 
