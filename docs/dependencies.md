@@ -1,6 +1,6 @@
-# Dependencies and remote modules
+# Dependencies, remote modules, and stylesheets
 
-Kvísl models are ordinary TypeScript and TSX modules. Imports are the dependency declarations; Kvísl does not add a module language or require a `.mod` file.
+Kvísl models are ordinary TypeScript and TSX modules, and presentation may live in standalone Kvísl stylesheets. Module imports, stylesheet `@import` declarations, and stylesheet asset URLs are the dependency declarations; Kvísl does not add a dependency manifest language or require a `.mod` file.
 
 ## Runtime prerequisite
 
@@ -13,7 +13,7 @@ $ npx kvisl render diagram.tsx -o diagram.excalidraw
 
 The npm package supplies the compiler frontend, matching `@kvisl/core` authoring API, automatic JSX runtime, planners, experimental layouter, and target painters. A project does not install Kvísl merely to make `@kvisl/core` visible to the compiler, and it does not need Deno, React, or a browser runtime.
 
-## Supported module specifiers
+## Supported source specifiers
 
 The Node.js/esbuild frontend supports one explicit set of ordinary module specifiers:
 
@@ -24,10 +24,29 @@ The Node.js/esbuild frontend supports one explicit set of ordinary module specif
 | `npm:` | `npm:@example/kvisl-aws@1.4.0` | Exact npm package through the Kvísl resolver |
 | `jsr:` | `jsr:@example/kvisl-network@2.1.0` | JSR package through the Kvísl resolver |
 | HTTPS | `https://example.com/components/service.tsx` | Remote TypeScript, TSX, or JavaScript module |
+| Local stylesheet | `./styles/company.kvisl.css` | Immutable Kvísl stylesheet value |
+| HTTPS stylesheet | `https://example.com/styles/company.kvisl.css` | Remote, lockable Kvísl stylesheet value |
 
 `npm:` and `jsr:` follow Deno-compatible spelling, and HTTPS modules may use relative imports against their own final URL. Kvísl implements those resolver semantics inside the Node.js frontend; it does not start or install Deno and does not provide Deno host APIs to component code.
 
 Bare npm imports are for dependencies managed by an ordinary project `package.json` and npm lockfile. The explicit `npm:` and `jsr:` forms are useful when a standalone diagram should name a package and version directly in TSX.
+
+## Corporate styles from the Internet
+
+A stylesheet is imported as a value and attached explicitly. Importing it does not mutate a hidden global registry:
+
+```tsx
+import { Diagram } from "@kvisl/core";
+import corporateStyle from "https://raw.githubusercontent.com/company/styles/3f2a91c/architecture.kvisl.css";
+
+export default (
+  <Diagram id="production" styles={corporateStyle}>
+    {/* reusable components */}
+  </Diagram>
+);
+```
+
+Attached at the root, the sheet becomes a diagram-wide corporate style while still obeying component style boundaries and the fixed Kvísl cascade. A `.kvisl.css` module is parsed into the same typed rules and tokens as TypeScript helpers. It may use `@import`; relative imports, fonts, and images resolve against the sheet's final URL. Unsupported browser CSS and untyped declarations are diagnostics.
 
 ## One file can compose from the Internet
 
@@ -59,13 +78,16 @@ diagram.tsx
   -> npm or JSR library
   -> HTTPS module
        -> relative HTTPS dependency
+  -> HTTPS stylesheet
+       -> relative @import
+       -> font or image asset
 ```
 
-For every source, the frontend records the requested specifier, final canonical origin after bounded redirects, media type, content hash, and transitive dependencies. The same graph feeds source maps and diagnostics, so a component failure can point back to the module that declared it.
+For every module, stylesheet, and asset, the frontend records its role, requested specifier, final canonical origin after bounded redirects, media type, content hash, and transitive dependencies. The same graph feeds source maps and diagnostics, so a component or style failure can point back to the source that declared it.
 
 ## Cache and reproducibility lock
 
-Fetched sources are stored in a content-addressed cache. A generated lock artifact records exact resolutions and hashes for the complete remote graph. The lock is resolution state, not a second place to declare packages: authors continue to add and remove dependencies only through TSX imports or the standard npm project files used by bare imports.
+Fetched modules, stylesheets, and assets are stored in a content-addressed cache. A generated lock artifact records exact resolutions and hashes for the complete remote graph. The lock is resolution state, not a second place to declare packages: authors continue to add and remove dependencies through ordinary imports, stylesheet URLs, or the standard npm project files used by bare imports.
 
 A locked build must reject changed remote content instead of accepting it under the same specifier. An offline build succeeds when all locked content is present in the cache; otherwise it reports the missing dependency rather than fetching or substituting content silently.
 
@@ -73,7 +95,7 @@ Normal rendering verifies the existing lock. Dependency refresh updates it expli
 
 ## Trust model
 
-Remote TSX is executable code, not inert diagram data. It has the same ability to run component logic as a local module and must be reviewed, versioned, and pinned like any other build dependency.
+Remote TSX is executable code, not inert diagram data. It has the same ability to run component logic as a local module and must be reviewed, versioned, and pinned like any other build dependency. A stylesheet is non-executable, but its rules can change layout metrics and its transitive URLs can fetch further content, so it is still locked, reviewed, and subject to fetch policy.
 
 Fetching a module and evaluating it are separate permissions. This permits review tooling to resolve, hash, and inspect a graph without granting it ambient process access. The default trusted workflow is appropriate for project code; hostile input requires the restricted evaluator profile and its explicit module and host-access policy.
 
@@ -87,6 +109,6 @@ Kvísl does not require:
 - a `.mod` file;
 - custom `github:` or scheme-less network syntax;
 - a Deno runtime;
-- a separate module graph outside the imports already present in TSX.
+- a separate dependency graph outside the imports and URLs already present in TSX and stylesheets.
 
 The goal is Internet-scale composition using recognizable TypeScript module syntax, with enough cache, lock, provenance, and trust information to make repeated rendering deterministic.

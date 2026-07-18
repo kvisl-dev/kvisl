@@ -17,7 +17,7 @@ Every diagram in this document is itself authored in Kvísl TSX and regenerated 
 1. **Normalized graph.** After TSX evaluation and component expansion, a diagram is a flat, renderer-neutral entity graph. No functions, no renderer objects, no pixel coordinates.
 2. **Four independent relations.** Containment (a tree), layout (membership plus constraints), routing (regions and lines), and paint order are separate relations over the same entities.
 3. **One object primitive.** Containers and shapes are the same kind of entity: an object with optional shape, content, label, ports, children, and orientation. `Node` and `Scope` are authoring shorthands with different defaults, not different primitives.
-4. **Orientation is local.** Every container has a local frame. All directional vocabulary — sides, axes, row/column — is expressed in the local frame. Rotating a container re-orients its entire subtree without touching any child declaration.
+4. **Orientation is local and semantic.** Every container has a local frame. All directional vocabulary — sides, axes, row/column — is expressed in that frame. Orientation changes layout and routing directions to a declared depth; it never rotates child rectangles, intrinsic dimensions, or upright text.
 5. **Whitespace is the routing plane.** Corridors are not free-floating entities. They are the gaps and padding bands that layout produces anyway — implicit, addressable, and space-reserving, like margin and padding in CSS. A `Corridor` declaration refines such a region; it never invents one detached from the structure.
 6. **Lines are symmetric and segmented.** A line has two interchangeable ends. It consists of an ordered list of segments; most are implicit and inferred, some are explicitly pinned to a region or waypoint and can carry labels there.
 7. **Named ports create joins.** Every port is identified by its owner and local ID. All line ends at that canonical port form one topological join; the port's sharing policy determines whether their adjacent paths merge, bundle, separate, or remain router-selected.
@@ -36,13 +36,18 @@ Every container owns a **local frame**: from the author's point of view inside t
 - layout strategies: `row` flows along local x, `column` along local y;
 - anchor placements, corridor axes, and endpoint side hints.
 
-A container declares its orientation relative to its parent frame:
+A container declares its orientation relative to its parent frame and how many nested frame boundaries receive it:
 
 ```ts
 type Orientation = 0 | 90 | 180 | 270; // clockwise, default 0
+type OrientationSpec =
+  | Orientation                              // sugar for depth: 1
+  | { degrees: Orientation; depth?: number | "all" };
 ```
 
-The physical direction of anything is the composition of all ancestor orientations. Setting `orientation={90}` on one container therefore rotates its complete subtree — layouts, ports, corridors, line routes — while every declaration inside stays untouched. Components authored for a horizontal flow can be embedded rotated in a vertical context.
+`orientation={90}` changes the declaring container's layout from a physical row to a physical column and maps the relevant child sides, ports, corridors, and routes accordingly. The children keep their own width, height, shape, and upright contents. It is therefore an axis remapping, not a geometric rotation of the rendered subtree.
+
+The numeric form has `depth: 1`: it affects that container's layout and the directional attachment semantics of its direct children, then stops at the next nested layout frame. A finite larger depth cascades through that many layout/frame boundaries; `depth: "all"` cascades through the complete subtree. Cascading orientations compose in 90° steps. Depth counts normalized structural frame boundaries, never JSX fragments or component-function calls.
 
 <p align="center">
   <a href="docs/diagrams/orientation.tsx">
@@ -53,7 +58,7 @@ The physical direction of anything is the composition of all ancestor orientatio
 Rules:
 
 - Orientation is author-set. The solver does not rotate containers on its own. An `auto` orientation may be added later as an explicit opt-in.
-- Text content stays physically upright by default. `textOrientation: "upright" | "frame"` controls whether text rotates with the frame. Intrinsic size measurement happens in the resolved physical orientation.
+- Object geometry and intrinsic dimensions never rotate merely because layout orientation changes. Text stays physically upright by default; explicit painterly text rotation is an independent presentation property.
 - Mirroring (flips) is not part of the first model version and is listed as an open decision.
 
 ## 3. Containment, containers, and identity
@@ -223,7 +228,7 @@ Implicit creation absorbs typos: `api.reqest` silently becomes a second port and
 
 Every line end has a dock identity. An endpoint naming only `api` receives a line-owned dock whose identity is derived from `(line key, end index)` and whose position is chosen by the router. It does not synthesize the stable named port `request` or any other author-visible ID. Two lines targeting `api` without a port own distinct docks and do not join even if solving places those docks at the same coordinate.
 
-Semantic identity and solved terminal geometry are separate. One canonical named port remains one dock identity and one join end when `bundle` gives its attached lines several physical terminal slots. A `PortGroup` preserves the distinct identities of all member ports. An explicit share group may coordinate distinct named-port or line-owned docks without unifying them; entity-only endpoints acquire no sharing relation merely because their target object, side, or solved coordinate is equal.
+Semantic identity and solved terminal geometry are separate. One canonical named port remains one dock identity and one join end when collision-free bundle or separate geometry gives its attached lines several physical terminal slots. A `PortGroup` preserves the distinct identities of all member ports. An explicit share group may coordinate distinct named-port or line-owned docks without unifying them; entity-only endpoints acquire no sharing relation merely because their target object, side, or solved coordinate is equal.
 
 A dock carries a base presentation style. Its line contributes an overlay to the rendered dock: non-conflicting properties from both are retained, and the line wins property conflicts. Named-port docks and line-owned docks use the same cascade. Dock-only properties such as marker shape or fill therefore compose with line properties such as stroke or width. Dock styles participate in the general rule cascade of section 12 like every other presentation property.
 
@@ -247,12 +252,12 @@ For a bundled group, member order is also terminal lane and dock-slot order. The
 <table>
   <tr><th>Solved named-port policies</th><th>Canonical share groups, lanes, slots, and branch pins</th></tr>
   <tr>
-    <td><a href="docs/diagrams/port-sharing.tsx"><img alt="Merge, bundle, and separate policies at one canonical named port" src="docs/generated/port-sharing.svg" width="100%"></a></td>
+    <td><a href="docs/diagrams/port-sharing.tsx"><img alt="Merge, bundle, separate, and automatic style-cohort policies at one canonical named port" src="docs/generated/port-sharing.svg" width="100%"></a></td>
     <td><a href="docs/diagrams/port-sharing.tsx"><img alt="Debug rendering of share groups, bundle lanes, terminal slots, and branch pins" src="docs/generated/port-sharing-debug.svg" width="100%"></a></td>
   </tr>
 </table>
 
-The three panels share identical object and endpoint topology. Only the named port's sharing policy changes, so the resulting adjacent geometry is direct visual evidence of that model field.
+The four panels share identical object and endpoint topology. Three vary only the named port's explicit sharing policy; the fourth shows `auto` partitioning compatible and incompatible paint into two style cohorts. The resulting adjacent geometry is direct visual evidence of those model fields.
 
 ## 8. Lines and segments
 
@@ -284,7 +289,7 @@ Lines reserve routing space by default (`space: "reserve"`); `overlay` opts a li
 
 ## 9. Sharing: port joins, groups, trunks, and branches
 
-All line ends attached to one canonical named port belong to its topological join group. The port's sharing policy controls adjacent positive-length geometry: `merge` draws one trunk, `bundle` draws close parallel strokes, `separate` permits only the common endpoint and splits immediately, and `auto` lets the router choose. `auto` is the default.
+All line ends attached to one canonical named port belong to its topological join group. The port's sharing policy controls adjacent positive-length geometry: `merge` draws one trunk, `bundle` draws close parallel strokes, `separate` permits only the common semantic endpoint and splits immediately, and `auto` lets the router choose. `auto` is the default.
 
 Port-group affinity coordinates lines on several distinct ports. An explicit line share group coordinates lines with no common named port. Neither creates a second identity for a join already induced by a canonical port.
 
@@ -302,6 +307,8 @@ Every group has one **common end**. For a named-port join it is the canonical po
 Bundle membership is monotonic toward the common end: once a line enters, it stays in the bundle until that end, and lane order does not swap along a continuous bundled run. A line cannot leave and re-enter closer to the end. Any required reordering is an explicit branch outside the bundle, not a hidden crossing within it.
 
 The terminal of a bundle remains a bundle. Each visible lane owns a positive-length terminal run, arrowhead when present, and physical dock slot. An explicit bundle has one lane per semantic line; an automatic multi-style bundle may use one merged lane per compatible style cohort. Different terminal head geometry at the same canonical named port also creates distinct automatic terminal lanes even when the shared-piece strokes match. Slot spacing includes stroke width, port minimum spacing, marker extent, and arrowhead extent; the final run is long enough for the head before its last bend. Slots beneath the same named port form a compact local block and remain closer than independent docks where constraints permit. They are Solved-IR geometry, not additional `PortIR` or dock identities. `PortGroup` slots correspond to its ordered member ports; explicit groups of entity-only endpoints retain one line-owned dock per line.
+
+`separate` attachments on one named port also receive collision-free physical approach slots when coincident terminal strokes or heads would otherwise overlap. They use visibly wider independent spacing than a bundle, preserve crossing-minimizing terminal order, and authorize no positive-length sharing; the slots still resolve to the one canonical port identity.
 
 Explicit segments of grouped lines that pin the same region participate in one coordinated run there. They become one trunk only when the effective mode is `merge` and their shared-piece styles are compatible; otherwise the region contains the group's ordered bundle lanes.
 
@@ -361,7 +368,15 @@ Within one layer, later rules win; across layers, the higher layer wins. There i
 
 **Inheritance.** Inheritable properties (fonts, stroke color, roughness, text orientation) flow down containment unless overridden; box and metric properties do not inherit.
 
-The authoring surface uses typed helpers (`rule(...)`, `role(...)`, `cls(...)`, `within(...)`) or an equivalent string selector form; both normalize to the same `SelectorIR`. Whether a standalone stylesheet file format ships is an open decision — the IR contract is the typed rule, not a text syntax.
+The authoring surface uses typed helpers (`rule(...)`, `role(...)`, `cls(...)`, `within(...)`) or the equivalent restricted CSS syntax; both normalize to the same `SelectorIR`, rules, and tokens. A standalone `.kvisl.css` file is an ordinary importable module whose default export is an immutable stylesheet value:
+
+```tsx
+import corporateStyle from "https://raw.githubusercontent.com/company/styles/3f2a91c/architecture.kvisl.css";
+
+export default <Diagram id="platform" styles={corporateStyle}>{/* ... */}</Diagram>;
+```
+
+Attaching the imported value at the diagram root applies it document-wide, including public role and class selectors across component style boundaries. Importing it alone has no global side effect. Stylesheet `@import` declarations and referenced assets are transitive build dependencies and use the same URL resolution, lock, cache, integrity, and offline rules as TSX modules. The stylesheet surface is only a serialization of the typed style model: unsupported browser CSS and untyped properties are diagnostics, never painter pass-through.
 
 <p align="center">
   <a href="examples/modelplane-fleet-inference/neon-infrastructure.tsx">
@@ -457,6 +472,7 @@ For `domain: "ordinary"`, `parent` is both containment and the parent used to co
 type Side = "top" | "right" | "bottom" | "left"; // always local to the owning frame
 type Axis = "horizontal" | "vertical";           // always local
 type Orientation = 0 | 90 | 180 | 270;
+type OrientationDepth = number | "all";           // positive integer; default 1
 
 type Length = number | string; // model units, or a token name resolved through the cascade; never an absolute position
 
@@ -481,6 +497,7 @@ One entity kind covers the diagram root, containers, and shapes. `Node` and `Sco
 interface ObjectIR extends EntityBase<"object"> {
   id: LocalId;
   orientation: Orientation;
+  orientationDepth?: OrientationDepth; // absent means 1
   primitive?: PrimitiveSpec;   // absent: pure container, boundary from style
   content: readonly ContentSpec[]; // label normalizes to a role: "label" entry
   children: readonly EntityKey[];

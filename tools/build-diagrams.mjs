@@ -8,6 +8,14 @@ const repo = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const generated = path.join(repo, "docs", "generated");
 
 const documentationDiagrams = [
+  ["getting-started-first", "getting-started-first", {}],
+  ["getting-started-reusable", "getting-started-reusable", {}],
+  ["getting-started-layout", "getting-started-layout", {}],
+  ["getting-started-route-auto", "getting-started-route-auto", {}],
+  ["getting-started-route-segment", "getting-started-route-segment", {}],
+  ["getting-started-private-dock", "getting-started-private-dock", {}],
+  ["getting-started-styling", "getting-started-styling", {}],
+  ["getting-started-orientation-depth", "getting-started-orientation-depth", {}],
   ["routing-corridors", "routing-corridors", {}],
   ["routing-corridors", "routing-corridors-debug", { debugRouting: true }],
   ["port-sharing", "port-sharing", {}],

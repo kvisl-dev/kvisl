@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1004" height="373" viewBox="0 0 1004 373" role="img" aria-label="nested-layout">
+  <title>nested-layout</title>
+  <desc>Kvísl layouter prototype preview</desc>
+  <rect width="100%" height="100%" fill="#ffffff"/>
+  <g id="boundaries"><rect x="52" y="52" width="900" height="268.25" rx="14" fill="#f8fafc" stroke="#7b8794" stroke-width="2"/><rect x="74" y="194.25" width="264" height="104" rx="14" fill="#f8fafc" stroke="#7b8794" stroke-width="2"/><rect x="370" y="194.25" width="264" height="104" rx="14" fill="#f8fafc" stroke="#7b8794" stroke-width="2"/><rect x="666" y="194.25" width="264" height="104" rx="14" fill="#f8fafc" stroke="#7b8794" stroke-width="2"/></g>
+  <g id="corridor-dividers"></g>
+  <g id="lines"></g>
+  <g id="objects"><rect x="74" y="102.25" width="220" height="60" rx="14" fill="#ffffff" stroke="#26364a" stroke-width="2"/><rect x="314" y="102.25" width="220" height="60" rx="14" fill="#ffffff" stroke="#26364a" stroke-width="2"/><rect x="96" y="216.25" width="220" height="60" rx="14" fill="#ffffff" stroke="#26364a" stroke-width="2"/><rect x="392" y="216.25" width="220" height="60" rx="14" fill="#ffffff" stroke="#26364a" stroke-width="2"/><rect x="688" y="216.25" width="220" height="60" rx="14" fill="#ffffff" stroke="#26364a" stroke-width="2"/></g>
+  <g id="ports"></g>
+  <g id="text"><text x="65" y="74" text-anchor="start" fill="#172033" font-family="ui-rounded, 'Comic Sans MS', sans-serif" font-size="15" font-weight="700">platform</text><text x="184" y="137.125" text-anchor="middle" fill="#172033" font-family="ui-rounded, 'Comic Sans MS', sans-serif" font-size="15" font-weight="450">Gateway</text><text x="424" y="137.125" text-anchor="middle" fill="#172033" font-family="ui-rounded, 'Comic Sans MS', sans-serif" font-size="15" font-weight="450">Auth</text><text x="206" y="251.125" text-anchor="middle" fill="#172033" font-family="ui-rounded, 'Comic Sans MS', sans-serif" font-size="15" font-weight="450">catalog</text><text x="502" y="251.125" text-anchor="middle" fill="#172033" font-family="ui-rounded, 'Comic Sans MS', sans-serif" font-size="15" font-weight="450">orders</text><text x="798" y="251.125" text-anchor="middle" fill="#172033" font-family="ui-rounded, 'Comic Sans MS', sans-serif" font-size="15" font-weight="450">payments</text></g>
+</svg>

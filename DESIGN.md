@@ -113,8 +113,9 @@ The compiler resolves `@kvisl/core` and `@kvisl/core/jsx-runtime` to the authori
 
 Bundling is responsible for:
 
-- resolving the entry module, local imports, npm packages, and supported remote imports;
+- resolving the entry module, local imports, npm packages, supported remote imports, stylesheet modules, and stylesheet assets;
 - including component libraries allowed by the host;
+- parsing standalone stylesheets into immutable authoring-runtime values and following their `@import` and asset edges;
 - rewriting JSX to the custom runtime;
 - producing a JavaScript format supported by the selected evaluator;
 - recording every source dependency and content hash;
@@ -125,7 +126,7 @@ esbuild transforms TypeScript syntax but does not type-check it. Development too
 
 ### 4.1 Deno-compatible remote specifiers without Deno
 
-The compiler frontend extends esbuild resolution with the established module-specifier vocabulary used by Deno: absolute `https:` imports plus `npm:` and `jsr:` specifiers. It also preserves ordinary local and bare npm imports. This is resolver compatibility, not a Deno execution host: the public command runs on Node.js, and neither users nor the npm package need an installed Deno runtime.
+The compiler frontend extends esbuild resolution with the established module-specifier vocabulary used by Deno: absolute `https:` imports plus `npm:` and `jsr:` specifiers. It also preserves ordinary local and bare npm imports. The same resolver handles stylesheet modules and their transitive `@import` and asset URLs. This is resolver compatibility, not a Deno execution host: the public command runs on Node.js, and neither users nor the npm package need an installed Deno runtime.
 
 The resolver must:
 
@@ -133,12 +134,14 @@ The resolver must:
 - follow bounded redirects and record both requested and final origins;
 - reject unsupported schemes and scheme-less strings that would otherwise be ambiguous with package names;
 - preserve media type and source-map provenance through transformation;
-- hash every fetched source and include the complete transitive graph in the dependency manifest;
+- dispatch TypeScript/JavaScript to esbuild and Kvísl stylesheet content to the stylesheet parser based on the resolved media type and supported suffix;
+- convert a stylesheet module into an immutable default-export value instead of installing it into ambient global state;
+- hash every fetched module, stylesheet, and asset and include the complete transitive graph in the dependency manifest;
 - reuse a content-addressed local cache and verify locked hashes before evaluation;
 - support offline builds when the locked graph is already cached;
 - keep fetching and executing permissions separate under the active trust policy.
 
-Imports are the dependency declarations. No Kvísl `.mod` file or second module grammar exists. A generated lock artifact records exact resolutions and hashes but does not duplicate the authored graph. The exact lock filename and serialization format may be chosen with the CLI packaging work, provided updates are explicit and deterministic.
+Module imports, stylesheet imports, and stylesheet asset URLs are the dependency declarations. No Kvísl `.mod` file or second dependency grammar exists. A generated lock artifact records exact resolutions and hashes but does not duplicate the authored graph. The exact lock filename and serialization format may be chosen with the CLI packaging work, provided updates are explicit and deterministic.
 
 ## 5. JavaScript evaluation
 
@@ -290,7 +293,7 @@ A renderer must not re-run component code. Target-specific IDs should derive det
 SVG and Excalidraw both sit behind the painter boundary, but they are different kinds of targets: SVG is pure structured geometry, while an Excalidraw document is geometry plus residual topology (bindings, bound text, frames) that stays live-editable. Solved IR must serve both, which fixes several properties:
 
 - **Geometry plus provenance, never geometry alone.** Every solved fragment keeps its logical linkage: which polyline belongs to which line and segment, which endpoint attaches to which object or port, which text is whose label or content, which rectangle is whose boundary. Flattening to anonymous shapes would make the Excalidraw target impossible and degrade the SVG target.
-- **Local coordinates with a transform stack.** Geometry is expressed per container in its local frame, composed by parent transforms — the SVG `viewBox` lesson. A rotated container is one transform; identical component projections are cacheable; tiles and viewports slice the transform tree instead of recomputing world coordinates.
+- **Local coordinates with explicit directional mappings.** Geometry is expressed per container in its local frame and composed through parent translations. Layout orientation maps axes, sides, ports, and routes to a bounded frame depth without applying a geometric rotation to child boxes. Identical component projections remain cacheable; tiles and viewports slice the frame tree instead of recomputing unrelated world coordinates.
 - **A small geometric vocabulary.** Solved fragments lower to paths, text runs, and images. Model semantics never leak into the painter contract.
 - **Text is solved, not delegated.** Measurement, wrapping, and label placement happen in the solver against declared fonts and metrics. Painters place finished text runs; no output format is trusted with layout (SVG famously has none).
 - **A total paint order.** `PaintRelation` partial orders are linearized into one total order per rendered fragment. Painters that emit structural groups (one per object) may split groups where the paint order requires interleaving.
@@ -309,7 +312,7 @@ The Excalidraw painter preserves as much live topology as the format carries: li
 
 ## 12. Assets and dependency manifests
 
-Source modules and visual assets must resolve through host interfaces rather than ambient process state. The compiler records a manifest containing at least logical name, resolved origin, content hash, media type, and role.
+Source modules, stylesheets, and visual or font assets must resolve through host interfaces rather than ambient process state. The compiler records a manifest containing at least logical name, requested specifier, resolved origin, content hash, media type, dependency role, and transitive edges.
 
 The default restricted host performs no network fetches. A caller may supply a resolver that fetches remote assets and returns immutable content-addressed data. Canonical build hashes use content, not retrieval timestamps or local absolute paths.
 
@@ -410,8 +413,8 @@ Required test layers are:
 - renderer-context, first-fit view-selection, conditional-materialization, and endpoint-alternative tests;
 - schema validation and canonical serialization tests;
 - JSON/YAML round-trip tests;
-- local, bare npm, `npm:`, `jsr:`, and HTTPS module-resolution tests;
-- redirect, transitive URL import, cache, lock-integrity, and offline-resolution tests;
+- local, bare npm, `npm:`, `jsr:`, and HTTPS module- and stylesheet-resolution tests;
+- redirect, transitive URL and stylesheet `@import`, stylesheet asset, cache, lock-integrity, and offline-resolution tests;
 - solver constraint and determinism tests;
 - renderer structural and visual regression tests;
 - packed-tarball `npx kvisl render` smoke tests for SVG and Excalidraw;

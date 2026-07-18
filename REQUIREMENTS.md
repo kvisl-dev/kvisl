@@ -134,9 +134,9 @@ export default <Diagram id="system">{/* ... */}</Diagram>;
 
 After component expansion, the root value MUST yield exactly one `Diagram`. Several independent diagrams in one file MAY later be supported by an explicit document or page component.
 
-### 2.3 Internet-composable module resolution
+### 2.3 Internet-composable module and stylesheet resolution
 
-Dependencies MUST remain ordinary imports in TypeScript and TSX. Kvísl MUST NOT require a separate module-declaration file or introduce a custom import grammar. The reference frontend MUST support:
+Dependencies MUST remain ordinary imports in TypeScript, TSX, and standalone Kvísl stylesheets. Kvísl MUST NOT require a separate module-declaration file or introduce a custom dependency grammar. The reference frontend MUST support:
 
 - the `@kvisl/core` authoring API and automatic JSX runtime supplied by the exact CLI version, without requiring a project-local installation;
 - relative and absolute local module specifiers;
@@ -144,13 +144,23 @@ Dependencies MUST remain ordinary imports in TypeScript and TSX. Kvísl MUST NOT
 - Deno-compatible `https:` URL imports;
 - Deno-compatible `npm:` and `jsr:` specifiers.
 
+The same specifier forms MUST work for standalone stylesheets. A stylesheet imported from TypeScript or TSX MUST evaluate to an immutable stylesheet value that can be attached explicitly to a cascade layer; importing it MUST NOT mutate a process-global style registry. At minimum, local and HTTPS stylesheet modules MUST be supported, and npm or JSR packages MUST be able to export stylesheets. The recommended unambiguous suffix is `.kvisl.css`; an implementation MAY also accept `.css` when its content and media type conform to the Kvísl stylesheet profile.
+
+```tsx
+import corporateStyle from "https://raw.githubusercontent.com/company/styles/3f2a91c/architecture.kvisl.css";
+
+export default <Diagram id="platform" styles={corporateStyle}>{/* ... */}</Diagram>;
+```
+
+A standalone stylesheet MUST normalize to the same typed `RuleIR` and token representation as `rule(...)` and `tokens(...)` authored in TypeScript. It MUST expose only the selectors, declarations, conditions, tokens, and fixed cascade layers defined by section 12. Unsupported browser CSS syntax or untyped properties MUST produce diagnostics rather than passing through to a browser. Stylesheet `@import` dependencies MUST use the same resolver recursively. Relative `@import` and asset URLs MUST resolve against the importing stylesheet's final canonical URL.
+
 URL modules MAY themselves use relative URL imports, which MUST resolve against the importing module's final canonical URL. Redirects, media types, transitive dependencies, and content hashes MUST be recorded. Scheme-less strings such as `github.com/owner/repository/file.tsx` MUST NOT silently acquire network semantics; a remote module uses an explicit supported specifier, normally an HTTPS URL, `npm:`, or `jsr:`.
 
 The reference frontend runs on Node.js and esbuild; supporting this specifier vocabulary MUST NOT require an installed Deno runtime. Compatibility refers to the import spelling and resolution behavior, not to Deno host APIs inside a component.
 
-Fetched modules MUST be cached by immutable content identity and covered by a reproducibility lock artifact. That lock is generated resolution state, not a dependency declaration: the imports in TSX remain the source of the module graph. Offline execution MUST succeed when every locked dependency is present in the cache and MUST otherwise produce a diagnostic rather than silently substitute different content.
+Fetched modules, stylesheets, and referenced assets MUST be cached by immutable content identity and covered by one reproducibility lock artifact. That lock is generated resolution state, not a dependency declaration: imports and stylesheet URLs remain the source of the dependency graph. Every dependency record MUST identify its role (`module`, `stylesheet`, or `asset`), requested specifier, final canonical origin, media type, content hash, and transitive edges. Offline execution MUST succeed when every locked dependency is present in the cache and MUST otherwise produce a diagnostic rather than silently substitute different content.
 
-Remote modules are executable TypeScript or JavaScript and therefore follow the same trust policy as local component code. Fetch permission and evaluation permission MUST remain distinct so that restricted or review-oriented tooling can resolve, inspect, and lock a module without granting it ambient process capabilities.
+Remote modules are executable TypeScript or JavaScript and therefore follow the same trust policy as local component code. Remote stylesheets are non-executable, but they may alter layout metrics and reference more network resources, so fetch policy, size budgets, integrity checks, and provenance MUST still apply. Fetch permission and evaluation permission MUST remain distinct so that restricted or review-oriented tooling can resolve, inspect, and lock a dependency graph without granting executable modules ambient process capabilities.
 
 ### 2.4 Components
 
@@ -290,9 +300,11 @@ Identity schemes, subject catalogs, cross-diagram consistency, and metamodel val
 
 Every scope MUST own a local frame. All directional vocabulary inside a scope — sides (`top`, `right`, `bottom`, `left`), axes (`horizontal`, `vertical`), layout directions (`row`, `column`), note placements — MUST be interpreted in that local frame.
 
-A scope MUST be able to declare its orientation relative to its parent frame in 90° steps. Rotating one scope MUST re-orient its complete subtree — layouts, ports, corridors, and line routes — without any change to the declarations inside the scope. A component authored for one flow direction MUST be embeddable rotated in another context.
+A scope MUST be able to declare its layout orientation relative to its parent frame in 90° steps. Orientation MUST remap layout axes, source-order direction, sides, ports, corridors, and line routes without geometrically rotating child boxes or swapping their intrinsic width and height. A horizontal row at 90° therefore becomes a vertical stack of the same wide boxes, not a stack of tall rotated boxes.
 
-The solver MUST NOT change orientations on its own; automatic orientation MAY be added later as an explicit opt-in. Text SHOULD stay physically upright by default, with an explicit property to rotate it with the frame.
+The numeric `orientation={degrees}` form MUST default to a depth of one layout/frame boundary. A structured form MUST allow a positive finite depth and the complete subtree (`orientation={{ degrees: 90, depth: 2 }}` and `depth: "all"`). Depth one affects the declaring layout and the directional attachment semantics of its direct children, but MUST NOT rotate a nested child's internal layout. Depth MUST count normalized structural frame boundaries rather than JSX fragments or component-function calls. Cascading orientations MUST compose in 90° steps.
+
+The solver MUST NOT change orientations on its own; automatic orientation MAY be added later as an explicit opt-in. Child geometry and text MUST stay physically upright; any painterly text or shape rotation MUST be an independent explicit presentation property.
 
 ## 6. Objects, content, and sizing
 
@@ -467,7 +479,7 @@ Every line end MUST resolve to a dock identity. A named port is a reusable dock 
 
 Two different entity-only line ends on the same object MUST receive different line-owned docks. They MUST NOT form a join merely because the router places them at the same coordinate. A line-owned dock MUST NOT synthesize an author-visible port, participate in a named-port join, or consume named-port cardinality. Explicit line share groups MAY still coordinate the adjacent paths without changing the distinct dock identities.
 
-Sharing and solved attachment geometry MUST NOT collapse these identity rules. A canonical named port is one reusable semantic dock and one join end even when a bundled rendering allocates several physical terminal slots beneath it. A `PortGroup` coordinates several distinct named ports and preserves every member port identity. An explicit line share group MAY coordinate distinct named-port docks or line-owned docks, but it MUST NOT turn them into one canonical port or named-port join. Entity-only docks receive no merge or bundle relation merely from sharing a target object, side, or coordinate; without an explicit share group they remain independent.
+Sharing and solved attachment geometry MUST NOT collapse these identity rules. A canonical named port is one reusable semantic dock and one join end even when collision-free terminal geometry allocates several physical approach slots beneath it. A `PortGroup` coordinates several distinct named ports and preserves every member port identity. An explicit line share group MAY coordinate distinct named-port docks or line-owned docks, but it MUST NOT turn them into one canonical port or named-port join. Entity-only docks receive no merge or bundle relation merely from sharing a target object, side, or coordinate; without an explicit share group they remain independent.
 
 A named endpoint reference such as `api.request` MUST resolve to the canonical port identity `(api, request)`. If no explicit declaration exists, the normalizer MUST create that named port implicitly with default properties. Referencing only `api` requests an anonymous automatic attachment point and MUST NOT create a stable named port.
 
@@ -608,7 +620,7 @@ The joined port's sharing policy controls the positive-length path next to the c
 
 - `merge` requires one genuinely shared stroke;
 - `bundle` keeps separate strokes closely parallel;
-- `separate` permits only the common endpoint and requires the lines to split immediately;
+- `separate` permits only the common semantic endpoint and requires positive-length paths to split immediately;
 - `auto` lets the router choose and is the default.
 
 An explicit line share group MAY coordinate lines that do not meet at one named port. Port-group affinity MAY coordinate lines attached to several distinct ports. Neither mechanism creates a duplicate group for lines already joined by one canonical port.
@@ -627,6 +639,8 @@ Every group MUST have one unambiguous **common end** for branch-policy and conti
 Bundle continuity MUST be monotonic toward that common end. Traversing toward the end, a line may enter the bundle but MUST NOT leave it and later re-enter; bundle membership may only stay the same or grow. Lane order MUST remain stable along every continuous bundle run. A required order change MUST be represented by a branch outside the bundle rather than by hidden lane swaps or crossings inside it.
 
 At a bundled terminal, every visible bundle lane MUST retain a distinct terminal run, arrowhead when that lane has one, and physical dock slot. An explicitly requested bundle therefore retains one such lane and slot per semantic line; an automatic multi-style bundle MAY use one lane and slot for a style-compatible merged cohort. Lines whose terminal head geometry differs at the same canonical named port MUST occupy distinct automatic terminal lanes even when their shared-piece strokes match. The terminal slots MUST respect named-port attachment order or `PortGroup` member order when specified, and otherwise choose a deterministic crossing-minimizing order. Their spacing MUST account for line width, port minimum spacing, marker bounds, and arrowhead bounds; every terminal run MUST be long enough to draw its arrowhead before the last bend. Slots subordinate to one canonical named port form a compact local block and remain closer than unrelated docks where constraints permit. They are solved geometry beneath one `PortIR`, not additional ports or dock identities. For a `PortGroup` they correspond to its distinct member ports; for an explicit group of entity-only ends they remain the members' distinct line-owned docks.
+
+When several `separate` lines attach to one canonical named port on the same side, the solver MUST likewise allocate collision-free physical approach slots whenever one coincident boundary point would overlap their terminal strokes or heads. Those slots preserve source order where possible, use independent rather than compact bundle spacing, authorize no shared positive-length run, and remain solved geometry beneath the single semantic port identity.
 
 A `many` port permits multiple attachments. The port sharing policy, not cardinality alone, determines whether their paths merge, bundle, separate, or remain router-selected. A renderer MUST NOT accidentally produce multiple overlapping strokes for a merged path or collapse a bundle's distinct lanes and terminal slots.
 
@@ -703,6 +717,8 @@ const styles = [
 ```
 
 Typed selector helpers and any equivalent string selector form MUST normalize to the same selector model.
+
+Standalone stylesheet modules MUST be first-class values in this cascade. An imported sheet applies only where the author attaches it, normally through a root `styles` prop for a document-wide corporate theme or through a library component for its library layer. The attachment site MUST determine the effective cascade layer unless the imported value is already constrained to one compatible layer. A stylesheet import alone MUST have no styling side effect.
 
 ### 12.2 Selectors and scoping
 
@@ -871,7 +887,7 @@ At least these errors MUST be detected before solving:
 - a `when` condition on an ordinary (non-meta) entity;
 - an anchored object that is simultaneously forced into layout membership, or an anchor that does not resolve;
 - cycles in hard partial orders;
-- invalid orientation values;
+- invalid orientation values or non-positive/non-integral finite orientation depths;
 - an invalid selector (structural pseudo-class, sibling combinator, or unknown matcher);
 - a rule whose declarations name properties outside the typed namespace without an extension namespace;
 - a length-valued property referencing an unresolved token;
@@ -972,64 +988,66 @@ The first grammar and IR version MUST cover at least these golden scenarios:
 12. A port group with `separate` affinity keeps its attached lines visibly apart.
 13. A `many` port permits fan-out topology while its independent sharing policy controls merge, bundle, separate, or automatic routing.
 14. High corridor pressure reduces preferred spacing without violating minimum spacing.
-15. A scope with `orientation={90}` renders its local row as a physical column; ports, corridors, and lines follow, and text stays upright.
-16. A layout with the default ordering keeps source order absent a solver reason to deviate; `free` ordering permits reordering.
-17. A partial-order constraint fixes only the stated relation.
-18. A cycle of hard ordering constraints produces a diagnostic.
-19. A divider on a gap renders as a labeled separation line between two bands.
-20. A note anchored `inside-bottom-left` of a scope stays inside that scope's border, outside its content flow.
-21. TSX normalizes deterministically to the same Logical IR.
-22. JSON and YAML representations read back to the same Logical IR.
-23. From a packed npm artifact, `npx kvisl render` evaluates one TSX entry with local, npm, and locked HTTPS dependencies and produces both SVG and editable Excalidraw output solely from the requested output suffix.
-24. Every reference fixture normalizes without absolute positions or unresolved TSX port handles.
-25. Every reference fixture preserves its named scopes, nodes, resolved endpoints, labels, and pinned segments through serialization.
-26. A generated model can nest reusable components to a depth greater than any built-in grammar assumption; only an explicit implementation resource limit may reject it.
-27. The same Logical IR can drive an unbounded-canvas view, a DIN A0-style export, and tiled output without changing semantic identities or connections.
-28. A focused subsystem projection preserves every connection crossing its boundary and can represent the hidden side as an external continuation rather than dropping it.
-29. Expanding a black-box component into its internal model preserves its public port bindings and external lines.
-30. Incremental solving of a local subtree produces the same logical result as a complete solve for the affected region when global constraints do not require wider recomputation.
-31. Every author-declared structural container has an ID, and two reusable component instances containing identical local container IDs remain separately addressable.
-32. A deep reference traverses explicit layout containers into a nested component and resolves to the same entity before and after unrelated sibling insertion.
-33. A named endpoint reference implicitly creates a port; a later nested or post-hoc declaration adds a side, marker, and sharing policy without creating another port.
-34. A TSX port handle and a relative path that identify the same owner and local port ID resolve to one canonical `PortIR`.
-35. One component offers compact and internal meta branches while its canonical identity, external ports, and attached lines remain unchanged across materialization.
-36. An A4 `maximum-that-fits` renderer instantiates a less demanding viable branch than an A0 renderer when necessary, and both projections are deterministic.
-37. Outside-in materialization recursively instantiates nested components until the next view would violate footprint, readability, routing, or hard layout constraints.
-38. A forced view that cannot fit produces a diagnostic; an automatic policy instead instantiates the next viable view in declaration order.
-39. View templates and their descendants are invisible to ordinary path resolution; descendants of an unselected template do not appear in Projection IR, while selecting it creates distinct render-instance keys with stable template provenance.
-40. The same Logical IR materializes different print, screen, narrow, and wide projections because renderer-created contexts make different views the first viable one, with an explainable selection trace and without re-running TSX.
-41. A conditional line or segment appears only when its condition holds, and a required connection removed by the condition produces a diagnostic.
-42. Cyclic or non-converging size-dependent view fallback is detected and diagnosed deterministically.
-43. A deep ordinary endpoint truncates to its deepest instantiated object when the selected rendering hides its suffix; an `alt()` endpoint selects `abc` for view `view`, otherwise selects the default `foo/bar`, and still truncates if the chosen suffix is only partly instantiated.
-44. Two lines target the same entity without naming a port and receive distinct line-owned docks; they do not join even if the router chooses the same physical attachment position.
-45. A dock supplies a marker and fill while its line supplies stroke and width; all four properties appear in the effective dock style, and a conflicting line property overrides the corresponding dock property.
-46. A UML class association carries a center name plus independent roles and multiplicities near both ends; end labels remain separate `LabelIR` values on their endpoints and the name on a segment.
-47. Generalization, realization, aggregation, composition, dependency, include, extend, transition, and message components normalize to ordinary lines with typed or namespaced endpoint heads, dash styles, and labels.
-48. A sequence diagram derives its occurrences from declared messages, aligns corresponding occurrences across independently contained lifelines, and orders messages without authoring absolute coordinates; activation bars are elements under `extent` constraints and a combined fragment remains a scope plus `inside` constraint.
-49. Activity and state-machine control flows cross partition and composite-state boundaries through ordinary hierarchy traversal, including guards, decisions, forks, joins, history, and final pseudostates.
-50. Every UML grammar example expands to the core Logical IR vocabulary without a diagram-type-specific IR root.
-51. A line declared with two `End` children normalizes to the same endpoint records as the equivalent `from`/`to` form, with end labels on their endpoints.
-52. An element under an `extent` constraint spans exactly from its first anchor to its second along the stated axis.
-53. Two diagrams depicting the same subject reference serialize and read back with that shared `SubjectRef` intact, without any core interpretation.
-54. Inside a `strictPorts` container, an endpoint naming an undeclared port produces a diagnostic; outside, an implicitly created single-attachment port with a near-duplicate name produces a warning.
-55. A `Scope` with a shape and a `Node` owning nested entities normalize to the same object kind; `Node`/`Scope` defaults differ only in shape, boundary, and content handling.
-56. Lines, corridors, constraints, rules, and anchored objects declared among layout children never appear in the layout member set; removing an object's anchor restores its membership.
-57. `<Text>` inside an object becomes content; the same `<Text>` in member position becomes a text object; a `label` prop becomes a content entry with role `label`.
-58. `padding(self, "left")` inside a component resolves to that component's own root container without naming it from the parent side.
-59. A frame object with an `inside` constraint sizes itself around members contained elsewhere and paints behind them.
-60. A theme rule styles every object with a matching role across component boundaries; a multi-step structural selector stops at a closed style boundary; an inline `style` prop overrides both.
-61. A conditional rule applies exactly while its render-context condition holds, and metric declarations from rules resolve before layout and routing.
-62. `below` and `between` constraint sugar normalize to spatial `order` relations that solve identically to the explicit form.
-63. Every solved fragment traces back to its line, segment, object, label, or boundary; no anonymous geometry reaches a painter.
-64. Re-exporting a locally edited model into an existing Excalidraw document updates the affected elements by canonical-address identity; unrelated elements, their IDs, and their hand-drawn seeds stay byte-identical.
-65. An Excalidraw export keeps arrows bound to their target elements and labels bound as text, so moving a box in the editor keeps its connections attached.
-66. An SVG export contains one group per object with roles and classes as `class` attributes and canonical addresses as stable IDs.
-67. A document-layer token overrides a theme-layer token of the same name; every rule and inline value referencing it resolves to the new value without any rule changing.
-68. Two lines whose resolved shared-piece stroke styles differ do not overlap for positive length: an automatic or otherwise fallback-capable relation becomes a bundle, while a required merge produces a diagnostic.
-69. Traversing a bundle toward its canonical port, port-group terminal, or explicit common end never loses a member that later rejoins, and its lane order never swaps inside the bundle.
-70. Several bundled lines ending at one canonical named port retain distinct terminal lanes, arrowheads, and physical dock slots while resolving to the same `PortIR`.
-71. Bundled lines on a `PortGroup` terminate in member order, while an explicit bundle of entity-only endpoints retains distinct line-owned dock identities; neither case synthesizes another named-port join.
-72. An automatic join containing two compatible lines and one differently styled line produces two compact terminal lanes: one merged style cohort and one separate lane; an explicitly requested bundle over the same lines produces three.
+15. A row with `orientation={90}` renders as a physical column of unchanged wide boxes; ports, corridors, and lines follow, while nested layouts beyond the default depth and all child geometry stay upright.
+16. `orientation={{ degrees: 90, depth: 2 }}` also remaps the next nested layout frame, while `depth: "all"` reaches every descendant frame.
+17. A layout with the default ordering keeps source order absent a solver reason to deviate; `free` ordering permits reordering.
+18. A partial-order constraint fixes only the stated relation.
+19. A cycle of hard ordering constraints produces a diagnostic.
+20. A divider on a gap renders as a labeled separation line between two bands.
+21. A note anchored `inside-bottom-left` of a scope stays inside that scope's border, outside its content flow.
+22. TSX normalizes deterministically to the same Logical IR.
+23. JSON and YAML representations read back to the same Logical IR.
+24. From a packed npm artifact, `npx kvisl render` evaluates one TSX entry with local, npm, and locked HTTPS dependencies and produces both SVG and editable Excalidraw output solely from the requested output suffix.
+25. Every reference fixture normalizes without absolute positions or unresolved TSX port handles.
+26. Every reference fixture preserves its named scopes, nodes, resolved endpoints, labels, and pinned segments through serialization.
+27. A generated model can nest reusable components to a depth greater than any built-in grammar assumption; only an explicit implementation resource limit may reject it.
+28. The same Logical IR can drive an unbounded-canvas view, a DIN A0-style export, and tiled output without changing semantic identities or connections.
+29. A focused subsystem projection preserves every connection crossing its boundary and can represent the hidden side as an external continuation rather than dropping it.
+30. Expanding a black-box component into its internal model preserves its public port bindings and external lines.
+31. Incremental solving of a local subtree produces the same logical result as a complete solve for the affected region when global constraints do not require wider recomputation.
+32. Every author-declared structural container has an ID, and two reusable component instances containing identical local container IDs remain separately addressable.
+33. A deep reference traverses explicit layout containers into a nested component and resolves to the same entity before and after unrelated sibling insertion.
+34. A named endpoint reference implicitly creates a port; a later nested or post-hoc declaration adds a side, marker, and sharing policy without creating another port.
+35. A TSX port handle and a relative path that identify the same owner and local port ID resolve to one canonical `PortIR`.
+36. One component offers compact and internal meta branches while its canonical identity, external ports, and attached lines remain unchanged across materialization.
+37. An A4 `maximum-that-fits` renderer instantiates a less demanding viable branch than an A0 renderer when necessary, and both projections are deterministic.
+38. Outside-in materialization recursively instantiates nested components until the next view would violate footprint, readability, routing, or hard layout constraints.
+39. A forced view that cannot fit produces a diagnostic; an automatic policy instead instantiates the next viable view in declaration order.
+40. View templates and their descendants are invisible to ordinary path resolution; descendants of an unselected template do not appear in Projection IR, while selecting it creates distinct render-instance keys with stable template provenance.
+41. The same Logical IR materializes different print, screen, narrow, and wide projections because renderer-created contexts make different views the first viable one, with an explainable selection trace and without re-running TSX.
+42. A conditional line or segment appears only when its condition holds, and a required connection removed by the condition produces a diagnostic.
+43. Cyclic or non-converging size-dependent view fallback is detected and diagnosed deterministically.
+44. A deep ordinary endpoint truncates to its deepest instantiated object when the selected rendering hides its suffix; an `alt()` endpoint selects `abc` for view `view`, otherwise selects the default `foo/bar`, and still truncates if the chosen suffix is only partly instantiated.
+45. Two lines target the same entity without naming a port and receive distinct line-owned docks; they do not join even if the router chooses the same physical attachment position.
+46. A dock supplies a marker and fill while its line supplies stroke and width; all four properties appear in the effective dock style, and a conflicting line property overrides the corresponding dock property.
+47. A UML class association carries a center name plus independent roles and multiplicities near both ends; end labels remain separate `LabelIR` values on their endpoints and the name on a segment.
+48. Generalization, realization, aggregation, composition, dependency, include, extend, transition, and message components normalize to ordinary lines with typed or namespaced endpoint heads, dash styles, and labels.
+49. A sequence diagram derives its occurrences from declared messages, aligns corresponding occurrences across independently contained lifelines, and orders messages without authoring absolute coordinates; activation bars are elements under `extent` constraints and a combined fragment remains a scope plus `inside` constraint.
+50. Activity and state-machine control flows cross partition and composite-state boundaries through ordinary hierarchy traversal, including guards, decisions, forks, joins, history, and final pseudostates.
+51. Every UML grammar example expands to the core Logical IR vocabulary without a diagram-type-specific IR root.
+52. A line declared with two `End` children normalizes to the same endpoint records as the equivalent `from`/`to` form, with end labels on their endpoints.
+53. An element under an `extent` constraint spans exactly from its first anchor to its second along the stated axis.
+54. Two diagrams depicting the same subject reference serialize and read back with that shared `SubjectRef` intact, without any core interpretation.
+55. Inside a `strictPorts` container, an endpoint naming an undeclared port produces a diagnostic; outside, an implicitly created single-attachment port with a near-duplicate name produces a warning.
+56. A `Scope` with a shape and a `Node` owning nested entities normalize to the same object kind; `Node`/`Scope` defaults differ only in shape, boundary, and content handling.
+57. Lines, corridors, constraints, rules, and anchored objects declared among layout children never appear in the layout member set; removing an object's anchor restores its membership.
+58. `<Text>` inside an object becomes content; the same `<Text>` in member position becomes a text object; a `label` prop becomes a content entry with role `label`.
+59. `padding(self, "left")` inside a component resolves to that component's own root container without naming it from the parent side.
+60. A frame object with an `inside` constraint sizes itself around members contained elsewhere and paints behind them.
+61. A theme rule styles every object with a matching role across component boundaries; a multi-step structural selector stops at a closed style boundary; an inline `style` prop overrides both.
+62. A conditional rule applies exactly while its render-context condition holds, and metric declarations from rules resolve before layout and routing.
+63. `below` and `between` constraint sugar normalize to spatial `order` relations that solve identically to the explicit form.
+64. Every solved fragment traces back to its line, segment, object, label, or boundary; no anonymous geometry reaches a painter.
+65. Re-exporting a locally edited model into an existing Excalidraw document updates the affected elements by canonical-address identity; unrelated elements, their IDs, and their hand-drawn seeds stay byte-identical.
+66. An Excalidraw export keeps arrows bound to their target elements and labels bound as text, so moving a box in the editor keeps its connections attached.
+67. An SVG export contains one group per object with roles and classes as `class` attributes and canonical addresses as stable IDs.
+68. A document-layer token overrides a theme-layer token of the same name; every rule and inline value referencing it resolves to the new value without any rule changing.
+69. Two lines whose resolved shared-piece stroke styles differ do not overlap for positive length: an automatic or otherwise fallback-capable relation becomes a bundle, while a required merge produces a diagnostic.
+70. Traversing a bundle toward its canonical port, port-group terminal, or explicit common end never loses a member that later rejoins, and its lane order never swaps inside the bundle.
+71. Several bundled lines ending at one canonical named port retain distinct terminal lanes, arrowheads, and physical dock slots while resolving to the same `PortIR`.
+72. Bundled lines on a `PortGroup` terminate in member order, while an explicit bundle of entity-only endpoints retains distinct line-owned dock identities; neither case synthesizes another named-port join.
+73. An automatic join containing two compatible lines and one differently styled line produces two compact terminal lanes: one merged style cohort and one separate lane; an explicitly requested bundle over the same lines produces three.
+74. A TSX diagram imports a commit-addressed corporate `.kvisl.css` stylesheet from HTTPS; that sheet imports another relative stylesheet and references a relative font or image. All three resources enter the same locked graph, render offline from cache, and normalize to the same cascade data as equivalent typed rules without applying until the sheet is attached to the diagram.
 
 ## 19. Open grammar decisions
 
@@ -1066,7 +1084,7 @@ The following details must be decided next by comparing the concrete TSX fixture
 - how reference fixtures express relative placement without turning preferences into accidental hard order;
 - the standardized condition-context vocabulary for automatic component-view choice;
 - context inheritance rules and the serialization of view-selection explanations;
-- the string selector form, a possible standalone stylesheet file format, and the exact inheritable-property list;
+- the exact CSS surface syntax for typed selectors, conditions, tokens, layer declarations, and the inheritable-property list;
 - how component roots are marked as style boundaries during expansion and how a component opts out;
 - how view-local port placement maps onto a component's canonical semantic ports;
 - the exact `alt()` helper shape and whether the string sugar `api.{foo#view:abc, foo:bar}` ships at all;

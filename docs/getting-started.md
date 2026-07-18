@@ -1,6 +1,6 @@
 # Getting started
 
-This guide walks from an empty TSX file to an editable Excalidraw document, then introduces reusable components, logical routing, presentation rules, and adaptive views. A supported Node.js installation with npm and `npx` is the only system prerequisite; the [dependency guide](dependencies.md) covers reusable local and Internet modules.
+This guide walks from an empty TSX file to an editable Excalidraw document, then introduces reusable components, logical routing, presentation rules, and adaptive views. A supported Node.js installation with npm and `npx` is the only system prerequisite; the [dependency guide](dependencies.md) covers reusable local and Internet modules, stylesheets, and their assets.
 
 ## Create the first diagram
 
@@ -42,6 +42,8 @@ export default (
   </Diagram>
 );
 ```
+
+[![Rendered checkout architecture](generated/getting-started-first.svg)](diagrams/getting-started-first.tsx)
 
 Render it:
 
@@ -119,6 +121,8 @@ export default (
 );
 ```
 
+[![The checkout service rendered through a reusable component and public port handle](generated/getting-started-reusable.svg)](diagrams/getting-started-reusable.tsx)
+
 The caller now knows only the component ID and public handle. `Service` can insert scopes, change layouts, or forward the handle to a child component without changing the line.
 
 Port handles are authoring-time composition values. They resolve to canonical named ports before Logical IR is emitted; later planning, solving, and painting stages never need to understand authoring-time TypeScript handles.
@@ -142,6 +146,8 @@ Layouts compose recursively:
 </Scope>
 ```
 
+[![Nested row and grid layouts rendered without authored positions](generated/getting-started-layout.svg)](diagrams/getting-started-layout.tsx)
+
 `prefer-source` preserves source order when it remains a good solution but permits the solver to improve crossings or space usage. `fixed` makes the order a hard requirement; `free` removes the preference.
 
 Alignment, distribution, intrinsic sizing, minimum sizes, and constraints refine the layout without introducing authored positions.
@@ -154,6 +160,8 @@ With no explicit segments, a line is fully automatic:
 <Line from={clientRequest} to={ordersRequest} />
 ```
 
+[![An automatically routed line between two named ports](generated/getting-started-route-auto.svg)](diagrams/getting-started-route-auto.tsx)
+
 Add a segment only when a particular part of the route carries meaning:
 
 ```tsx
@@ -164,6 +172,8 @@ Add a segment only when a particular part of the route carries meaning:
   />
 </Line>
 ```
+
+[![A line whose labeled segment is pinned through the sibling gap](generated/getting-started-route-segment.svg)](diagrams/getting-started-route-segment.tsx)
 
 The segment requests a run through the whitespace between two layout siblings. The router still chooses its bends and docking geometry. Because lines reserve space by default, the gap expands if the label and route tracks need more room.
 
@@ -187,15 +197,17 @@ Lines attached to the same named port form one topological join. The port decide
 />
 ```
 
-`merge` draws a common trunk, `bundle` keeps close parallel strokes, `separate` splits immediately after the common dock, and `auto` leaves the choice to the router. Branching is as late as possible by default and may be constrained to a corridor or gap.
+[![Merge, bundle, separate, and automatic style cohorts at one named port](generated/port-sharing.svg)](diagrams/port-sharing.tsx)
 
-[![Merge, bundle, and separate at one named port](generated/port-sharing.svg)](diagrams/port-sharing.tsx)
+`merge` draws a common trunk, `bundle` keeps close parallel strokes, `separate` splits immediately after the common semantic dock, and `auto` leaves the choice to the router. The solver may assign collision-free physical approach slots beneath that one dock identity. Branching is as late as possible by default and may be constrained to a corridor or gap.
 
 An endpoint that names only an object, rather than a port, gets a private line-owned dock:
 
 ```tsx
 <Line from="client" to="service" />
 ```
+
+[![An object-to-object line using private line-owned docks](generated/getting-started-private-dock.svg)](diagrams/getting-started-private-dock.tsx)
 
 Two such endpoints do not join accidentally even if the router places them at the same point. Name a port when shared attachment identity matters.
 
@@ -216,6 +228,8 @@ rule(cls("request"), {
   strokeWidth: 2,
 });
 ```
+
+[![Roles and classes styled by typed rules](generated/getting-started-styling.svg)](diagrams/getting-started-styling.tsx)
 
 The cascade is fixed and predictable:
 
@@ -264,10 +278,6 @@ function Service({ id, request }: ServiceProps) {
 }
 ```
 
-Views are hidden meta branches. Declaration order is preference order, and the renderer chooses the first view whose requirement, footprint, and policy are viable. The unconditional summary is the final fallback.
-
-`PortPlacement` maps the same canonical `request` port onto an anchor in each template. External lines stay attached while the rendered internals change.
-
 <table>
   <tr><th>Detailed view selected for a wide allocation</th><th>Summary selected for a narrow allocation</th></tr>
   <tr>
@@ -275,6 +285,10 @@ Views are hidden meta branches. Declaration order is preference order, and the r
     <td><a href="diagrams/adaptive-service.tsx"><img alt="Summary service view" src="generated/adaptive-service-narrow.svg" width="100%"></a></td>
   </tr>
 </table>
+
+Views are hidden meta branches. Declaration order is preference order, and the renderer chooses the first view whose requirement, footprint, and policy are viable. The unconditional summary is the final fallback.
+
+`PortPlacement` maps the same canonical `request` port onto an anchor in each template. External lines stay attached while the rendered internals change.
 
 Render for a constrained page:
 
@@ -301,8 +315,8 @@ The renderer allocates space outside-in and may select different views without r
 Every container interprets directions in its local frame:
 
 ```tsx
-<Scope id="vertical-stack" orientation={90}>
-  <Row id="pipeline">
+<Scope id="vertical-stack">
+  <Row id="pipeline" orientation={90}>
     <Node id="parse" />
     <Node id="validate" />
     <Node id="store" />
@@ -310,9 +324,22 @@ Every container interprets directions in its local frame:
 </Scope>
 ```
 
-The local row becomes a physical column. Local left/right ports, corridors, and routes rotate with it; text remains upright by default. `0`, `90`, `180`, and `270` are supported orientations.
-
 [![The same pipeline component in zero-degree and ninety-degree local frames](generated/orientation.svg)](diagrams/orientation.tsx)
+
+The local row becomes a physical column. Its child boxes retain their original width and height; local left/right ports, corridors, and routes map to the corresponding physical direction. `0`, `90`, `180`, and `270` are supported.
+
+The numeric form affects one layout/frame boundary. Use a larger explicit depth only when nested layouts should also change direction:
+
+```tsx
+<Scope orientation={{ degrees: 90, depth: 2 }}>…</Scope>
+<Scope orientation={{ degrees: 90, depth: "all" }}>…</Scope>
+```
+
+[![Orientation stopping after one frame or cascading through nested layouts](generated/getting-started-orientation-depth.svg)](diagrams/getting-started-orientation-depth.tsx)
+
+Depth counts normalized structural frames, not JSX fragments. Box geometry and text are never rotated by layout orientation.
+
+See [Layout and orientation](layout-and-orientation.md) for the complete depth rules, nested composition, and the `0`/`90`/`180`/`270` side mapping.
 
 ## Inspect intermediate results
 
@@ -325,13 +352,13 @@ $ npx kvisl solve projection.yaml --output solved.yaml
 $ npx kvisl paint solved.yaml --format excalidraw --output architecture.excalidraw
 ```
 
+[![The complete renderer-neutral pipeline, authored and rendered with Kvísl](generated/render-pipeline.svg)](diagrams/render-pipeline.tsx)
+
 - Logical IR contains normalized objects, ports, lines, rules, constraints, and hidden view templates.
 - Projection IR records the selected view instances and renderer context.
 - Solved IR adds local-frame geometry and provenance for painters.
 
 All three are versioned and serializable so the TypeScript and JavaScript stages can exchange, cache, and inspect the same model without re-running author code.
-
-[![The complete renderer-neutral pipeline, authored and rendered with Kvísl](generated/render-pipeline.svg)](diagrams/render-pipeline.tsx)
 
 ## What the author controls
 
@@ -356,7 +383,7 @@ If a diagram repeatedly requires control below that boundary, prefer another log
 
 ## Next steps
 
-- Read [Dependencies and remote modules](dependencies.md) before consuming shared component code.
+- Read [Dependencies, remote modules, and stylesheets](dependencies.md) before consuming shared component code or company-wide styles.
 - Read [UML with Kvísl Script](uml.md) for a substantial library built over the core.
 - Explore the complete [visual fixtures](../examples/README.md).
 - Use the [requirements](../REQUIREMENTS.md) and [data model](../MODEL.md) when a guide intentionally omits an edge case.

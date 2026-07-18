@@ -23,16 +23,23 @@ $ npx kvisl render diagram.tsx -o diagram.excalidraw
 
 Human-facing output is deliberately cheerful and colorful: every pipeline step starts with an emoji, from `📦 Resolving dependencies` through `🛤️ Routing lines` to `✨ Wrote diagram.svg`. Machine-readable diagnostics remain undecorated structured data.
 
-Dependencies of a diagram remain ordinary TSX imports. Kvísl resolves local modules, project-installed bare npm packages, and Deno-compatible `npm:`, `jsr:`, and `https:` specifiers without requiring Deno. Remote imports are cached by content and covered by a reproducibility lock; there is no Kvísl module-declaration file.
+Dependencies of a diagram remain ordinary module and stylesheet imports. Kvísl resolves local modules, project-installed bare npm packages, Deno-compatible `npm:`, `jsr:`, and `https:` specifiers, and local or remote `.kvisl.css` stylesheets without requiring Deno. Modules, stylesheets, their `@import` graph, and referenced assets are cached by content and covered by one reproducibility lock; there is no Kvísl module-declaration file.
 
 ```tsx
 import { Diagram } from "@kvisl/core";
 import { KubernetesCluster } from "npm:@example/kvisl-kubernetes@1.4.0";
 import { Network } from "jsr:@example/kvisl-network@2.1.0";
 import { Platform } from "https://raw.githubusercontent.com/example/platform/v1.2.3/mod.tsx";
+import corporateStyle from "https://raw.githubusercontent.com/company/styles/3f2a91c/architecture.kvisl.css";
+
+export default (
+  <Diagram id="production" styles={corporateStyle}>
+    <Platform id="platform" />
+  </Diagram>
+);
 ```
 
-Remote components are executable TypeScript or JavaScript and should be reviewed and pinned like any other build dependency. See [Dependencies and remote modules](docs/dependencies.md) for resolution, locking, offline use, and trust behavior.
+Remote components are executable TypeScript or JavaScript and should be reviewed and pinned like any other build dependency. Remote stylesheets are non-executable but can change layout metrics and fetch assets, so they are locked and reviewed too. See [Dependencies, remote modules, and stylesheets](docs/dependencies.md) for resolution, locking, offline use, and trust behavior.
 
 ## Flagship example
 
@@ -73,6 +80,19 @@ View selection works like media and container queries against a renderer-created
 ### No coordinate authoring
 
 Authors describe containment, layout, ports, lines, constraints, and routing regions. Layout and routing cooperate to reserve space. Absolute positions are not part of the normal authoring model.
+
+### Local frames with controlled depth
+
+Every container interprets rows, columns, sides, ports, corridors, and routes in a local frame. `orientation={90}` turns the declaring layout from horizontal to vertical while its children remain upright and keep their intrinsic dimensions. The numeric form stops at the next nested layout frame; a structured form can cascade deliberately:
+
+```tsx
+<Scope orientation={{ degrees: 90, depth: 2 }}>…</Scope>
+<Scope orientation={{ degrees: 90, depth: "all" }}>…</Scope>
+```
+
+[![Orientation stopping after one frame or cascading through nested layouts](docs/generated/getting-started-orientation-depth.svg)](docs/diagrams/getting-started-orientation-depth.tsx)
+
+See [Layout and orientation](docs/layout-and-orientation.md) for depth counting, nested composition, and all four quarter-turns.
 
 ### Whitespace is routable structure
 
@@ -128,7 +148,7 @@ export default (
   </a>
 </p>
 
-Regenerate this rendering together with every other repository diagram using `npm run build`. The stylesheet remains typed TS data because the core contract is `RuleIR` and `TokenSetIR`; a standalone text stylesheet syntax is intentionally not required by the model.
+Regenerate this rendering together with every other repository diagram using `npm run build`. Styles may be typed TS data or imported `.kvisl.css`; both normalize to the same `RuleIR` and `TokenSetIR`, so vendoring a company-wide stylesheet changes neither the model nor the renderer contract.
 
 ## Authoring
 
@@ -204,7 +224,8 @@ A normal deep line target stops at the deepest object instantiated by the select
 
 - [Overview](docs/overview.md) explains the model and where Kvísl fits.
 - [Getting started](docs/getting-started.md) creates and renders a TSX model as an editable Excalidraw document.
-- [Dependencies and remote modules](docs/dependencies.md) explains local, npm, JSR, HTTPS, cache, lock, and trust behavior.
+- [Layout and orientation](docs/layout-and-orientation.md) defines local frames, quarter turns, upright child geometry, and orientation depth.
+- [Dependencies, remote modules, and stylesheets](docs/dependencies.md) explains local, npm, JSR, HTTPS, CSS, cache, lock, and trust behavior.
 - [Routing, corridors, and ports](docs/routing-and-ports.md) illustrates hierarchy-crossing routes, sharing modes, port groups, and docks.
 - [UML with Kvísl Script](docs/uml.md) covers the UML library and its normalization to the core model.
 - [Documentation index](docs/README.md) links the complete guide set.

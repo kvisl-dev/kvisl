@@ -7,6 +7,38 @@ The normal and routing-debug variants use the same local evaluator, layout engin
 <table>
   <tr><th>Kvísl source</th><th>Generated SVG</th></tr>
   <tr>
+    <td><a href="../diagrams/getting-started-first.tsx"><code>getting-started-first.tsx</code></a></td>
+    <td><img src="./getting-started-first.svg" alt="Generated getting-started-first diagram" width="100%"></td>
+  </tr>
+  <tr>
+    <td><a href="../diagrams/getting-started-reusable.tsx"><code>getting-started-reusable.tsx</code></a></td>
+    <td><img src="./getting-started-reusable.svg" alt="Generated getting-started-reusable diagram" width="100%"></td>
+  </tr>
+  <tr>
+    <td><a href="../diagrams/getting-started-layout.tsx"><code>getting-started-layout.tsx</code></a></td>
+    <td><img src="./getting-started-layout.svg" alt="Generated getting-started-layout diagram" width="100%"></td>
+  </tr>
+  <tr>
+    <td><a href="../diagrams/getting-started-route-auto.tsx"><code>getting-started-route-auto.tsx</code></a></td>
+    <td><img src="./getting-started-route-auto.svg" alt="Generated getting-started-route-auto diagram" width="100%"></td>
+  </tr>
+  <tr>
+    <td><a href="../diagrams/getting-started-route-segment.tsx"><code>getting-started-route-segment.tsx</code></a></td>
+    <td><img src="./getting-started-route-segment.svg" alt="Generated getting-started-route-segment diagram" width="100%"></td>
+  </tr>
+  <tr>
+    <td><a href="../diagrams/getting-started-private-dock.tsx"><code>getting-started-private-dock.tsx</code></a></td>
+    <td><img src="./getting-started-private-dock.svg" alt="Generated getting-started-private-dock diagram" width="100%"></td>
+  </tr>
+  <tr>
+    <td><a href="../diagrams/getting-started-styling.tsx"><code>getting-started-styling.tsx</code></a></td>
+    <td><img src="./getting-started-styling.svg" alt="Generated getting-started-styling diagram" width="100%"></td>
+  </tr>
+  <tr>
+    <td><a href="../diagrams/getting-started-orientation-depth.tsx"><code>getting-started-orientation-depth.tsx</code></a></td>
+    <td><img src="./getting-started-orientation-depth.svg" alt="Generated getting-started-orientation-depth diagram" width="100%"></td>
+  </tr>
+  <tr>
     <td><a href="../diagrams/routing-corridors.tsx"><code>routing-corridors.tsx</code></a></td>
     <td><img src="./routing-corridors.svg" alt="Generated routing-corridors diagram" width="100%"></td>
   </tr>

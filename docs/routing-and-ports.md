@@ -57,7 +57,7 @@ A named port has canonical identity `(owner object, local port ID)`. Every line 
 
 | Solved drawing | Sharing debug |
 | --- | --- |
-| [![Merge, bundle, and separate sharing modes at the same named port](generated/port-sharing.svg)](diagrams/port-sharing.tsx) | [![Canonical share groups, bundle lanes, terminal slots, and branch pins](generated/port-sharing-debug.svg)](diagrams/port-sharing.tsx) |
+| [![Merge, bundle, separate, and automatic style-cohort sharing at the same named port](generated/port-sharing.svg)](diagrams/port-sharing.tsx) | [![Canonical share groups, bundle lanes, terminal slots, and branch pins](generated/port-sharing-debug.svg)](diagrams/port-sharing.tsx) |
 
 ```tsx
 <Port
@@ -75,7 +75,7 @@ The policies mean:
 
 - `merge` requires a single positive-length trunk;
 - `bundle` retains separate strokes but routes them closely together;
-- `separate` allows the common dock only and splits immediately;
+- `separate` allows only the common semantic dock and splits positive-length geometry immediately;
 - `auto` lets the router choose according to space, style compatibility, and corridor pressure.
 
 Sharing is symmetric. The same rules apply to fan-in and fan-out.
@@ -83,6 +83,8 @@ Sharing is symmetric. The same rules apply to fan-in and fan-out.
 Different visible stroke styles cannot occupy the same positive-length centerline. When sharing permits a fallback, incompatible styles become close parallel bundle lanes; a required incompatible merge is a diagnostic. Compatible members may still merge within one style cohort.
 
 Once a line joins a bundle on the way to its common end, it stays in that bundle. Membership grows monotonically toward the canonical port, port-group terminal, or explicit common end, and lane order cannot swap inside the bundle. The terminal approach remains bundled: every visible lane keeps a collision-free final run, arrowhead, and physical dock slot. Several slots below one named port remain one semantic port and are packed more closely than unrelated docks.
+
+Several `separate` lines on one named port also receive collision-free physical approach slots when one coincident point would overlap their final strokes or arrowheads. Those slots use wider independent spacing, preserve a crossing-minimizing terminal order, and authorize no shared positive-length run. They do not create additional named ports.
 
 ## Port groups are not named-port joins
 

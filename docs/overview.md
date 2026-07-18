@@ -68,9 +68,11 @@ Ports are symmetric attachment points. Direction belongs to line heads, not to a
 
 Rows, columns, grids, overlays, layered layouts, and constraints express relative arrangement. Source order is normally a soft preference: it guides the solver but does not force a poor result unless the author marks it fixed.
 
-Every container has a local frame that can be rotated by `0`, `90`, `180`, or `270` degrees. A component can therefore be embedded in another flow direction without rewriting its internals.
+Every container has a local frame whose layout direction can be remapped by `0`, `90`, `180`, or `270` degrees. A 90° row becomes a vertical stack while every child keeps its width, height, shape, and upright text. The numeric form affects one layout/frame boundary; a structured orientation can opt into a finite deeper cascade or the complete subtree.
 
-[![The same pipeline component rendered upright and rotated 90 degrees](generated/orientation.svg)](diagrams/orientation.tsx)
+[![The same wide pipeline boxes laid out horizontally and vertically](generated/orientation.svg)](diagrams/orientation.tsx)
+
+The [layout and orientation guide](layout-and-orientation.md) defines depth counting, nested composition, and the physical side mapping for every quarter-turn.
 
 ### Lines made of logical segments
 
@@ -163,7 +165,8 @@ It is probably unnecessary for a disposable sketch, a small flowchart, or a draw
 ## Continue
 
 - Follow the [getting started guide](getting-started.md) to create and render a model.
-- Read [dependencies and remote modules](dependencies.md) to compose models from local and Internet TSX safely and reproducibly.
+- Read [layout and orientation](layout-and-orientation.md) for local frames and controlled orientation depth.
+- Read [dependencies, remote modules, and stylesheets](dependencies.md) to compose models and corporate styles from local files or the Internet safely and reproducibly.
 - See [routing, corridors, and ports](routing-and-ports.md) for illustrated routing semantics.
 - Read [UML with Kvísl Script](uml.md) to see how a substantial notation composes over the core.
 - Consult the [requirements](../REQUIREMENTS.md) and [data model](../MODEL.md) for normative detail.
