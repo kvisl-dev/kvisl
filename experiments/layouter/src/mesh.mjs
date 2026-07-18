@@ -125,7 +125,9 @@ function siblingGapCells(object, index, first, second, axis, active) {
     kind: "gap",
     owner: object,
     index,
+    slotKey: key,
     corridors: active?.corridors ?? [],
+    regionKeys: active ? [active.key] : [],
     routingGeometry: active?.geometry ?? null,
   };
   const cells = [{
@@ -147,7 +149,7 @@ function siblingGapCells(object, index, first, second, axis, active) {
 }
 
 // Positive-length shared boundaries form the local, sparse cell adjacency graph.
-function connectBoundary(first, second, firstStart, firstEnd, secondStart, secondEnd) {
+function connectBoundary(first, second, firstStart, firstEnd, secondStart, secondEnd, boundaryAxis, coordinate) {
   const starts = [...first].sort((a, b) => firstStart(a) - firstStart(b));
   const ends = [...second].sort((a, b) => secondStart(a) - secondStart(b));
   let begin = 0;
@@ -158,6 +160,10 @@ function connectBoundary(first, second, firstStart, firstEnd, secondStart, secon
       if (source === target) continue;
       source.neighbors.add(target.key);
       target.neighbors.add(source.key);
+      const start = Math.max(firstStart(source), secondStart(target));
+      const end = Math.min(firstEnd(source), secondEnd(target));
+      source.portals.push({ to: target.key, boundaryAxis, coordinate, start, end });
+      target.portals.push({ to: source.key, boundaryAxis, coordinate, start, end });
     }
   }
 }
@@ -166,6 +172,7 @@ function connectChannelCells(cells) {
   const cellsByOwner = new Map();
   for (const cell of cells) {
     cell.neighbors = new Set();
+    cell.portals = [];
     const ownerCells = cellsByOwner.get(cell.owner) ?? [];
     ownerCells.push(cell);
     cellsByOwner.set(cell.owner, ownerCells);
@@ -187,19 +194,36 @@ function connectChannelCells(cells) {
       const starting = left.get(coordinate);
       if (starting) connectBoundary(ending, starting,
         (cell) => cell.geometry.y, (cell) => cell.geometry.y + cell.geometry.height,
-        (cell) => cell.geometry.y, (cell) => cell.geometry.y + cell.geometry.height);
+        (cell) => cell.geometry.y, (cell) => cell.geometry.y + cell.geometry.height,
+        "vertical", coordinate);
     }
     for (const [coordinate, ending] of bottom) {
       const starting = top.get(coordinate);
       if (starting) connectBoundary(ending, starting,
         (cell) => cell.geometry.x, (cell) => cell.geometry.x + cell.geometry.width,
-        (cell) => cell.geometry.x, (cell) => cell.geometry.x + cell.geometry.width);
+        (cell) => cell.geometry.x, (cell) => cell.geometry.x + cell.geometry.width,
+        "horizontal", coordinate);
     }
   }
-  for (const cell of cells) cell.neighbors = [...cell.neighbors].sort();
+  for (const cell of cells) {
+    cell.neighbors = [...cell.neighbors].sort();
+    cell.portals.sort((first, second) => first.to.localeCompare(second.to)
+      || first.start - second.start || first.end - second.end);
+  }
 }
 
-function gridGutters(object, members) {
+function matchingGridRegions(activeGaps, cellGeometry) {
+  return activeGaps.filter((region) => {
+    const routeGeometry = region.geometry;
+    return routeGeometry?.axis === cellGeometry.axis
+      && routeGeometry.x === cellGeometry.x
+      && routeGeometry.y === cellGeometry.y
+      && routeGeometry.width === cellGeometry.width
+      && routeGeometry.height === cellGeometry.height;
+  });
+}
+
+function gridGutters(object, members, activeGaps) {
   const columns = Math.max(1, Math.min(object.layoutData?.columns ?? object.columns ?? 1, members.length));
   const rows = Math.ceil(members.length / columns);
   const cells = [];
@@ -218,12 +242,18 @@ function gridGutters(object, members) {
     const after = columnMembers[column + 1];
     const start = Math.max(...before.map((member) => member.box.x + member.box.width));
     const end = Math.min(...after.map((member) => member.box.x));
+    const cellGeometry = geometry(start, top, end - start, bottom - top, "vertical");
+    const regions = matchingGridRegions(activeGaps, cellGeometry);
     cells.push({
       key: `mesh:grid-column-gap:${object.path || "$root"}:${column}`,
+      slotKey: `mesh:grid-column-gap:${object.path || "$root"}:${column}`,
       kind: "gap",
       owner: object,
-      materialized: false,
-      geometry: geometry(start, top, end - start, bottom - top, "vertical"),
+      zone: "track",
+      materialized: regions.length > 0,
+      corridors: regions.flatMap((region) => region.corridors),
+      regionKeys: regions.map((region) => region.key),
+      geometry: cellGeometry,
     });
   }
   for (let row = 0; row < rows - 1; row += 1) {
@@ -231,12 +261,18 @@ function gridGutters(object, members) {
     const after = rowMembers[row + 1];
     const start = Math.max(...before.map((member) => member.box.y + member.box.height));
     const end = Math.min(...after.map((member) => member.box.y));
+    const cellGeometry = geometry(left, start, right - left, end - start, "horizontal");
+    const regions = matchingGridRegions(activeGaps, cellGeometry);
     cells.push({
       key: `mesh:grid-row-gap:${object.path || "$root"}:${row}`,
+      slotKey: `mesh:grid-row-gap:${object.path || "$root"}:${row}`,
       kind: "gap",
       owner: object,
-      materialized: false,
-      geometry: geometry(left, start, right - left, end - start, "horizontal"),
+      zone: "track",
+      materialized: regions.length > 0,
+      corridors: regions.flatMap((region) => region.corridors),
+      regionKeys: regions.map((region) => region.key),
+      geometry: cellGeometry,
     });
   }
   return cells;
@@ -264,12 +300,14 @@ function paddingCells(object, activePadding, residents) {
     { side: "left", geometry: geometry(box.x, box.y + topHeight, leftWidth, verticalHeight, "vertical") },
   ].map((cell) => ({
     key: `mesh:padding:${path}:${cell.side}`,
+    slotKey: `mesh:padding:${path}:${cell.side}`,
     kind: "padding",
     owner: object,
     side: cell.side,
     zone: "band",
     materialized: Boolean(activePadding.get(`${path}:${cell.side}`)),
     corridors: sides[cell.side].region.corridors ?? [],
+    regionKeys: activePadding.has(`${path}:${cell.side}`) ? [sides[cell.side].region.key] : [],
     routingGeometry: sides[cell.side].geometry,
     geometry: cell.geometry,
   }));
@@ -280,15 +318,35 @@ function paddingCells(object, activePadding, residents) {
     { corner: "bottom-left", outwardSides: ["bottom", "left"], geometry: geometry(box.x, box.y + box.height - bottomHeight, leftWidth, bottomHeight, "junction") },
   ].map((cell) => ({
     key: `mesh:corner:${path}:${cell.corner}`,
+    slotKey: `mesh:corner:${path}:${cell.corner}`,
     kind: "corner",
     owner: object,
     corner: cell.corner,
     zone: "band",
     outwardSides: cell.outwardSides,
+    regionKeys: [],
     materialized: true,
     geometry: cell.geometry,
   }));
   return subtractResidents([...sideCells, ...cornerCells], residents);
+}
+
+function bindRegions(scene) {
+  const cellsByRegion = new Map();
+  for (const cell of scene.channelMesh) {
+    for (const regionKey of cell.regionKeys ?? []) {
+      const regionCells = cellsByRegion.get(regionKey) ?? [];
+      regionCells.push(cell.key);
+      cellsByRegion.set(regionKey, regionCells);
+    }
+  }
+  scene.channelBindings = new Map();
+  for (const region of scene.regions.values()) {
+    const cellKeys = [...new Set(cellsByRegion.get(region.key) ?? [])].sort();
+    const binding = { key: region.key, region, cellKeys };
+    region.channelBinding = binding;
+    scene.channelBindings.set(region.key, binding);
+  }
 }
 
 export function buildChannelMesh(scene) {
@@ -312,7 +370,8 @@ export function buildChannelMesh(scene) {
     cells.push(...paddingCells(object, activePadding, residentsByOwner.get(object) ?? []));
     const layout = layoutKind(object);
     if (layout === "grid") {
-      cells.push(...gridGutters(object, members));
+      const gaps = [...activeGaps.values()].filter((region) => region.owner === object);
+      cells.push(...gridGutters(object, members, gaps));
     } else if (layout === "row" || layout === "column") {
       for (let index = 1; index < members.length; index += 1) {
         const first = members[index - 1];
@@ -325,6 +384,8 @@ export function buildChannelMesh(scene) {
   }
   scene.channelResidents = residents;
   scene.channelMesh = cells.filter((cell) => cell.geometry.width > 0 && cell.geometry.height > 0);
+  scene.channelCellByKey = new Map(scene.channelMesh.map((cell) => [cell.key, cell]));
   connectChannelCells(scene.channelMesh);
+  bindRegions(scene);
   return scene.channelMesh;
 }

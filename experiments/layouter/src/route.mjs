@@ -1,5 +1,5 @@
 import { minimumHeadRun, normalizedHeads } from "./heads.mjs";
-import { boundaryLabelStrips, buildChannelMesh, regionGeometry } from "./mesh.mjs";
+import { buildChannelMesh, regionGeometry } from "./mesh.mjs";
 
 const CELL = 160;
 const SIDE_VECTOR = {
@@ -1544,10 +1544,11 @@ export function labelMayCrossContainerBorder(label, ring) {
 
 export function route(scene) {
   const obstacles = scene.objects.filter((object) => object.visible && object.children.length === 0 && !object.frame && !["title", "subtitle", "legend-item"].includes(object.kind));
-  const index = new SpatialIndex([...obstacles, ...boundaryLabelStrips(scene)]);
   placePorts(scene);
   alignFacingDocks(scene);
   for (const region of scene.regions.values()) region.geometry = regionGeometry(region);
+  buildChannelMesh(scene);
+  const index = new SpatialIndex([...obstacles, ...scene.channelResidents]);
   sharedPins(scene, index);
   const routeAll = () => {
     const routeIndex = new SpatialIndex([]);
@@ -1565,6 +1566,5 @@ export function route(scene) {
   improveRoutes(scene, index);
   for (const line of scene.lines) materializeSharedPins(line);
   placeAllLabels(scene, index);
-  buildChannelMesh(scene);
   return scene;
 }

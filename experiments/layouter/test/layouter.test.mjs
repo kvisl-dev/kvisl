@@ -177,6 +177,35 @@ test("derived gap cells use facing overlap while active routing keeps its larger
   assert.ok(gap.neighbors.some((key) => key.startsWith(`${gap.key}:access-`)));
 });
 
+test("every reserved region binds to canonical mesh cells before routing", async () => {
+  const entry = path.join(repo, "examples", "agent-substrate", "diagram.tsx");
+  const { scene } = await solveFile(entry);
+  for (const region of scene.regions.values()) {
+    assert.ok(region.channelBinding, `${region.key} has no channel binding`);
+    assert.ok(region.channelBinding.cellKeys.length > 0, `${region.key} has no channel cells`);
+    for (const key of region.channelBinding.cellKeys) assert.ok(scene.channelCellByKey.has(key));
+  }
+  assert.deepEqual(scene.channelBindings.get("gap:cluster/layers:1").cellKeys,
+    ["mesh:grid-column-gap:cluster/layers:1"]);
+});
+
+test("channel neighbors retain reciprocal positive-length portal intervals", async () => {
+  const entry = path.join(repo, "examples", "agent-substrate", "diagram.tsx");
+  const { scene } = await solveFile(entry);
+  for (const cell of scene.channelMesh) {
+    for (const portal of cell.portals) {
+      assert.ok(portal.end > portal.start, `${cell.key} has an empty portal to ${portal.to}`);
+      const neighbor = scene.channelCellByKey.get(portal.to);
+      assert.ok(neighbor);
+      assert.ok(neighbor.portals.some((candidate) => candidate.to === cell.key
+        && candidate.boundaryAxis === portal.boundaryAxis
+        && candidate.coordinate === portal.coordinate
+        && candidate.start === portal.start
+        && candidate.end === portal.end));
+    }
+  }
+});
+
 test("solving the same diagram is deterministic", async () => {
   const entry = path.join(repo, "examples", "agent-substrate", "diagram.tsx");
   const first = await solveFile(entry);
