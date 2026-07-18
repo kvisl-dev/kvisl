@@ -223,6 +223,8 @@ Implicit creation absorbs typos: `api.reqest` silently becomes a second port and
 
 Every line end has a dock identity. An endpoint naming only `api` receives a line-owned dock whose identity is derived from `(line key, end index)` and whose position is chosen by the router. It does not synthesize the stable named port `request` or any other author-visible ID. Two lines targeting `api` without a port own distinct docks and do not join even if solving places those docks at the same coordinate.
 
+Semantic identity and solved terminal geometry are separate. One canonical named port remains one dock identity and one join end when `bundle` gives its attached lines several physical terminal slots. A `PortGroup` preserves the distinct identities of all member ports. An explicit share group may coordinate distinct named-port or line-owned docks without unifying them; entity-only endpoints acquire no sharing relation merely because their target object, side, or solved coordinate is equal.
+
 A dock carries a base presentation style. Its line contributes an overlay to the rendered dock: non-conflicting properties from both are retained, and the line wins property conflicts. Named-port docks and line-owned docks use the same cascade. Dock-only properties such as marker shape or fill therefore compose with line properties such as stroke or width. Dock styles participate in the general rule cascade of section 12 like every other presentation property.
 
 **Component boundaries.** Components are ordinary TSX functions. To let callers attach lines without knowing internals, the runtime provides opaque port handles:
@@ -240,11 +242,15 @@ A handle is created by the caller, passed as a prop, and bound exactly once insi
 - `free` — no implied relation (default);
 - `separate` — anti-affinity: attached lines must not share and are kept visibly apart.
 
-<p align="center">
-  <a href="docs/diagrams/port-sharing.tsx">
-    <img alt="Merge, bundle, and separate policies at one canonical named port" src="docs/generated/port-sharing.svg" width="94%">
-  </a>
-</p>
+For a bundled group, member order is also terminal lane and dock-slot order. The solver may position the block but does not exchange port identities or cross its lanes at the terminal.
+
+<table>
+  <tr><th>Solved named-port policies</th><th>Canonical share groups, lanes, slots, and branch pins</th></tr>
+  <tr>
+    <td><a href="docs/diagrams/port-sharing.tsx"><img alt="Merge, bundle, and separate policies at one canonical named port" src="docs/generated/port-sharing.svg" width="100%"></a></td>
+    <td><a href="docs/diagrams/port-sharing.tsx"><img alt="Debug rendering of share groups, bundle lanes, terminal slots, and branch pins" src="docs/generated/port-sharing-debug.svg" width="100%"></a></td>
+  </tr>
+</table>
 
 The three panels share identical object and endpoint topology. Only the named port's sharing policy changes, so the resulting adjacent geometry is direct visual evidence of that model field.
 
@@ -286,10 +292,18 @@ Within a share group:
 
 - the shared path is **maximal by default**: branches happen as late as possible relative to the common end. Preferences `early` and `balanced`, and a constraining branch region (`within: gap(...)` or a corridor), remain available;
 - `merge` draws one genuine shared trunk; `bundle` keeps parallel strokes; `auto` lets the router pick;
-- style unification applies **only to the shared piece**: branches keep their own style (a dashed branch may leave a solid merged trunk). Incompatible styles on the shared piece downgrade `merge` to `bundle` unless merging was required, which is then a diagnostic;
+- share-style compatibility is evaluated on each proposed positive-length common piece after cascade resolution and segment-local overrides. Only properties affecting that visible stroke participate. Branches remain independent, so a dashed branch may enter a solid merged trunk when the common piece itself resolves to one style;
+- differently styled visible strokes never lie on the same centerline for positive length. A fallback-capable relation becomes parallel bundle lanes (or separate tracks when no bundle relation exists); a required `merge` with incompatible shared-piece styles is a diagnostic. The renderer never chooses one member's style or paints coincident incompatible strokes;
+- an automatic multi-style group is partitioned into stable style cohorts. Different cohorts become adjacent bundle lanes, while compatible members may merge inside one cohort lane. An explicitly requested `bundle` remains one lane per semantic line;
 - fan-out and fan-in are symmetric: a group whose common end is a target behaves identically with roles reversed.
 
-Explicit segments of grouped lines that pin the same region are merged into one shared trunk in that region.
+Every group has one **common end**. For a named-port join it is the canonical port. For a `PortGroup` it is the ordered terminal block of its distinct member ports. An explicit share group identifies the corresponding end of every member line; it may coordinate distinct line-owned docks on one target boundary, but it does not create a named port. A group from which no unique common end can be derived is invalid.
+
+Bundle membership is monotonic toward the common end: once a line enters, it stays in the bundle until that end, and lane order does not swap along a continuous bundled run. A line cannot leave and re-enter closer to the end. Any required reordering is an explicit branch outside the bundle, not a hidden crossing within it.
+
+The terminal of a bundle remains a bundle. Each visible lane owns a positive-length terminal run, arrowhead when present, and physical dock slot. An explicit bundle has one lane per semantic line; an automatic multi-style bundle may use one merged lane per compatible style cohort. Different terminal head geometry at the same canonical named port also creates distinct automatic terminal lanes even when the shared-piece strokes match. Slot spacing includes stroke width, port minimum spacing, marker extent, and arrowhead extent; the final run is long enough for the head before its last bend. Slots beneath the same named port form a compact local block and remain closer than independent docks where constraints permit. They are Solved-IR geometry, not additional `PortIR` or dock identities. `PortGroup` slots correspond to its ordered member ports; explicit groups of entity-only endpoints retain one line-owned dock per line.
+
+Explicit segments of grouped lines that pin the same region participate in one coordinated run there. They become one trunk only when the effective mode is `merge` and their shared-piece styles are compatible; otherwise the region contains the group's ordered bundle lanes.
 
 ## 10. Anchoring and frames
 
@@ -343,7 +357,7 @@ Within one layer, later rules win; across layers, the higher layer wins. There i
 
 **What rules may set.** Presentation properties (fill, fill style, stroke, stroke width, dash, opacity, roughness, fonts, text orientation, dock markers) and metric defaults (margin, padding, gap, minimum sizes, spacing). Metric properties resolve before layout and routing, like every size-affecting input.
 
-**What rules may never do.** Change topology, identity, membership, ports, sharing, routing, layout strategy, or entity existence. There is no `display: none` analog — structural alternatives belong to views and `When`. Corridor pressure and port sharing policies are semantics, not styles.
+**What rules may never do.** Author or replace topology, identity, membership, ports, sharing policy, route pins, layout strategy, or entity existence. There is no `display: none` analog — structural alternatives belong to views and `When`. Corridor pressure and port sharing policies are semantics, not styles. Resolved paint nevertheless constrains geometric feasibility: stroke and head extents consume space, and incompatible shared-piece styles prohibit a coincident merge under section 9. An allowed bundle fallback is a solved representation of the existing policy, not a style-authored topology change; a required merge remains required and therefore diagnoses incompatibility.
 
 **Inheritance.** Inheritable properties (fonts, stroke color, roughness, text orientation) flow down containment unless overridden; box and metric properties do not inherit.
 
@@ -818,6 +832,8 @@ interface LabelIR {
 }
 ```
 
+`ShareSpec` records semantic coordination, not concrete lanes. After renderer-context rule evaluation, Projection IR resolves the effective style of every candidate common piece. Solved IR then records whether a fallback-capable relation became a merge or bundle, the monotonic bundle runs and stable lane order, and the terminal slot assigned to every endpoint. Several slots may reference the same port-derived `ShareSpec`; that does not multiply the canonical port.
+
 An authoring-level `labels` collection on a line is normalization sugar, not another IR location for labels. `start` entries attach to the labels of `ends[0]`, `end` entries to `ends[1]`, and `center` or `auto` entries to a suitable prominent segment. Labels declared on `<End>` children land directly on their `EndpointIR`. Multiple entries remain distinct `LabelIR` values in source order.
 
 `<End>` children normalize into the same `EndpointIR` records as `from`/`to` props: the first `End` becomes `ends[0]`, per-`End` `head` values fill the `heads` tuple, a per-`End` `dock` block becomes the port-independent dock style, and `labels` land on the endpoint. Mixing `End` children with `from`/`to` props or with a conflicting line-level `heads` value is a diagnostic.
@@ -969,6 +985,8 @@ How authoring constructs normalize (details and phases in [REQUIREMENTS.md](REQU
 - `heads="both"` and friends resolve to the per-end `heads` tuple.
 - A `subject` prop becomes the entity's `SubjectRef`; the normalizer round-trips it without interpretation.
 - Lines sharing one canonical named port receive a port-derived `ShareSpec`; its mode and branch policy come from `PortIR.sharing`. Port-group affinity and explicit line groups apply only when they add a relation across distinct ports.
+- Share-style compatibility is checked after conditional rules and segment-local styles resolve. Incompatible positive-length strokes become bundle lanes when fallback is permitted; a required merge is diagnosed before geometry is accepted.
+- Bundle solving derives one common end, keeps membership monotonic and lane order stable toward it, and allocates distinct terminal runs, heads, and physical slots without changing canonical port or line-owned dock identities.
 - `below`, `above`, and `between` constraint sugar normalizes to spatial `order` relations.
 - `rule()` declarations become `RuleIR` entities and `tokens()` declarations become `TokenSetIR` entities in their declaring layer; typed selector helpers and any equivalent string form normalize to the same `SelectorIR`. Inline `style` props stay on their entities as the innermost cascade layer.
 - `View` declarations emit `ViewIR` alternatives in declaration order with their `requires` conditions and template children. Normalization does not select or instantiate them; the renderer takes the first viable view in order.
