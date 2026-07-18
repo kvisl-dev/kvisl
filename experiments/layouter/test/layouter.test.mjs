@@ -827,7 +827,13 @@ test("named-port sharing preserves terminal order without rectangular route excu
   assert.equal(new Set(merge.map((line) => `${line.to.point.x},${line.to.point.y}`)).size, 1);
 
   const bundle = byScope("bundle");
+  const styleCohorts = byScope("style-cohorts");
   const separate = byScope("separate");
+  const verticalApproach = (line) => line.route.slice(1).map((point, index) => [line.route[index], point])
+    .find(([first, second]) => first.x === second.x && first.y !== second.y)?.[0].x;
+  assert.equal(verticalApproach(merge[0]), verticalApproach(merge[2]));
+  assert.equal(verticalApproach(bundle[0]), verticalApproach(bundle[2]));
+  assert.equal(verticalApproach(styleCohorts[0]), verticalApproach(styleCohorts[2]));
   assert.deepEqual(bundle.map((line) => line.to.point.y), [...bundle.map((line) => line.to.point.y)].sort((a, b) => a - b));
   assert.deepEqual(separate.map((line) => line.to.point.y), [...separate.map((line) => line.to.point.y)].sort((a, b) => a - b));
   assert.equal(new Set(bundle.map((line) => line.to.point.y)).size, 3);

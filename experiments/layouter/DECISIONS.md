@@ -109,6 +109,8 @@ Every bundle is monotone toward its common end: once a member enters its lane it
 
 Every physical terminal lane reserves its own marker and arrowhead extent, and a headed terminal run remains straight for at least twice the rendered head width before its first bend. The routing-debug painter reads the same `ShareGroup`, cohort lanes, terminal slots, and branch pins used by routing; it never infers sharing again from coincident polylines.
 
+Approach alignment is independent of sharing permission. Same-front approaches with disjoint axial occupancy may receive one common bend coordinate even though their allocation identities remain distinct. A merge becomes coincident only at its authorized trunk; bundle lanes remain separate through the terminal. If the intervals overlap or their legal channel-coordinate intersection is empty, the alignment preference does not apply.
+
 Rationale: coincident incompatible strokes are not a merge, a requested bundle is not permission to fuse compatible members, and several physical slots must not multiply canonical port identity. A single normalized state prevents reservation, routing, quality checks, and debug output from disagreeing about which geometry may be shared.
 
 ## D13. Previously routed lines are sparse routing obstacles

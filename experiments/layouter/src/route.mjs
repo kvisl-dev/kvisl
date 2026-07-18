@@ -661,6 +661,128 @@ function classifyRegionTracks(scene) {
   return changed;
 }
 
+function routeIntervalOnAllocation(line, allocation) {
+  const vertical = allocation.axis === "vertical";
+  const intervals = [];
+  for (let index = 1; index < line.route.length; index += 1) {
+    const first = line.route[index - 1];
+    const second = line.route[index];
+    const onTrack = vertical
+      ? first.x === second.x && Math.abs(first.x - allocation.coordinate) < 0.001
+      : first.y === second.y && Math.abs(first.y - allocation.coordinate) < 0.001;
+    if (!onTrack) continue;
+    const segmentStart = vertical ? Math.min(first.y, second.y) : Math.min(first.x, second.x);
+    const segmentEnd = vertical ? Math.max(first.y, second.y) : Math.max(first.x, second.x);
+    for (const span of allocation.spans) {
+      const start = Math.max(segmentStart, span.start);
+      const end = Math.min(segmentEnd, span.end);
+      if (end - start > 0.001) intervals.push([start, end]);
+    }
+  }
+  if (!intervals.length) return null;
+  return [
+    Math.min(...intervals.map((interval) => interval[0])),
+    Math.max(...intervals.map((interval) => interval[1])),
+  ];
+}
+
+function nonOverlappingIntervalCohorts(entries) {
+  const compare = (first, second) => first.end - second.end || first.id - second.id;
+  const heap = [];
+  const push = (cohort) => {
+    heap.push(cohort);
+    for (let index = heap.length - 1; index > 0;) {
+      const parent = Math.floor((index - 1) / 2);
+      if (compare(heap[parent], heap[index]) <= 0) break;
+      [heap[parent], heap[index]] = [heap[index], heap[parent]];
+      index = parent;
+    }
+  };
+  const pop = () => {
+    const first = heap[0];
+    const last = heap.pop();
+    if (heap.length) {
+      heap[0] = last;
+      for (let index = 0;;) {
+        const left = index * 2 + 1;
+        const right = left + 1;
+        let next = index;
+        if (left < heap.length && compare(heap[left], heap[next]) < 0) next = left;
+        if (right < heap.length && compare(heap[right], heap[next]) < 0) next = right;
+        if (next === index) break;
+        [heap[index], heap[next]] = [heap[next], heap[index]];
+        index = next;
+      }
+    }
+    return first;
+  };
+  const cohorts = [];
+  for (const entry of [...entries].sort((first, second) => first.interval[0] - second.interval[0]
+    || first.interval[1] - second.interval[1]
+    || first.line.id.localeCompare(second.line.id))) {
+    const reusable = heap[0]?.end - entry.interval[0] <= 0.001 ? pop() : null;
+    const cohort = reusable ?? { id: cohorts.length, end: Number.NEGATIVE_INFINITY, entries: [] };
+    if (!reusable) cohorts.push(cohort);
+    cohort.entries.push(entry);
+    cohort.end = entry.interval[1];
+    push(cohort);
+  }
+  return cohorts.map((cohort) => cohort.entries);
+}
+
+// A shared terminal topology does not imply shared routing tracks. It does,
+// however, give compatible approach branches a common visual front: distinct
+// allocations may use the same cross-axis coordinate when their occupied
+// intervals are disjoint. This aligns join bends and bundle approaches
+// without granting either line permission to overlap the other.
+function alignShareApproachTracks(scene) {
+  let changed = false;
+  for (const group of buildShareGroups(scene).values()) {
+    if (group.mode !== "merge" && group.mode !== "bundle") continue;
+    const dock = shareGroupDock(group);
+    if (!dock) continue;
+    const axis = dock.side === "left" || dock.side === "right" ? "vertical" : "horizontal";
+    const normal = axis === "vertical" ? "x" : "y";
+    const byRegion = new Map();
+    for (const member of group.members) {
+      const candidates = [...new Set([...(member.line.regionTracks?.values() ?? [])]
+        .map((track) => track.allocation))]
+        .filter((allocation) => allocation && allocation.axis === axis && !allocation.crossing && !allocation.runId)
+        .map((allocation) => ({
+          allocation,
+          interval: routeIntervalOnAllocation(member.line, allocation),
+        }))
+        .filter((candidate) => candidate.interval)
+        .sort((first, second) => Math.abs(first.allocation.coordinate - dock.point[normal])
+          - Math.abs(second.allocation.coordinate - dock.point[normal])
+          || first.allocation.id.localeCompare(second.allocation.id));
+      if (!candidates.length) continue;
+      const candidate = { ...candidates[0], line: member.line };
+      const entries = byRegion.get(candidate.allocation.regionKey) ?? [];
+      entries.push(candidate);
+      byRegion.set(candidate.allocation.regionKey, entries);
+    }
+    for (const entries of byRegion.values()) {
+      for (const cohort of nonOverlappingIntervalCohorts(entries)) {
+        if (cohort.length < 2) continue;
+        const legal = cohort.map((entry) => allocationInterval(scene, entry.allocation));
+        const low = Math.max(...legal.map((interval) => interval[0]));
+        const high = Math.min(...legal.map((interval) => interval[1]));
+        if (high <= low) continue;
+        const desired = cohort.reduce((sum, entry) => sum + entry.allocation.coordinate, 0) / cohort.length;
+        const coordinate = Math.max(low, Math.min(high, desired));
+        const alignmentKey = `${group.id}:${cohort[0].allocation.regionKey}:${axis}`;
+        for (const entry of cohort) {
+          if (Math.abs(entry.allocation.coordinate - coordinate) > 0.001) changed = true;
+          entry.allocation.coordinate = coordinate;
+          entry.allocation.alignmentKey = alignmentKey;
+        }
+      }
+    }
+  }
+  return changed;
+}
+
 class SpatialIndex {
   constructor(objects) {
     this.objects = objects;
@@ -2165,6 +2287,11 @@ export function route(scene) {
   routeAll();
   if (classifyRegionTracks(scene)) {
     allocateRegionTracks(scene);
+    sharingPins(scene, index);
+    routeAll();
+  }
+  if (alignShareApproachTracks(scene)) {
+    sharingPins(scene, index);
     routeAll();
   }
   improveRoutes(scene, index);
