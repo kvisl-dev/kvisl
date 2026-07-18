@@ -442,7 +442,8 @@ function measureContent(object, childMax = 0) {
     if (line.divider) expanded.push(line);
     else for (const text of wrapText(line.text, line.role === "label" ? labelWrap : wrap)) expanded.push({ ...line, text });
   }
-  const width = Math.max(0, ...expanded.filter((line) => !line.divider).map((line) => line.text.length * charWidth));
+  for (const line of expanded) if (!line.divider) line.measuredWidth = line.text.length * charWidth;
+  const width = Math.max(0, ...expanded.filter((line) => !line.divider).map((line) => line.measuredWidth));
   const height = expanded.reduce((sum, line) => sum + (line.divider ? 8 : fontSize * 1.35), 0);
   object.renderLines = expanded;
   object.fontSize = fontSize;

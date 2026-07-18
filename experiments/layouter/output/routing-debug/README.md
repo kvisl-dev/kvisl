@@ -56,9 +56,9 @@ Generated from the repository TSX fixtures. Complete channel-mesh cells are pain
 
 38 objects · 19 lines · 1639×1454
 
-**Structural quality:** 0 layout contract violations · 0 object overlaps · 0 route–object intersections · 0 label–object overlaps · 0 label–label overlaps · 0 label–route overlaps · 0 unexpected shared runs · 3 crossings · 0 title crossings · 0 label–decor overlaps
+**Structural quality:** 0 layout contract violations · 0 object overlaps · 0 route–object intersections · 0 label–object overlaps · 0 label–label overlaps · 0 label–route overlaps · 0 unexpected shared runs · 1 crossings · 0 title crossings · 0 label–decor overlaps
 
-**Perception:** 2.26 bends/line (max 7) · detour ×1.15 · backtrack 3% · 45/29 x/y guides for 21 boxes · peer-size CV 0.08 · gap CV 0.20 · label offset 18.0px
+**Perception:** 2.16 bends/line (max 5) · detour ×1.13 · backtrack 2% · 45/29 x/y guides for 21 boxes · peer-size CV 0.08 · gap CV 0.20 · label offset 18.0px
 
 <table>
   <tr><th>Original</th><th>Prototype SVG</th></tr>

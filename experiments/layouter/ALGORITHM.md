@@ -1,10 +1,12 @@
 # Kvísl Script Layout and Routing Algorithm
 
-Status: Algorithm design draft
+Status: Reference algorithm design draft
 
 This document defines a scalable reference algorithm for turning a materialized Kvísl [Projection IR](../../MODEL.md) into Solved IR. It does not define authoring grammar, model semantics, package boundaries, or implementation language. [MODEL.md](../../MODEL.md) remains the source of truth for the data consumed by the algorithm; [REQUIREMENTS.md](../../REQUIREMENTS.md) remains the source of truth for required behavior; [DESIGN.md](../../DESIGN.md) defines the surrounding plumbing.
 
 The central requirement is joint layout and routing: objects must be placed with enough space for lines, labels, docks, and shared trunks, while port and dock positions must be chosen in concert with the routes that use them. Routing is not a paint pass over immutable object coordinates.
+
+Normative words in this document describe the reference solver contract, not the completeness of the JavaScript experiment. A paragraph explicitly headed or worded as **current prototype** is an implementation snapshot. [`DECISIONS.md`](DECISIONS.md) records accepted choices for the experiment; acceptance fixes intended behavior but does not by itself claim that the behavior is implemented. Tests and emitted diagnostics are the evidence for implementation conformance.
 
 ## 1. Short answer on complexity
 
@@ -95,7 +97,7 @@ The following invariants hold throughout the pipeline.
 
 ### 4.1 Combinatorial topology precedes coordinates
 
-The solver first decides relative order, region itinerary, sharing topology, track order, and dock order. Concrete lengths and coordinates are assigned only after those decisions have produced space demands. Coordinates never decide semantic identity or sharing.
+The solver first decides relative order, stable channel-cell identities, region itinerary, sharing topology, track order, and dock order. Concrete rectangles, portal intervals, track centerlines, and route points are assigned only after those decisions have produced space demands. Coordinates never decide semantic identity, region identity, cell identity, or sharing.
 
 ### 4.2 Whitespace is the only reserving routing plane
 
@@ -164,15 +166,15 @@ Every container produces a local routing mesh from its layout topology:
 - named corridors annotate or subdivide those same regions;
 - corridor residents split a channel locally but do not create a detached routing plane.
 
-The mesh stores adjacency, local axis, capacity, minimum/preferred spacing, pressure, divider occupancy, residents, and route prohibitions. Every cell has exactly one rectangle. Every adjacency retains the positive-length shared boundary as a portal interval; a neighbor identity without that interval is insufficient for routing. It contains only structural neighbors and direct parent/child boundary transitions. It must not contain one visibility edge for every mutually visible object pair.
+The mesh stores adjacency, local axis, capacity, minimum/preferred spacing, pressure, divider occupancy, residents, and route prohibitions. Before coordinate assignment, a cell has one stable identity and symbolic axial/cross-axis bounds. After coordinate assignment, that same cell has exactly one rectangle. Every solved adjacency retains the positive-length shared boundary as a portal interval; a neighbor identity without that interval is insufficient for geometric routing. The mesh contains only structural neighbors and direct parent/child boundary transitions. It must not contain one visibility edge for every mutually visible object pair.
 
-Container boundary labels are local mesh residents, not a scalar offset applied to an entire padding side. The measured title rectangle is subtracted from the one top-padding region: cells beside the title remain available at the upper level and cells below it form the local bypass. Only positive-length shared edges create cell adjacency; point contacts do not. The same rule applies to other residents introduced later.
+Container boundary labels are local mesh residents, not a scalar offset applied to an entire padding side. The measured title rectangle plus an explicit local clearance is subtracted from the one top-padding region: cells beside the title remain available at the upper level and cells below it form the local bypass. The resident must use the same measured line widths as layout and painting, not a second character-count estimate. Only positive-length shared edges create cell adjacency; point contacts do not. The same rule applies to other residents introduced later.
 
 The four-sided padding ring has exactly one logical region per side. Resident subtraction may partition that region into several canonical cells, all tied together by one stable slot identity and one region binding. Each region reaches the container boundary and contains its track allocation, free capacity, clearance, and portals as properties rather than additional parallel mesh cells. A corner is exactly the Cartesian product of its two adjacent side bands, so its height equals the neighboring horizontal band and its width equals the neighboring vertical band. Corners are internal junction cells: a corner may leave the container only through its two recorded outward sides.
 
-A derived sibling-gap track cell covers only the facing overlap of the two adjacent members. Its approach wings are separate canonical access cells connected by explicit portals. No larger shadow rectangle is retained by the router. Longitudinal allocations use the facing track cell; perpendicular crossings may use the connected access cells. This prevents an uneven pair of siblings from producing a channel rectangle that extends behind either object while still permitting a short crossing at its natural axial position.
+A derived sibling-gap track cell covers only the facing overlap of the two adjacent members. Its approach wings are separate canonical access cells connected by explicit portals and together cover the complete free cross-section between the parent's content boundaries. No larger shadow rectangle is retained by the router. Longitudinal allocations use the facing track cell; perpendicular crossings may use the connected access cells. This prevents an uneven pair of siblings from producing a channel rectangle that extends behind either object while still preserving all routeable whitespace beside the siblings.
 
-Logical routing regions bind to canonical cell identities before the first route is realized. Track allocations contain an axis, one scalar cross-axis coordinate, and axial spans that cite those same cell identities. Regions never own a second geometry, and cells never own a hidden routing rectangle. The debug painter and router therefore consume identical solved topology.
+Logical routing regions bind to canonical cell identities before the first route is realized. Symbolic track allocations contain track order, width, and cited cell identities; after coordinate assignment they additionally contain one scalar cross-axis coordinate and axial spans over those same cells. Regions never own a second geometry, and cells never own a hidden routing rectangle. The debug painter and router therefore consume identical solved topology.
 
 Every regional incidence is classified as either a **longitudinal track** or a **perpendicular crossing**. A longitudinal incidence consumes a track slot and contributes track thickness. A perpendicular hierarchy or gap crossing needs an intersection point and a bounded crossing band, but it does not consume a parallel track and must not displace longitudinal traffic from the region center. Several crossing-only incidences through the same padding band share one bounded crossing allowance rather than multiplying container padding by line count.
 
@@ -216,12 +218,13 @@ Projection IR
   -> measure intrinsic objects and endpoint adornments
   -> lift lines into local quotient interaction graphs
   -> choose local layout topology and member order
-  -> build sparse whitespace channel meshes
+  -> build sparse symbolic whitespace channel meshes
   -> choose line/share-group itineraries and port sides
   -> order docks and tracks with bounded alternating sweeps
-  -> allocate tracks and compute routing reservations
+  -> allocate track slots and compute routing reservations
   -> solve object and container sizes bottom-up
   -> assign coordinates and transforms top-down
+  -> materialize canonical cell rectangles, portal intervals, and track-run coordinates
   -> realize portals, trunks, branches, bends, and labels
   -> linearize paint relations over solved fragments
   -> validate hard constraints and emit Solved IR
@@ -424,9 +427,9 @@ Every selected itinerary produces one or more axial occupancy intervals in a rou
 
 Merged trunks contribute one interval. Bundles contribute one adjacent multi-track block. Separate lines contribute independent intervals.
 
-### 14.2 Track allocation
+### 14.2 Track-slot allocation
 
-Without extra order constraints, channel allocation is interval-graph coloring:
+Without extra order constraints, channel slot allocation is interval-graph coloring:
 
 1. sort intervals by start, then end, then stable identity;
 2. release tracks whose active interval has ended;
@@ -435,13 +438,13 @@ Without extra order constraints, channel allocation is interval-graph coloring:
 
 For independent unit-track intervals, the sweep is `O(k log k)` for `k` intervals and uses the minimum number of tracks for the fixed interval set. Bundle blocks, variable widths, and order constraints preserve the complexity bound but may use more tracks than the unconstrained optimum. Track-order constraints are incorporated as an acyclic precedence graph; required cycles are diagnostics. A longest-path rank supplies a legal lower bound, after which the sweep chooses the first legal track.
 
-Several corridor refinements of one region are allocated in rank order. Capacity is checked after sharing has reduced the demand. A capacity overflow cannot be repaired by drawing through an object.
+Several corridor refinements of one region are allocated in rank order. Capacity is checked after sharing has reduced the demand. A capacity overflow cannot be repaired by drawing through an object. This phase fixes slot identity, ordering, and required thickness; it does not yet choose an absolute centerline.
 
 Perpendicular crossings are excluded before interval coloring. The reference prototype may obtain that classification with one provisional route, index its emitted segments against the canonical channel cells once, measure the resulting axial occupancies, and reroute once; it must not rescan every route for every region. Production solvers should derive the classification directly from the compact itinerary where possible. A crossing is never inserted into the ordered longitudinal track list. After ordering, one longitudinal track is placed exactly on the corridor centerline; several tracks form a symmetric block around it. Corridor rank is considered first, then geometric endpoint projection, with identity only as a deterministic final tie-breaker.
 
 ### 14.3 Track runs across cells
 
-One local allocation is not automatically one bend. For every line or share block, the allocator scans its ordered cell incidences and forms maximal collinear track runs. A run maintains the intersection of the cells' legal cross-axis intervals. While that intersection remains non-empty, every incidence uses one coordinate: the centered bundle coordinate inside the common interval. An empty intersection closes the run and records one intentional transition at the intervening portal or junction. The polyline realizer may change cross-axis coordinate only at such a recorded transition.
+One local allocation is not automatically one bend. For every line or share block, the allocator records ordered, portal-adjacent cell incidences and forms maximal collinear track runs. Once Phase I has materialized the cells' rectangles, a run intersects their legal cross-axis intervals. While that intersection remains non-empty, every incidence uses one coordinate: the centered bundle coordinate inside the common interval. An empty intersection closes the run and records one intentional transition at the intervening portal or junction. The polyline realizer may change cross-axis coordinate only at such a recorded transition. Two same-axis regions that are not consecutive in the itinerary must never be joined merely because their intervals overlap.
 
 Bundle members remain a contiguous ordered super-block. The block is centered as a whole and member offsets remain stable across all cells of the run. Per-cell separation constraints are needed only between adjacent ordered blocks, so allocation remains `O(J log J)` rather than comparing every track pair.
 
@@ -498,6 +501,12 @@ Once the root allocation is known, coordinates are assigned top-down in local fr
 
 Automatic fill sizes and preferred sizes may consume surplus, but routing reservations are never compressed below their minima. If a finite target allocation cannot satisfy the minimum, the solver returns the smallest conflicting envelope to the renderer planner. The planner may reject the tentative view and try the next declared view.
 
+### 15.3 Materialize channel geometry and track runs
+
+The top-down pass replaces every symbolic channel-cell bound with one rectangle and every structural adjacency with its positive-length portal interval. Logical regions retain their earlier bindings to those cell identities. The allocator then performs the interval intersections from section 14.3 and assigns exact centerlines without changing slot count, slot order, required thickness, or object geometry. This is coordinate completion, not a second topology or routing pass.
+
+If a formerly adjacent symbolic pair has no positive-length solved portal, the solve is inconsistent and must fail with provenance; the router may not invent a shadow rectangle to reconnect it. The routing-debug painter consumes these exact rectangles and intervals.
+
 ## 16. Phase J: realize line geometry and labels
 
 The symbolic itinerary is lowered into concrete local geometry:
@@ -546,7 +555,7 @@ The feasibility solve has no open-ended convergence loop. The reference schedule
 5. at most one automatic-side correction for a locally infeasible endpoint;
 6. optional compaction that preserves all minima and topology.
 
-The current prototype realizes the crossing/track distinction with one provisional routing pass, one deterministic classification pass, and at most one reroute. It then performs two bounded route-improvement sweeps, a route-aware dock slide that preserves dock order, and two further bounded improvement sweeps. These are versioned constants, not convergence conditions. Each local replacement examines a fixed candidate family and a bounded route window.
+The current prototype realizes the crossing/track distinction with one provisional routing pass, one deterministic classification pass, and at most one reroute. It then performs two bounded route-improvement sweeps, a route-aware dock slide that preserves dock order, and two further bounded improvement sweeps. These are versioned constants, not convergence conditions. Each local replacement examines a fixed candidate family and a bounded route window. This fixture-scale schedule is not evidence of the `O(Q log Q)` contract: itinerary-adjacent `TrackRun` allocation and performance counters must replace or bound any repeated region-by-line, line-by-cell, or expanded-gap scan before the prototype can claim that complexity profile.
 
 A side correction invalidates only the endpoint's local route suffix, its side packing, and affected channel intervals. It does not restart unrelated containers.
 
@@ -629,6 +638,8 @@ A diagnostic must not be “layout failed” when the solver can identify the sa
 
 `E_q` is the total number of aggregated edges in local quotient interaction graphs and is bounded by the relevant line/segment incidences. Summed over phases, the target remains `O(Q log Q)` time and `O(Q)` memory.
 
+This table is a conformance target for a reference implementation. The current experiment has not established these bounds until the performance fixtures in section 23 report the stated size terms and demonstrate that no hidden scan grows as `N×L`, `L×R`, or `J²`.
+
 ## 21. Forbidden algorithmic patterns
 
 The reference solver MUST NOT use:
@@ -648,20 +659,22 @@ The reference solver MUST NOT use:
 
 Force-directed layout is not the reference default. A Barnes-Hut or multilevel force phase can be sub-quadratic, but by itself it does not allocate corridor tracks, respect deep containment, or jointly place ports. A renderer may use one as a bounded initializer for `constraint` layout, after which the same whitespace reservation pipeline still applies.
 
-## 22. Model details that still need a decision
+## 22. Experiment decisions and upstream model gaps
 
-The algorithm exposes several model questions without inventing grammar for them. [`DECISIONS.md`](DECISIONS.md) fixes concrete answers for this experiment so implementation can proceed; the list remains open at the language-model level until those answers are deliberately incorporated into MODEL.md and REQUIREMENTS.md.
+The algorithm exposes questions without inventing grammar for them. [`DECISIONS.md`](DECISIONS.md) fixes the experiment's answer. The table distinguishes a genuine upstream model gap from a renderer or solver policy that does not belong in authoring grammar.
 
-1. `PortIR.side` currently distinguishes only `auto` from a concrete side. It does not encode “prefer right, but may move” versus “must be right.” The reference assumption is that a concrete side is required.
-2. Corridor `capacity` needs an exact unit: physical tracks, bundle blocks, or weighted demand. The algorithm assumes physical allocated tracks unless MODEL.md says otherwise.
-3. Pressure needs a normalized range and a deterministic preferred-spacing mapping. Only its monotonic and minimum-preserving behavior is currently fixed.
-4. The default geometric route vocabulary needs to state whether the core solver is orthogonal. The examples and corridor model strongly imply orthogonal routing, but `LineIR` does not currently carry a route-shape policy.
-5. Corridor-resident objects need an unambiguous normalized relation to the region so that the solver can split channel intervals without inferring residence from geometry.
-6. A hard maximum object/container size combined with reserving lines needs one explicit result: hard unsatisfiability, local view rejection, or permission to reroute outside that container.
-7. Solved IR must decide whether every hierarchy portal is emitted explicitly or whether unchanged portal chains may remain compressed. That decision controls `G` for deeply nested models.
-8. Crossing adornments need a target capability flag; otherwise the solver should not enumerate all crossings merely for painting.
+| Topic | Experiment decision | Upstream status |
+| --- | --- | --- |
+| Required versus preferred port side | D1: one allowed side is required; several sides are an internal ordered preference set | `PortIR` still has no authored preferred-side list; add one only if the language needs it |
+| Corridor capacity unit | D2: simultaneous visible track slots | exact unit remains unspecified in MODEL.md and REQUIREMENTS.md |
+| Pressure scale | D3: normalized `0..1`, linear spacing interpolation | monotonic behavior is normative; numeric range remains unspecified upstream |
+| Route geometry | D4: orthogonal reference solver | renderer capability policy; no per-line grammar is required for the first version |
+| Corridor residents | D5: ordinary `ObjectIR` anchored to a `RegionRef` | already represented by `ObjectIR.anchor`; no model gap remains |
+| Hard size conflict | D6: bounded reroute, automatic view fallback, then hard diagnostic | view fallback is already normative; the attempt order is solver policy |
+| Hierarchy portal emission | D7: unchanged traversal stays compressed | Solved IR schema still needs a compact provenance representation |
+| Crossing adornments | D8: enumerate only when a painter requests them | target capability and output policy, not authoring semantics |
 
-These are semantic or Solved-IR questions for MODEL.md and REQUIREMENTS.md. They are not reasons to add coordinates to the authoring language.
+Only the capacity unit, pressure scale, optional preferred-side authoring, and compact Solved-IR portal representation still require an upstream decision. None requires absolute coordinates in the authoring language.
 
 ## 23. Validation and performance fixtures
 

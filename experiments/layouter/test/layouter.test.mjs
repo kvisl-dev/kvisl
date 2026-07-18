@@ -142,6 +142,20 @@ test("boundary titles partition only their local top-channel cells", async () =>
   assert.equal(upperRight.geometry.y, cluster.box.y, "the title must not push the entire top channel down");
 });
 
+test("boundary-title residents use the measured label width plus explicit clearance", async () => {
+  const entry = path.join(repo, "examples", "agent-substrate", "diagram.tsx");
+  const { scene } = await solveFile(entry);
+  const control = scene.objectByPath.get("cluster/layers/control-and-storage/substrate-control");
+  const resident = scene.channelResidents.find((candidate) => candidate.owner === control);
+  const widths = control.renderLines
+    .filter((line) => !line.divider && line.role === "label")
+    .map((line) => line.measuredWidth);
+
+  assert.ok(widths.every(Number.isFinite));
+  assert.equal(resident.box.x, control.box.x + 8);
+  assert.equal(resident.box.width, Math.max(...widths) + 8);
+});
+
 test("each side has one boundary-reaching padding band whose corners use the same dimensions", async () => {
   const entry = path.join(repo, "examples", "agent-substrate", "diagram.tsx");
   const { scene } = await solveFile(entry);
@@ -176,6 +190,24 @@ test("derived gap cells separate the facing track from canonical approach cells"
   assert.ok(Math.min(...access.map((cell) => cell.geometry.x)) < gap.geometry.x);
   assert.ok(Math.max(...access.map((cell) => cell.geometry.x + cell.geometry.width)) > gap.geometry.x + gap.geometry.width);
   assert.ok(gap.neighbors.some((key) => key.startsWith(`${gap.key}:access-`)));
+});
+
+test("sibling-gap cells cover the complete parent content cross-section", async () => {
+  const entry = path.join(repo, "examples", "agent-substrate", "diagram.tsx");
+  const { scene } = await solveFile(entry);
+  const root = scene.root;
+  const gap = scene.channelCellByKey.get("mesh:gap:$root:0");
+  const cells = scene.channelMesh
+    .filter((cell) => cell.slotKey === gap.slotKey)
+    .sort((first, second) => first.geometry.x - second.geometry.x);
+  const expectedStart = root.box.x + root.paddingBox.left;
+  const expectedEnd = root.box.x + root.box.width - root.paddingBox.right;
+
+  assert.equal(cells[0].geometry.x, expectedStart);
+  assert.equal(cells.at(-1).geometry.x + cells.at(-1).geometry.width, expectedEnd);
+  for (let index = 1; index < cells.length; index += 1) {
+    assert.equal(cells[index - 1].geometry.x + cells[index - 1].geometry.width, cells[index].geometry.x);
+  }
 });
 
 test("every reserved region binds to canonical mesh cells before routing", async () => {

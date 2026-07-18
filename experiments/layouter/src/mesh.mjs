@@ -22,7 +22,9 @@ export function boundaryLabelStrips(scene) {
     .filter((object) => object.visible && object.children.length > 0 && object.label)
     .map((object) => {
       const titleLines = object.renderLines?.filter((line) => !line.divider && line.role === "label") ?? [];
-      const longest = titleLines.length ? Math.max(...titleLines.map((line) => line.text.length)) : String(object.label).length;
+      const measuredWidth = titleLines.length
+        ? Math.max(...titleLines.map((line) => line.measuredWidth))
+        : String(object.label).length * (object.fontSize ?? 15) * 0.55;
       return {
         kind: "boundary-label",
         visible: true,
@@ -33,7 +35,7 @@ export function boundaryLabelStrips(scene) {
         box: {
           x: object.box.x + 8,
           y: object.box.y + 4,
-          width: Math.max(0, Math.min(object.box.width - 16, longest * (object.fontSize ?? 15) * 0.62 + 16)),
+          width: Math.max(0, Math.min(object.box.width - 16, measuredWidth + 8)),
           height: Math.max(1, titleLines.length) * (object.fontSize ?? 15) * 1.6,
         },
       };
@@ -85,6 +87,19 @@ function gapBetween(first, second, axis) {
   return geometry(left, first.y + first.height, right - left, second.y - first.y - first.height, "horizontal");
 }
 
+function siblingGapEnvelope(object, core) {
+  const box = object.box;
+  const padding = object.paddingBox ?? { top: 0, right: 0, bottom: 0, left: 0 };
+  if (core.axis === "vertical") {
+    const top = box.y + padding.top + (object.contentHeight ?? 0);
+    const bottom = box.y + box.height - padding.bottom;
+    return geometry(core.x, top, core.width, bottom - top, core.axis);
+  }
+  const left = box.x + padding.left;
+  const right = box.x + box.width - padding.right;
+  return geometry(left, core.y, right - left, core.height, core.axis);
+}
+
 function intersects(first, second) {
   return first.x < second.x + second.width
     && first.x + first.width > second.x
@@ -125,7 +140,7 @@ function subtractResidents(cells, residents) {
 function siblingGapCells(object, index, first, second, axis, active) {
   const key = `mesh:gap:${object.path || "$root"}:${index}`;
   const core = gapBetween(first.box, second.box, axis);
-  const envelope = reservedRegionEnvelope(active ?? { kind: "gap", owner: object, index });
+  const envelope = siblingGapEnvelope(object, core);
   const common = {
     kind: "gap",
     owner: object,

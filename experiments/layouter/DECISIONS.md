@@ -4,6 +4,8 @@ Status: Accepted for the experiment
 
 These decisions make the first layout experiment concrete. They do not amend the Kvísl language model. Where the experiment exposes a model ambiguity, the result belongs in a later explicit update to [`MODEL.md`](../../MODEL.md).
 
+“Accepted” means the experiment has chosen the behavior; it is not an implementation-completeness marker. The current prototype still emits a fused preview scene rather than versioned Projection and Solved IR, so D7 and D9 cannot yet be represented as their final contracts. D16 and D17 have direct mesh regression coverage. D18 has canonical cells, region bindings, portal intervals, and shared debug geometry, but complete itinerary-adjacent `TrackRun` allocation remains partial: compatible regional allocations currently share interval intersections without yet deriving every maximal run from consecutive portal-connected cell incidences. The reference complexity target is likewise unproven until the performance counters and generated fixtures in `ALGORITHM.md` section 23 exist.
+
 ## D1. Port sides are an ordered set
 
 A port side is represented internally as an ordered, non-empty set of allowed sides.
@@ -119,9 +121,9 @@ Rationale: hand-drawn references equalize sibling boxes pervasively, and requiri
 
 ## D16. Boundary labels are local channel residents
 
-A container title contributes to the container's intrinsic content size, but it does not translate the complete top-channel mesh. The mesh subtracts the measured title rectangle from the one top-padding region and connects the remaining parts only across positive-length shared edges.
+A container title contributes to the container's intrinsic content size, but it does not translate the complete top-channel mesh. The mesh subtracts the title's measured line rectangle plus explicit local clearance from the one top-padding region and connects the remaining parts only across positive-length shared edges. Layout, painting, and the mesh share that measured width; the mesh does not estimate it again from character count.
 
-Derived gap track cells similarly use only the facing overlap of adjacent siblings. Their approach wings are separate canonical access cells. The router retains no larger approach rectangle.
+Derived gap track cells similarly use only the facing overlap of adjacent siblings. Their approach wings are separate canonical access cells that extend to the parent content boundaries. The router retains no larger approach rectangle.
 
 Rationale: a left-aligned title blocks routing locally. Treating its height as a global channel offset wastes the full width, while painting a bounding-union gap incorrectly marks space behind an uneven sibling as routeable.
 
@@ -135,7 +137,7 @@ Rationale: painting base padding and a reserved track as two cells invents a sec
 
 The prototype builds the channel mesh before routing and binds every active logical region to canonical cell identities. A cell has one rectangle. Adjacency records the positive-length shared boundary as a portal interval. Track allocations cite cell identities, one cross-axis coordinate, and axial spans.
 
-`region.geometry` and per-cell `routingGeometry` shadow rectangles are forbidden. Longitudinal tracks use facing core cells; perpendicular crossings may use connected access cells. Compatible collinear allocations of one line share a coordinate from the intersection of their legal intervals. Only an empty intersection creates an intentional transition.
+`region.geometry` and per-cell `routingGeometry` shadow rectangles are forbidden. Longitudinal tracks use facing core cells; perpendicular crossings may use connected access cells. Compatible, itinerary-adjacent collinear allocations of one line share a coordinate from the intersection of their legal intervals. Only an empty intersection at a recorded portal or junction creates an intentional transition; spatially compatible regions that are not consecutive in the itinerary do not form a run.
 
 Direct parent/child cells connect only at real shared boundaries. Padding cells leave through their own side, and corner junctions leave only through their declared outward sides.
 
