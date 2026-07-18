@@ -55,7 +55,9 @@ Pressure is a packing preference, not permission to violate spacing. A high-pres
 
 A named port has canonical identity `(owner object, local port ID)`. Every line end attached to that identity participates in one topological join. Cardinality controls whether multiple attachments are allowed; the independent sharing policy controls the geometry next to the join.
 
-[![Merge, bundle, and separate sharing modes at the same named port](generated/port-sharing.svg)](diagrams/port-sharing.tsx)
+| Solved drawing | Sharing debug |
+| --- | --- |
+| [![Merge, bundle, and separate sharing modes at the same named port](generated/port-sharing.svg)](diagrams/port-sharing.tsx) | [![Canonical share groups, bundle lanes, terminal slots, and branch pins](generated/port-sharing-debug.svg)](diagrams/port-sharing.tsx) |
 
 ```tsx
 <Port
@@ -77,6 +79,10 @@ The policies mean:
 - `auto` lets the router choose according to space, style compatibility, and corridor pressure.
 
 Sharing is symmetric. The same rules apply to fan-in and fan-out.
+
+Different visible stroke styles cannot occupy the same positive-length centerline. When sharing permits a fallback, incompatible styles become close parallel bundle lanes; a required incompatible merge is a diagnostic. Compatible members may still merge within one style cohort.
+
+Once a line joins a bundle on the way to its common end, it stays in that bundle. Membership grows monotonically toward the canonical port, port-group terminal, or explicit common end, and lane order cannot swap inside the bundle. The terminal approach remains bundled: every visible lane keeps a collision-free final run, arrowhead, and physical dock slot. Several slots below one named port remain one semantic port and are packed more closely than unrelated docks.
 
 ## Port groups are not named-port joins
 
@@ -101,9 +107,11 @@ Group affinity may be:
 - `free` — impose no geometric relationship;
 - `separate` — keep the routes visibly apart.
 
-[![Merge, bundle, free, and separate affinity across distinct grouped ports](generated/port-groups.svg)](diagrams/port-groups.tsx)
+| Solved drawing | Sharing debug |
+| --- | --- |
+| [![Merge, bundle, free, and separate affinity across distinct grouped ports](generated/port-groups.svg)](diagrams/port-groups.tsx) | [![PortGroup merge trunks, compact bundle lanes, free routes, and separate routes in debug](generated/port-groups-debug.svg)](diagrams/port-groups.tsx) |
 
-> **Prototype conformance target:** the current experimental router preserves the four declared affinities but does not yet make all four route relationships visually distinct in this fixture. Because this image is built from the real TSX, that missing differentiation stays visible instead of being hidden by hand-drawn documentation art.
+The debug overlay is derived from the same solved share-group state consumed by track allocation, routing, and quality checks. Blue points mark merge trunks; purple lane overlays, terminal slots, and branch pins expose bundle continuity. `free` and `separate` remain uncoalesced and therefore do not acquire a synthetic shared trunk.
 
 ## Object-only endpoints own private docks
 

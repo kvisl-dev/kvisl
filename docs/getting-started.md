@@ -1,6 +1,6 @@
 # Getting started
 
-This guide walks from an empty TSX file to an editable Excalidraw document, then introduces reusable components, logical routing, presentation rules, and adaptive views.
+This guide walks from an empty TSX file to an editable Excalidraw document, then introduces reusable components, logical routing, presentation rules, and adaptive views. A supported Node.js installation with npm and `npx` is the only system prerequisite; the [dependency guide](dependencies.md) covers reusable local and Internet modules.
 
 ## Create the first diagram
 
@@ -46,10 +46,19 @@ export default (
 Render it:
 
 ```console
-$ kvisl render architecture.tsx --output architecture.excalidraw
+$ npx kvisl render architecture.tsx -o architecture.excalidraw
+📦 Resolving dependencies
+⚡ Transforming TSX
+🧩 Expanding components
+🧱 Normalizing the model
+🔭 Selecting views
+📐 Laying out objects
+🛤️ Routing lines
+🎨 Painting Excalidraw
+✨ Wrote architecture.excalidraw
 ```
 
-The command evaluates the TSX module, expands components, normalizes the logical model, lays it out, routes the line, and writes an editable Excalidraw document.
+The command evaluates the TSX module, expands components, normalizes the logical model, lays it out, routes the line, and writes an editable Excalidraw document. Human-facing progress is colorful and every step begins with an emoji; structured diagnostic modes omit that decoration.
 
 The important absence in the source is intentional: there are no x/y positions, line bends, or label coordinates.
 
@@ -112,7 +121,7 @@ export default (
 
 The caller now knows only the component ID and public handle. `Service` can insert scopes, change layouts, or forward the handle to a child component without changing the line.
 
-Port handles are authoring-time composition values. They resolve to canonical named ports before Logical IR is emitted; Go and Rust consumers never need to understand TypeScript handles.
+Port handles are authoring-time composition values. They resolve to canonical named ports before Logical IR is emitted; later planning, solving, and painting stages never need to understand authoring-time TypeScript handles.
 
 ## Describe layout intent
 
@@ -270,19 +279,19 @@ Views are hidden meta branches. Declaration order is preference order, and the r
 Render for a constrained page:
 
 ```console
-$ kvisl render architecture.tsx \
+$ npx kvisl render architecture.tsx \
     --target a4 \
     --policy maximum-that-fits \
-    --output architecture-a4.excalidraw
+    -o architecture-a4.excalidraw
 ```
 
 Render the same model for a large poster:
 
 ```console
-$ kvisl render architecture.tsx \
+$ npx kvisl render architecture.tsx \
     --target a0 \
     --policy maximum-that-fits \
-    --output architecture-a0.excalidraw
+    -o architecture-a0.excalidraw
 ```
 
 The renderer allocates space outside-in and may select different views without re-evaluating the TSX or changing semantic identity.
@@ -310,17 +319,17 @@ The local row becomes a physical column. Local left/right ports, corridors, and 
 The single render command is the normal path. The CLI also exposes the pipeline when a model or solver choice needs explanation:
 
 ```console
-$ kvisl normalize architecture.tsx --output logical.yaml
-$ kvisl materialize logical.yaml --target a4 --output projection.yaml
-$ kvisl solve projection.yaml --output solved.yaml
-$ kvisl paint solved.yaml --format excalidraw --output architecture.excalidraw
+$ npx kvisl normalize architecture.tsx --output logical.yaml
+$ npx kvisl materialize logical.yaml --target a4 --output projection.yaml
+$ npx kvisl solve projection.yaml --output solved.yaml
+$ npx kvisl paint solved.yaml --format excalidraw --output architecture.excalidraw
 ```
 
 - Logical IR contains normalized objects, ports, lines, rules, constraints, and hidden view templates.
 - Projection IR records the selected view instances and renderer context.
 - Solved IR adds local-frame geometry and provenance for painters.
 
-All three are versioned and language-neutral so TypeScript, Go, and Rust tools can consume the same model.
+All three are versioned and serializable so the TypeScript and JavaScript stages can exchange, cache, and inspect the same model without re-running author code.
 
 [![The complete renderer-neutral pipeline, authored and rendered with Kvísl](generated/render-pipeline.svg)](diagrams/render-pipeline.tsx)
 
@@ -347,6 +356,7 @@ If a diagram repeatedly requires control below that boundary, prefer another log
 
 ## Next steps
 
+- Read [Dependencies and remote modules](dependencies.md) before consuming shared component code.
 - Read [UML with Kvísl Script](uml.md) for a substantial library built over the core.
 - Explore the complete [visual fixtures](../examples/README.md).
 - Use the [requirements](../REQUIREMENTS.md) and [data model](../MODEL.md) when a guide intentionally omits an edge case.

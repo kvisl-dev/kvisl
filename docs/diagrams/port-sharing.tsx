@@ -12,9 +12,19 @@ import {
   Title,
 } from "@kvisl/core";
 
-function SharingCase({ id, mode }: { id: string; mode: "merge" | "bundle" | "separate" }) {
+function SharingCase({
+  id,
+  mode,
+  label = mode,
+  mixedStyles = false,
+}: {
+  id: string;
+  mode: "merge" | "bundle" | "separate" | "auto";
+  label?: string;
+  mixedStyles?: boolean;
+}) {
   return (
-    <Scope id={id} label={mode} layout={{ kind: "column", gap: "medium" }}>
+    <Scope id={id} label={label} layout={{ kind: "column", gap: "medium" }}>
       <Row id="flow" gap="xlarge" align="center">
         <Column id="sources" gap="medium">
           {["A", "B", "C"].map((label) => (
@@ -35,8 +45,17 @@ function SharingCase({ id, mode }: { id: string; mode: "merge" | "bundle" | "sep
         </Node>
       </Row>
 
-      {["a", "b", "c"].map((source) => (
-        <Line key={source} from={`flow/sources/${source}.out`} to="flow/sink.events" />
+      {["a", "b", "c"].map((source, index) => (
+        <Line
+          key={source}
+          from={`flow/sources/${source}.out`}
+          to="flow/sink.events"
+          style={mixedStyles
+            ? index < 2
+              ? { stroke: "#2563eb" }
+              : { stroke: "#e8590c", dash: "dashed" }
+            : undefined}
+        />
       ))}
     </Scope>
   );
@@ -44,12 +63,13 @@ function SharingCase({ id, mode }: { id: string; mode: "merge" | "bundle" | "sep
 
 export default (
   <Diagram id="port-sharing" theme="excalidraw-handdrawn">
-    <Title>One named port, three sharing policies</Title>
-    <Subtitle>Identity creates the join; policy decides the adjacent geometry.</Subtitle>
-    <Grid id="modes" columns={3} gap="large">
+    <Title>One named port: policies and style cohorts</Title>
+    <Subtitle>Identity creates the join; policy and resolved paint decide its visible lanes.</Subtitle>
+    <Grid id="modes" columns={2} gap="large">
       <SharingCase id="merge" mode="merge" />
       <SharingCase id="bundle" mode="bundle" />
       <SharingCase id="separate" mode="separate" />
+      <SharingCase id="style-cohorts" mode="auto" label="auto · two style cohorts" mixedStyles />
     </Grid>
   </Diagram>
 );

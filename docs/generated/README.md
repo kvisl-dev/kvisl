@@ -19,8 +19,16 @@ The normal and routing-debug variants use the same local evaluator, layout engin
     <td><img src="./port-sharing.svg" alt="Generated port-sharing diagram" width="100%"></td>
   </tr>
   <tr>
+    <td><a href="../diagrams/port-sharing.tsx"><code>port-sharing.tsx</code></a></td>
+    <td><img src="./port-sharing-debug.svg" alt="Generated port-sharing-debug diagram" width="100%"></td>
+  </tr>
+  <tr>
     <td><a href="../diagrams/port-groups.tsx"><code>port-groups.tsx</code></a></td>
     <td><img src="./port-groups.svg" alt="Generated port-groups diagram" width="100%"></td>
+  </tr>
+  <tr>
+    <td><a href="../diagrams/port-groups.tsx"><code>port-groups.tsx</code></a></td>
+    <td><img src="./port-groups-debug.svg" alt="Generated port-groups-debug diagram" width="100%"></td>
   </tr>
   <tr>
     <td><a href="../diagrams/adaptive-service.tsx"><code>adaptive-service.tsx</code></a></td>

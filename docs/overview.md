@@ -8,7 +8,7 @@ Small diagrams are easy. Large, evolving diagrams are not.
 
 A free-form canvas lets an author draw almost anything, but every structural change creates manual layout and routing work. Traditional diagram languages automate layout, but commonly flatten the problem into one graph or support only a fixed family of diagram types. Both approaches become awkward when a drawing contains reusable subsystems, nested boundaries, long cross-hierarchy connections, different levels of detail, and page-sized routing structure.
 
-Kvísl is designed for drawings that may begin as five boxes and grow into a DIN A0 architecture poster or an effectively unbounded model of a complete Kubernetes or Linux system.
+Kvísl is designed for drawings that may begin as five boxes and grow into a DIN A0 architecture poster or an effectively unbounded model of a distributed Kubernetes system in full detail or an entire Linux kernel.
 
 ## The model in one example
 
@@ -136,7 +136,7 @@ TSX source
 
 [![The Kvísl rendering pipeline expressed and rendered as a Kvísl diagram](generated/render-pipeline.svg)](diagrams/render-pipeline.tsx)
 
-TSX is evaluated once. Go, Rust, and TypeScript consumers operate on versioned, language-neutral intermediate representations rather than re-running author code.
+TSX is evaluated once. The TypeScript and JavaScript planners, solvers, and painters operate on versioned, serializable intermediate representations rather than re-running author code.
 
 ## Visual ambition
 
@@ -160,27 +160,10 @@ It is especially useful for agents working on behalf of:
 
 It is probably unnecessary for a disposable sketch, a small flowchart, or a drawing whose exact hand-placed composition is the primary artifact.
 
-## Does the world need this?
-
-That is the question this documentation exists to answer before the prototype becomes a production toolchain. The design bets on three things no existing tool combines:
-
-1. **Components with ports instead of global IDs** — reusable, nestable, rotatable subsystems whose callers never see internal names;
-2. **Whitespace routing** — corridors, shared trunks, and hierarchy-crossing routes as logical structure instead of hand-maintained polylines;
-3. **Editable output with stable identity** — regenerate into an existing Excalidraw document and it updates instead of clobbering manual adjustments.
-
-If you draw or generate technical diagrams, we would like to know:
-
-- Which of the three bets matters to you — and which is solved well enough today by Mermaid, D2, Structurizr, PlantUML, or a hand-drawn canvas?
-- Have you abandoned a large diagram because maintaining it became too expensive? What exactly broke?
-- Would you author in TSX, or is a non-code surface a requirement?
-- Is the adaptive-views idea (one model, A4 summary to A0 detail) valuable or over-engineering?
-- Would agents generating diagrams on your behalf change what you need from the format?
-
-Feedback is most useful against a concrete artifact: read one [reference model](../examples/README.md) next to [its target drawing](../examples/modelplane-fleet-inference/original.png) and judge whether the source earns its keep.
-
 ## Continue
 
 - Follow the [getting started guide](getting-started.md) to create and render a model.
+- Read [dependencies and remote modules](dependencies.md) to compose models from local and Internet TSX safely and reproducibly.
 - See [routing, corridors, and ports](routing-and-ports.md) for illustrated routing semantics.
 - Read [UML with Kvísl Script](uml.md) to see how a substantial notation composes over the core.
 - Consult the [requirements](../REQUIREMENTS.md) and [data model](../MODEL.md) for normative detail.

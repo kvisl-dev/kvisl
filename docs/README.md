@@ -14,8 +14,9 @@ This one command regenerates every linked documentation diagram, both example ga
 
 1. [Overview](overview.md) — the problem, the model, and when Kvísl is useful.
 2. [Getting started](getting-started.md) — create and render a diagram, then grow it into reusable components.
-3. [Routing, corridors, and ports](routing-and-ports.md) — the attachment and routing model, with feature illustrations.
-4. [UML with Kvísl Script](uml.md) — how UML works as a library over the same composable core.
+3. [Dependencies and remote modules](dependencies.md) — compose TSX from local files, npm, JSR, and HTTPS without another runtime.
+4. [Routing, corridors, and ports](routing-and-ports.md) — the attachment and routing model, with feature illustrations.
+5. [UML with Kvísl Script](uml.md) — how UML works as a library over the same composable core.
 
 ## Specification documents
 

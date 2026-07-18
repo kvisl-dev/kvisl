@@ -10,6 +10,30 @@ Kvísl Script, or Kvísl for short, is a composable modelling language for archi
 
 The long-term target is a model detailed enough to describe a complete distributed Kubernetes system in full detail or an entire Linux kernel, from the highest architectural boundaries down to the lowest useful implementation level. A DIN A0 poster is a normal output size, not the limit of the model.
 
+## Dependencies
+
+Kvísl's executable stack is TypeScript and JavaScript. The only system prerequisite is a supported Node.js installation with npm and `npx`; Deno, React, and a browser runtime are not required.
+
+The `kvisl` npm package supplies the compiler, `@kvisl/core`, the JSX runtime, planners, experimental layouter, and painters needed by the command:
+
+```console
+$ npx kvisl render diagram.tsx -o diagram.svg
+$ npx kvisl render diagram.tsx -o diagram.excalidraw
+```
+
+Human-facing output is deliberately cheerful and colorful: every pipeline step starts with an emoji, from `📦 Resolving dependencies` through `🛤️ Routing lines` to `✨ Wrote diagram.svg`. Machine-readable diagnostics remain undecorated structured data.
+
+Dependencies of a diagram remain ordinary TSX imports. Kvísl resolves local modules, project-installed bare npm packages, and Deno-compatible `npm:`, `jsr:`, and `https:` specifiers without requiring Deno. Remote imports are cached by content and covered by a reproducibility lock; there is no Kvísl module-declaration file.
+
+```tsx
+import { Diagram } from "@kvisl/core";
+import { KubernetesCluster } from "npm:@example/kvisl-kubernetes@1.4.0";
+import { Network } from "jsr:@example/kvisl-network@2.1.0";
+import { Platform } from "https://raw.githubusercontent.com/example/platform/v1.2.3/mod.tsx";
+```
+
+Remote components are executable TypeScript or JavaScript and should be reviewed and pinned like any other build dependency. See [Dependencies and remote modules](docs/dependencies.md) for resolution, locking, offline use, and trust behavior.
+
 ## Flagship example
 
 [![Agent Substrate component design rendered from Kvísl TSX](experiments/layouter/output/agent-substrate.svg)](examples/agent-substrate/diagram.tsx)
@@ -64,7 +88,7 @@ The translucent red cells are the local renderer's debug view of the same canoni
 
 ### Renderer-neutral pipeline
 
-TSX is evaluated once and normalized into a versioned, language-neutral Logical IR. Independent TypeScript, Go, and Rust solvers or renderers can consume that IR.
+TSX is evaluated once and normalized into a versioned, serializable Logical IR. The TypeScript and JavaScript planners, solvers, and painters consume that IR without re-running component code.
 
 ```text
 diagram.tsx
@@ -180,6 +204,7 @@ A normal deep line target stops at the deepest object instantiated by the select
 
 - [Overview](docs/overview.md) explains the model and where Kvísl fits.
 - [Getting started](docs/getting-started.md) creates and renders a TSX model as an editable Excalidraw document.
+- [Dependencies and remote modules](docs/dependencies.md) explains local, npm, JSR, HTTPS, cache, lock, and trust behavior.
 - [Routing, corridors, and ports](docs/routing-and-ports.md) illustrates hierarchy-crossing routes, sharing modes, port groups, and docks.
 - [UML with Kvísl Script](docs/uml.md) covers the UML library and its normalization to the core model.
 - [Documentation index](docs/README.md) links the complete guide set.
